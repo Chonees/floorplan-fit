@@ -62,6 +62,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - Documento formal del dise?o creado en `docs/superpowers/specs/2026-04-25-slice-1-import-foundation-design.md`
 - Documento formal del dise?o ejecutable creado en `docs/superpowers/specs/2026-04-29-slice-1-executable-design.md`
 - Documento formal del cierre de Loop 1 creado en `docs/superpowers/specs/2026-04-30-loop-1-curated-walls-and-spaces-design.md`
+- Plan ejecutable detallado del cierre de Loop 1 creado en `docs/superpowers/plans/2026-04-30-loop-1-curated-walls-and-spaces-implementation.md`
 - Plan de implementaci?n creado en `docs/superpowers/plans/2026-04-25-slice-1-import-foundation.md`
 - Plan ejecutable detallado creado en `docs/superpowers/plans/2026-04-29-slice-1-executable-implementation.md`
 - Documento pedag?gico creado en `docs/explicacion del proyecto/2026-04-25 - explicacion de archivos tocados en slice 1.md` para explicar qu? hace cada archivo tocado
@@ -70,6 +71,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - Cambio de entorno aplicado el **2026-04-29**: Smart App Control fue desactivado temporalmente en Windows para destrabar assemblies de test y tareas de Avalonia que estaban siendo bloqueados por Application Control (`0x800711C7`)
 - Validaci?n real avanzada el **2026-04-29**: `FloorplanFit.Application.Tests` pasa (**4/4**), `FloorplanFit.Infrastructure.Tests` pasa (**6/6**), `FloorplanFit.Desktop` compila sin warnings en build de verificacion y el smoke test manual base de Desktop/import tambi?n fue validado en esta m?quina
 - Estandarizacion de desarrollo aplicada el **2026-04-29**: el launcher recomendado para iterar Desktop ya no es el `.exe` de `bin/Debug/net10.0` sino `scripts/dev-desktop.bat`, que corre `dotnet watch run` sobre `src/FloorplanFit.Desktop/FloorplanFit.Desktop.csproj` y evita confundir binarios viejos con cambios nuevos
+- Corrección de workflow aplicada el **2026-04-30**: para esta etapa de implementación NO podemos usar `scripts/dev-desktop.bat` como verificación porque ejecuta `dotnet watch run` (build + run) y hoy rige la regla del repo **never build after changes**; por lo tanto la verificación activa durante coding queda limitada a `dotnet test`
 - Conveniencia local agregada el **2026-04-29**: existe un acceso directo `Floorplan Fit Dev Watch.lnk` en el escritorio que apunta al launcher `scripts/dev-desktop.bat`
 - Sincronizacion documental aplicada el **2026-04-29**: `docs/explicacion del proyecto/2026-04-29 - explicacion exhaustiva de archivos del slice 1 ejecutable.md` fue reescrito para reflejar el estado final del dia, incluyendo query de Library, rehidratacion desde SQLite, bugfix de reimport y launcher dev `.bat`
 - Pasada final de sincronizacion documental aplicada el **2026-04-29**: se corrigieron conteos de tests, referencias viejas a “no SDK”, estado abierto de `AVLN3001` y se marcaron como historicos los planes que ya no representan el codigo actual
@@ -123,6 +125,7 @@ Orden recomendado:
 - [[Implementation/2026-04-25 - Slice 1 Files Explanation Map]]
 - [[Implementation/2026-04-30 - Requirement Tension Between Walls-Only and Room Constraints]]
 - [[Implementation/2026-04-30 - Loop 1 Curated Walls and Spaces Design]]
+- [[Implementation/2026-04-30 - Loop 1 Implementation Plan]]
 - [[Implementation/2026-04-29 - Repository Audit Status]]
 
 

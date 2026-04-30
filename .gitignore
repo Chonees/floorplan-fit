@@ -21,3 +21,6 @@ Thumbs.db
 
 # Runtime workspace if ever materialized outside bin
 workspace/
+
+# Local git worktrees for isolated feature execution
+.worktrees/
