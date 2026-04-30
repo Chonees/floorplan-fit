@@ -28,109 +28,57 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Repository Truth
 
-- Repo remoto creado: `Chonees/floorplan-fit`
-- Licencia: **MIT**
-- Estado actual del repo: documentaci?n base + skill `floorplan-fit-teaching-mode` promovido a gu?a default del repositorio
-- La base t?cnica del Slice 1 ya empez?: existen `FloorplanFit.sln`, `global.json`, `Directory.Build.props`, proyectos `src/` para `Contracts`, `Domain`, `Application`, `Infrastructure`, y primer proyecto `tests/` para `Application.Tests`
-- Inventario verificado el **2026-04-30** excluyendo `bin/` y `obj/`: el repo hoy tiene un corte chico y recorrible para onboarding exhaustivo, centrado en **Loop 1 / import + Library**, con **60 archivos fuente reales** (`49` en `src/` contando `.csproj`, XAML y C#; `11` en `tests/`). En los archivos verificados todav?a no aparecen m?dulos propios de **Loop 2** (`site plan`, `envelope`, `fit engine`), lo que confirma que la implementaci?n viva actual sigue enfocada en el vertical slice inicial
-- Auditor?a de estado re-verificada el **2026-04-30**: `git log --oneline` ya muestra `330737a` (`feat: implement executable slice 1 import pipeline`) como commit vigente tanto en `main` como en `feat/loop1-wall-candidate-extraction`, y `git status --short` est? limpio
-- Dataset inicial ya disponible en `PLANS/`: floor plans DXF originales, site plan DXF original y cat?logos JSON que sirven como fixtures reales para arrancar el primer vertical slice
-- Floor plan elegido para el primer vertical slice can?nico: `PLANS/originalFloorPlans/SANTA-BARBARA.dxf`
-- Los cat?logos JSON en `PLANS/catalog/` pueden usarse como or?culo de verificaci?n inicial para TDD de importaci?n (unidad can?nica, bounding box y metadatos base)
-- Los JSON de `PLANS/catalog/` parecen artefactos previos de extracci?n/catalogaci?n, no curaciones can?nicas: incluyen `rooms`, `source_layers`, `block_refs` y `readiness`, pero no campos de curado como `stable_wall_id`, `mobility_level` o `curated_walls`; adem?s sus `source_path` apuntan a `D:\PointAIData\PLANS\originalFloorPlans\...`, lo que refuerza que vienen de un pipeline/dataset externo previo y no de esta codebase actual
-- Pol?tica de trabajo vigente: los `DXF` de `PLANS/originalFloorPlans/` son la fuente primaria de verdad para Loop 1; `PLANS/catalog/` queda clasificado como referencia legacy/comparativa y NO como fuente can?nica del dominio
-- Decisi?n vigente al 2026-04-29: durante el Slice 1 ejecutable, `PLANS/catalog/*.json` se conserva como or?culo legacy/comparativo; no se elimina todav?a y cualquier artefacto propio generado desde DXF deber? ser secundario, no can?nico
-- Verificaci?n al 2026-04-29: hoy no existe ninguna carpeta ni archivo JSON derivado/generado por nuestra pipeline actual; los ?nicos JSON del repo, aparte de config, siguen siendo `PLANS/catalog/santa-barbara.json` y `PLANS/catalog/seminole-2000.json`
-- El plan `docs/superpowers/plans/2026-04-25-slice-1-import-foundation.md` fue sincronizado con el estado real del repo el **2026-04-29**; ahora distingue entre trabajo verificado, trabajo pendiente y evidencia hist?rica no demostrable desde git
-- La nota `obsidian-vault/Implementation/2026-04-29 - Repository Audit Status.md` qued? **superseded** por la auditor?a del **2026-04-30** porque todav?a afirmaba “un solo commit”, “sin SDK”, “sin Desktop” y “sin adaptadores reales”, cosas que hoy contradicen git, c?digo y validaciones locales
-- Decisi?n vigente al **2026-04-30**: para cerrar Loop 1 se aprob? este orden de implementaci?n: **WallCandidate/extracci?n -> review/curation persistida -> publish de versi?n activa -> UI de review/curado**
-- Decisi?n vigente al **2026-04-30**: el primer cierre serio de Loop 1 usar? **core sem?ntico + canvas m?nimo real**, evitando tanto el editor CAD rico prematuro como el review ciego sin contexto espacial
-- Hallazgo de producto al **2026-04-30**: el usuario aclar? que el MVP debe poder respetar reglas por ambiente (por ejemplo m?nimos de ba?o o qu? espacios no tocar) y captar medidas exactas de habitaciones; eso genera tensi?n con el scope actual `walls-only` y probablemente exige una capa m?nima de **espacios/ambientes + constraints**
-- Decisi?n vigente al **2026-04-30**: el dise?o de cierre de Loop 1 queda ajustado a **walls exactas + curated spaces m?nimos + constraints b?sicas por ambiente**, mientras que la **creaci?n de paredes nuevas** nace primero en Loop 2 como propuesta de adaptaci?n
-- Implementaci?n en curso al **2026-04-30** en branch eat/loop1-curation-impl: ya aterriz? la **Task 1** del plan de Loop 1 con FloorPlanCuration, ActivePublishedCurationId en FloorPlanTemplate, DTO de Library extendido y entidades/enum estructurales para walls, spaces y constraints; FloorplanFit.Application.Tests qued? verde (**6/6**)
+- El repo ya no est? en estado "solo docs": existe el slice ejecutable de import + Library sobre `SANTA-BARBARA.dxf`.
+- Loop 1 todav?a no est? cerrado, pero ya tiene implementado su n?cleo sem?ntico y la mayor parte del lifecycle de Application.
+- Loop 2 todav?a no tiene implementaci?n real de envelope, fit engine ni proposals.
+- Los DXF de `PLANS/originalFloorPlans/` son la fuente primaria de verdad para Loop 1.
+- `PLANS/catalog/` queda como referencia legacy/comparativa, no como fuente can?nica del dominio.
 
-## Knowledge System Truth
+## Loop 1 Truth
 
-- Vault Obsidian creado en `obsidian-vault/`
-- Engram local alineado a **1.13.1** mediante shim
-- Engram Cloud todav?a **no configurado**
-- Antes de cloud, conviene migrar memorias viejas del nombre `floorplan adjustments-to site plan` a `floorplan-fit`
-- `floorplan-fit-teaching-mode` debe cargarse junto con `superpowers:using-superpowers` como gu?a base de trabajo en este repo
-- Preferencia activa del usuario: mientras implementamos, explicar qu? se hace, por qu? se hace y ense?ar el razonamiento paso a paso en la respuesta
-- Preferencia activa del usuario al **2026-04-30**: antes de seguir empujando cambios, quiere entender el repo a nivel **exhaustivo** (`qu? hace cada archivo`, `qu? hace cada funci?n`, `c?mo se conecta todo`) y usar esa lectura como base de trabajo
-- Preferencia activa del usuario: documentar cada paso importante en `docs/` y `obsidian-vault/` a medida que avancemos
-- Preferencia activa del usuario: evitar terminolog?a avanzada no introducida todav?a (por ejemplo `aggregate`) y reemplazarla por lenguaje pedag?gico simple como `entidad principal`, `objeto central` o `grupo de datos relacionado`
-- Documento formal del dise?o creado en `docs/superpowers/specs/2026-04-25-slice-1-import-foundation-design.md`
-- Documento formal del dise?o ejecutable creado en `docs/superpowers/specs/2026-04-29-slice-1-executable-design.md`
-- Documento formal del cierre de Loop 1 creado en `docs/superpowers/specs/2026-04-30-loop-1-curated-walls-and-spaces-design.md`
-- Plan ejecutable detallado del cierre de Loop 1 creado en `docs/superpowers/plans/2026-04-30-loop-1-curated-walls-and-spaces-implementation.md`
-- Plan de implementaci?n creado en `docs/superpowers/plans/2026-04-25-slice-1-import-foundation.md`
-- Plan ejecutable detallado creado en `docs/superpowers/plans/2026-04-29-slice-1-executable-implementation.md`
-- Documento pedag?gico creado en `docs/explicacion del proyecto/2026-04-25 - explicacion de archivos tocados en slice 1.md` para explicar qu? hace cada archivo tocado
-- Documento pedag?gico exhaustivo agregado en `docs/explicacion del proyecto/2026-04-29 - explicacion exhaustiva de archivos del slice 1 ejecutable.md` para cubrir archivo-por-archivo los componentes nuevos de `FloorplanFit.Desktop`, `FloorplanFit.Infrastructure` y `FloorplanFit.Infrastructure.Tests`
-- Cambio de entorno aplicado el **2026-04-29**: se instal? `.NET SDK 10.0.100` y `dotnet --info` ya queda alineado con `global.json`; el bloqueo de “no SDK” ya no existe
-- Cambio de entorno aplicado el **2026-04-29**: Smart App Control fue desactivado temporalmente en Windows para destrabar assemblies de test y tareas de Avalonia que estaban siendo bloqueados por Application Control (`0x800711C7`)
-- Validaci?n real avanzada el **2026-04-29**: `FloorplanFit.Application.Tests` pasa (**4/4**), `FloorplanFit.Infrastructure.Tests` pasa (**6/6**), `FloorplanFit.Desktop` compila sin warnings en build de verificacion y el smoke test manual base de Desktop/import tambi?n fue validado en esta m?quina
-- Estandarizacion de desarrollo aplicada el **2026-04-29**: el launcher recomendado para iterar Desktop ya no es el `.exe` de `bin/Debug/net10.0` sino `scripts/dev-desktop.bat`, que corre `dotnet watch run` sobre `src/FloorplanFit.Desktop/FloorplanFit.Desktop.csproj` y evita confundir binarios viejos con cambios nuevos
-- Corrección de workflow aplicada el **2026-04-30**: para esta etapa de implementación NO podemos usar `scripts/dev-desktop.bat` como verificación porque ejecuta `dotnet watch run` (build + run) y hoy rige la regla del repo **never build after changes**; por lo tanto la verificación activa durante coding queda limitada a `dotnet test`
-- Conveniencia local agregada el **2026-04-29**: existe un acceso directo `Floorplan Fit Dev Watch.lnk` en el escritorio que apunta al launcher `scripts/dev-desktop.bat`
-- Sincronizacion documental aplicada el **2026-04-29**: `docs/explicacion del proyecto/2026-04-29 - explicacion exhaustiva de archivos del slice 1 ejecutable.md` fue reescrito para reflejar el estado final del dia, incluyendo query de Library, rehidratacion desde SQLite, bugfix de reimport y launcher dev `.bat`
-- Pasada final de sincronizacion documental aplicada el **2026-04-29**: se corrigieron conteos de tests, referencias viejas a “no SDK”, estado abierto de `AVLN3001` y se marcaron como historicos los planes que ya no representan el codigo actual
-- Riesgo operativo documentado al **2026-04-29**: el acceso directo de escritorio a `FloorplanFit.Desktop.exe` sigue sirviendo para smoke tests manuales puntuales, pero NO es la ruta recomendada para desarrollo porque puede apuntar a un output stale
-- Decisi?n vigente al 2026-04-29: el Slice 1 ejecutable copiar? los DXF importados a un workspace administrado por la app (`library/raw-dxf/`) y persistir? esa ruta gestionada como `storage_path`
-- Correcci?n de dise?o al 2026-04-29: despu?s de copiar el DXF al workspace gestionado, la app leer? metadata/fingerprint y calcular? hash sobre esa copia gestionada, no sobre la ruta externa original
-- Implementaci?n parcial verificada al 2026-04-29: `ImportFloorPlanHandler` ya fue adaptado para depender de `IManagedFileStorage` y operar sobre la copia gestionada durante el flujo de import
-- Implementaci?n verificada al 2026-04-29: ya existen `AppWorkspace`, `ManagedFileStorage`, `Sha256FileHashService`, `IxMiliaDxfGateway`, `SqliteSession`, `SqliteSchemaInitializer`, repositorios SQLite y `SqliteUnitOfWork`, adem?s de tests de infraestructura para storage, DXF real e integraci?n SQLite que ya corren en esta m?quina
-- Costuras corregidas durante la validaci?n del **2026-04-29**: se agregaron `GlobalUsings` para `Xunit`, se sane? el test del gateway DXF para validar el raw DXF real en vez del bbox legacy, se limpiaron pools de `SqliteConnection` para liberar `app.db` en tests temporales y se agregaron `x:DataType` compilados en `MainWindow.axaml` para destrabar el build de Avalonia
-- Fix verificado al **2026-04-29**: `AVLN3001` desaparecio del build de verificacion despues de mover el `DataContext` de `MainWindow` fuera del constructor inyectado y dejar la ventana con constructor publico sin parametros
-- Bugfix verificado al **2026-04-29**: reimportar el mismo DXF ya no crea `santa-barbara-2` como template nuevo; ahora preserva la identidad l?gica desde `request.FilePath` y genera `version 2` del mismo template aunque la copia gestionada tenga sufijo f?sico
-- Hallazgo de auditor?a al **2026-04-30**: el workspace manual en `src/FloorplanFit.Desktop/bin/Debug/net10.0/workspace/app.db` hoy contiene `santa-barbara`, `santa-barbara-2` y `santa-barbara-3` como templates separados; eso NO invalida el bugfix automatizado, porque la DB guarda `original_file_name` con esos mismos sufijos y por lo tanto refleja imports manuales de copias gestionadas/stale artifacts, no reimport del mismo `PLANS/originalFloorPlans/SANTA-BARBARA.dxf`
+- Orden aprobado para cerrar Loop 1: **extracci?n -> review/curation persistida -> publish de versi?n activa -> UI de review/curado**.
+- Balance aprobado: **core sem?ntico + canvas m?nimo real**; no editor CAD rico todav?a.
+- Ajuste de alcance aprobado: Loop 1 debe cerrar con **walls exactas + curated spaces m?nimos + constraints b?sicas por ambiente**.
+- La **creaci?n de paredes nuevas** pertenece primero a **Loop 2** como propuesta de adaptaci?n, con promoci?n opcional de vuelta a Loop 1 si el usuario la quiere canonizar.
+
+## Implementation Truth
+
+- `FloorPlanTemplate` ya separa `CurrentVersionId` de `ActivePublishedCurationId`.
+- Domain ya tiene `FloorPlanCuration`, `ExtractedWallCandidate`, `CuratedWall`, `CuratedSpace`, groups/joins y constraints base.
+- Application ya tiene handlers para:
+  - `ExtractWallCandidates`
+  - `StartOrResumeCuration`
+  - `AcceptWallCandidate`
+  - `RejectWallCandidate`
+  - `UpdateCuratedWallMetadata`
+  - `PublishFloorPlanCuration`
+- Decisi?n vigente: en draft, **rechazar** un candidate elimina desde repositorio la `CuratedWall` derivada de ese source candidate. Soft-delete/deactivation queda diferido.
+- Verificaci?n actual:
+  - `dotnet test tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj --filter FullyQualifiedName~FloorPlans.Curation` -> **8/8**
+  - `dotnet test tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj` -> **13/13**
+
+## Knowledge / Workflow Truth
+
+- `floorplan-fit-teaching-mode` debe cargarse junto con `superpowers:using-superpowers` como gu?a base de trabajo en este repo.
+- Preferencia activa del usuario: explicar qu? se hace, por qu? se hace y ense?ar el razonamiento mientras implementamos.
+- Preferencia activa del usuario: documentar pasos importantes en `docs/` y `obsidian-vault/`.
+- Regla vigente del repo: **never build after changes**.
+- Durante implementaci?n, la verificaci?n activa queda limitada a `dotnet test`.
+- `scripts/dev-desktop.bat` usa `dotnet watch run`, as? que hoy NO cuenta como path v?lido de verificaci?n durante coding.
+- Gotcha operativo: en worktrees hay que editar apuntando expl?citamente al path del worktree o el cambio cae en el workspace principal.
+- Gotcha operativo: no correr `dotnet test` en paralelo para distintos proyectos dentro del mismo worktree; aparecen locks `CS2012` en `obj/bin`.
 
 ## Immediate Next Steps
 
-1. Completar el resto del lifecycle de Application para Loop 1: StartOrResumeCuration, AcceptWallCandidate, RejectWallCandidate, UpdateCuratedWallMetadata
-2. Extender el schema SQLite y persistir wall_extraction_runs, extracted_wall_candidates y loorplan_curations
-3. Implementar IWallExtractor real y los repositorios SQLite para que el slice pase de Application fake a Infrastructure real
-4. Mantener la verificación secuencial con dotnet test y seguir difiriendo runtime Desktop mientras rija 
-ever build after changes
-
-## Recommended Implementation Start
-
-Primero hay que construir la **base t?cnica + Loop 1**, no el fit engine ni el site plan.
-
-Orden recomendado:
-
-1. Crear la soluci?n `.NET` con las capas definidas en `TECH-STACK-ARCHITECTURE-DATAFLOW.md`
-2. Implementar el flujo can?nico de floor plan: **import DXF -> normalizaci?n de unidades -> extracci?n de wall candidates -> review/curation -> publicaci?n persistida**
-3. Persistir desde el inicio la curaci?n publicada como fuente can?nica reutilizable
-4. Reci?n despu?s atacar Loop 2: envelope extraction, overlay 1:1 y propuestas de fit
-5. Para bootstrap y validaci?n inicial, usar `SANTA-BARBARA` como caso conductor y `SEMINOLE2000` como fixture de robustez/regresi?n
-
-## Why This Start
-
-- `MVP-UX.md` define dos loops y deja claro que el **Loop 1 se hace una vez y habilita todos los casos futuros**
-- `TECH-STACK-ARCHITECTURE-DATAFLOW.md` dice expl?citamente que el motor trabaja contra `FloorPlanCuration` y `CuratedWalls`, no contra DXF crudo
-- Sin esa base can?nica, empezar por el fit engine o por el envelope ser?a construir sobre arena
+1. Bajar el lifecycle nuevo de Loop 1 a **SQLite**: schema, `active_published_curation_id`, `wall_extraction_runs`, `extracted_wall_candidates`, `floorplan_curations` y `curated_walls`.
+2. Agregar tests de infraestructura para persistencia real de curaciones y candidates antes de tocar UI.
+3. Implementar el extractor real de wall candidates sobre DXF en Infrastructure.
+4. Reci?n despu?s atacar Library states derivados y la review screen m?nima en Desktop.
 
 ## Relevant Notes
 
-- [[Implementation/Vault Bootstrap]]
-- [[Decisions/2026-04-25 - Project Identity and Knowledge Stack]]
-- [[Decisions/2026-04-25 - Initial Implementation Order]]
-- [[Decisions/2026-04-25 - Floorplan Teaching Skill Always On]]
-- [[Decisions/2026-04-25 - Santa Barbara as First Canonical Fixture]]
-- [[Decisions/2026-04-25 - DXF as Primary Truth and Catalog as Legacy Reference]]
-- [[Decisions/2026-04-25 - Slice 1 Import Foundation Architecture]]
 - [[Decisions/2026-04-30 - Loop 1 Completion Order]]
 - [[Decisions/2026-04-30 - Loop 1 Uses Semantic Core Plus Minimal Review Canvas]]
 - [[Decisions/2026-04-30 - Loop 1 Adds Minimal Curated Spaces and Defers New Walls To Loop 2]]
-- [[Implementation/2026-04-25 - Slice 1 Files Explanation Map]]
-- [[Implementation/2026-04-30 - Requirement Tension Between Walls-Only and Room Constraints]]
 - [[Implementation/2026-04-30 - Loop 1 Curated Walls and Spaces Design]]
 - [[Implementation/2026-04-30 - Loop 1 Implementation Plan]]
-- [[Implementation/2026-04-29 - Repository Audit Status]]
-
-
-
-
-
