@@ -4,14 +4,15 @@ public sealed class ExtractedWallCandidate
 {
     public ExtractedWallCandidate(
         Guid id,
-        Guid floorPlanVersionId,
+        Guid wallExtractionRunId,
         string sourceEntityRef,
         string? sourceLayer,
         Guid? geometryPathId,
         decimal? thicknessMm,
         decimal confidence,
         string? detectionNotes,
-        ExtractedWallCandidateStatus status)
+        ExtractedWallCandidateStatus status,
+        int sortOrder)
     {
         if (string.IsNullOrWhiteSpace(sourceEntityRef))
         {
@@ -23,8 +24,13 @@ public sealed class ExtractedWallCandidate
             throw new ArgumentOutOfRangeException(nameof(confidence), "Confidence must be between 0 and 1.");
         }
 
+        if (sortOrder <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sortOrder), "Sort order must be positive.");
+        }
+
         Id = id;
-        FloorPlanVersionId = floorPlanVersionId;
+        WallExtractionRunId = wallExtractionRunId;
         SourceEntityRef = sourceEntityRef;
         SourceLayer = sourceLayer;
         GeometryPathId = geometryPathId;
@@ -32,11 +38,12 @@ public sealed class ExtractedWallCandidate
         Confidence = confidence;
         DetectionNotes = detectionNotes;
         Status = status;
+        SortOrder = sortOrder;
     }
 
     public Guid Id { get; }
 
-    public Guid FloorPlanVersionId { get; }
+    public Guid WallExtractionRunId { get; }
 
     public string SourceEntityRef { get; }
 
@@ -50,5 +57,27 @@ public sealed class ExtractedWallCandidate
 
     public string? DetectionNotes { get; }
 
-    public ExtractedWallCandidateStatus Status { get; }
+    public ExtractedWallCandidateStatus Status { get; private set; }
+
+    public int SortOrder { get; }
+
+    public void Accept()
+    {
+        if (Status != ExtractedWallCandidateStatus.Pending)
+        {
+            throw new InvalidOperationException("Only pending wall candidates can be accepted.");
+        }
+
+        Status = ExtractedWallCandidateStatus.Accepted;
+    }
+
+    public void Reject()
+    {
+        if (Status != ExtractedWallCandidateStatus.Pending)
+        {
+            throw new InvalidOperationException("Only pending wall candidates can be rejected.");
+        }
+
+        Status = ExtractedWallCandidateStatus.Rejected;
+    }
 }

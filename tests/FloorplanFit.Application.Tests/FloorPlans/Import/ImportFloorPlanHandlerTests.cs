@@ -255,6 +255,11 @@ public sealed class ImportFloorPlanHandlerTests
             return Task.FromResult(Items.SingleOrDefault(item => item.Code == code));
         }
 
+        public Task<FloorPlanTemplate?> GetByIdAsync(Guid templateId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Items.SingleOrDefault(item => item.Id == templateId));
+        }
+
         public Task AddAsync(FloorPlanTemplate template, CancellationToken cancellationToken)
         {
             Items.Add(template);
@@ -361,3 +366,6 @@ public sealed class ImportFloorPlanHandlerTests
         public DateTime UtcNow { get; }
     }
 }
+
+
+
