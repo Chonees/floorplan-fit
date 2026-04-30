@@ -1,10 +1,13 @@
 ---
 type: implementation
 date: 2026-04-29
-status: active
+status: superseded
+replaced_by: [[Implementation/2026-04-30 - Status Audit and Documentation Drift]]
 ---
 
 # Repository Audit Status
+
+> **Superseded on 2026-04-30:** esta nota qued? hist?rica. La verdad actual vive en [[Implementation/2026-04-30 - Status Audit and Documentation Drift]] y en [[Current State]].
 
 ## What was verified
 
