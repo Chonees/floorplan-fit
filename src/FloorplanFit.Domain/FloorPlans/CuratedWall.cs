@@ -57,25 +57,57 @@ public sealed class CuratedWall
 
     public Guid? GeometryPathId { get; }
 
-    public WallRole WallRole { get; }
+    public WallRole WallRole { get; private set; }
 
-    public WallMobilityLevel MobilityLevel { get; }
+    public WallMobilityLevel MobilityLevel { get; private set; }
 
-    public WallProtectionLevel ProtectionLevel { get; }
+    public WallProtectionLevel ProtectionLevel { get; private set; }
 
-    public decimal? ThicknessMm { get; }
+    public decimal? ThicknessMm { get; private set; }
 
-    public string? AssemblyCode { get; }
+    public string? AssemblyCode { get; private set; }
 
-    public decimal? HeightMm { get; }
+    public decimal? HeightMm { get; private set; }
 
-    public bool IsExterior { get; }
+    public bool IsExterior { get; private set; }
 
-    public bool IsStructuralHint { get; }
+    public bool IsStructuralHint { get; private set; }
 
     public Guid? WallGroupId { get; }
 
     public int SortOrder { get; }
 
-    public string? Notes { get; }
+    public string? Notes { get; private set; }
+
+    public void UpdateMetadata(
+        WallRole wallRole,
+        WallMobilityLevel mobilityLevel,
+        WallProtectionLevel protectionLevel,
+        decimal thicknessMm,
+        string assemblyCode,
+        decimal? heightMm,
+        bool isExterior,
+        bool isStructuralHint,
+        string? notes)
+    {
+        if (thicknessMm <= 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(thicknessMm), "Wall thickness must be positive.");
+        }
+
+        if (string.IsNullOrWhiteSpace(assemblyCode))
+        {
+            throw new ArgumentException("Assembly code is required.", nameof(assemblyCode));
+        }
+
+        WallRole = wallRole;
+        MobilityLevel = mobilityLevel;
+        ProtectionLevel = protectionLevel;
+        ThicknessMm = thicknessMm;
+        AssemblyCode = assemblyCode;
+        HeightMm = heightMm;
+        IsExterior = isExterior;
+        IsStructuralHint = isStructuralHint;
+        Notes = notes;
+    }
 }

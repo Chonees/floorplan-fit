@@ -161,6 +161,11 @@ public sealed class PublishFloorPlanCurationHandlerTests
             return Task.FromResult<IReadOnlyList<CuratedWall>>(items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
         }
 
+        public Task RemoveBySourceCandidateAsync(Guid curationId, Guid sourceCandidateId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
         public Task UpdateAsync(CuratedWall wall, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();
@@ -188,3 +193,5 @@ public sealed class PublishFloorPlanCurationHandlerTests
         public DateTime UtcNow { get; }
     }
 }
+
+

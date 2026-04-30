@@ -10,5 +10,7 @@ public interface ICuratedWallRepository
 
     Task<IReadOnlyList<CuratedWall>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken);
 
+    Task RemoveBySourceCandidateAsync(Guid curationId, Guid sourceCandidateId, CancellationToken cancellationToken);
+
     Task UpdateAsync(CuratedWall wall, CancellationToken cancellationToken);
 }
