@@ -52,10 +52,18 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
   - `RejectWallCandidate`
   - `UpdateCuratedWallMetadata`
   - `PublishFloorPlanCuration`
+- Infrastructure ya persiste en SQLite:
+  - `active_published_curation_id` en `floorplan_templates`
+  - `wall_extraction_runs`
+  - `extracted_wall_candidates`
+  - `floorplan_curations`
+  - `curated_walls`
+  - `geometry_paths` + `geometry_segments` para las geometr?as de walls detectadas
 - Decisi?n vigente: en draft, **rechazar** un candidate elimina desde repositorio la `CuratedWall` derivada de ese source candidate. Soft-delete/deactivation queda diferido.
 - Verificaci?n actual:
   - `dotnet test tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj --filter FullyQualifiedName~FloorPlans.Curation` -> **8/8**
   - `dotnet test tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj` -> **13/13**
+  - `dotnet test tests/FloorplanFit.Infrastructure.Tests/FloorplanFit.Infrastructure.Tests.csproj` -> **10/10**
 
 ## Knowledge / Workflow Truth
 
@@ -70,10 +78,10 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-1. Bajar el lifecycle nuevo de Loop 1 a **SQLite**: schema, `active_published_curation_id`, `wall_extraction_runs`, `extracted_wall_candidates`, `floorplan_curations` y `curated_walls`.
-2. Agregar tests de infraestructura para persistencia real de curaciones y candidates antes de tocar UI.
-3. Implementar el extractor real de wall candidates sobre DXF en Infrastructure.
-4. Reci?n despu?s atacar Library states derivados y la review screen m?nima en Desktop.
+1. Implementar el extractor real de wall candidates sobre DXF en Infrastructure.
+2. Empezar a derivar estados reales de Library (`Imported`, `Extracted`, `Curated Draft`, `Published`) apoy?ndonos en las nuevas tablas.
+3. Reci?n despu?s atacar la review screen m?nima en Desktop.
+4. Mantener la verificaci?n secuencial con `dotnet test` mientras siga vigente la regla `never build after changes`.
 
 ## Relevant Notes
 

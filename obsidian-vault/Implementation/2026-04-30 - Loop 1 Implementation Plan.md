@@ -31,8 +31,8 @@ Este es el primer cierre serio de Loop 1 y deja la base reusable que despu?s nec
 
 1. dominio sem?ntico base y estados de Library **(completado)**
 2. puertos Application + lifecycle handlers **(completado)**
-3. schema SQLite + repositorios de curaci?n **(pr?ximo milestone)**
-4. extracci?n real de wall candidates
+3. schema SQLite + repositorios de curaci?n **(completado)**
+4. extracci?n real de wall candidates **(pr?ximo milestone)**
 5. review/metadata/publish de curated walls
 6. curated spaces m?nimos + constraints por ambiente
 7. Library states + review screen m?nima
@@ -41,13 +41,15 @@ Este es el primer cierre serio de Loop 1 y deja la base reusable que despu?s nec
 
 - Milestone 1 consolidado: `FloorPlanCuration`, `ExtractedWallCandidate`, `CuratedWall`, `CuratedSpace`, constraints base y separaci?n entre `CurrentVersionId` y `ActivePublishedCurationId`.
 - Milestone 2 consolidado: handlers de Application para `ExtractWallCandidates`, `StartOrResumeCuration`, `AcceptWallCandidate`, `RejectWallCandidate`, `UpdateCuratedWallMetadata` y `PublishFloorPlanCuration`.
+- Milestone 3 consolidado: SQLite ya persiste `active_published_curation_id`, `wall_extraction_runs`, `extracted_wall_candidates`, `floorplan_curations`, `curated_walls` y las geometr?as detectadas en `geometry_paths` / `geometry_segments`.
 - Verificaci?n actual:
   - sub-suite `FloorPlans.Curation`: **8/8**
   - proyecto `FloorplanFit.Application.Tests`: **13/13**
+  - proyecto `FloorplanFit.Infrastructure.Tests`: **10/10**
 - Tradeoff activo: `RejectWallCandidate` hoy remueve la `CuratedWall` derivada desde repositorio; si m?s adelante hace falta auditor?a fina dentro del draft, eso puede evolucionar a desactivaci?n blanda.
 
 ## Next Focus
 
-- Persistencia SQLite real para el lifecycle ya modelado en Application.
-- Extensi?n del schema para `active_published_curation_id`, `wall_extraction_runs`, `extracted_wall_candidates`, `floorplan_curations` y `curated_walls`.
-- Tests de infraestructura antes de cablear UI o extractor real.
+- Implementar el extractor real de wall candidates sobre DXF.
+- Empezar a derivar estados reales de Library usando las nuevas tablas de extracci?n y curado.
+- Despu?s reci?n subir la review screen m?nima en Desktop.
