@@ -1,4 +1,4 @@
-ï»¿---
+---
 project: floorplan-fit
 repo: https://github.com/Chonees/floorplan-fit
 status: active
@@ -42,11 +42,12 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - Decisi?n vigente al 2026-04-29: durante el Slice 1 ejecutable, `PLANS/catalog/*.json` se conserva como or?culo legacy/comparativo; no se elimina todav?a y cualquier artefacto propio generado desde DXF deber? ser secundario, no can?nico
 - Verificaci?n al 2026-04-29: hoy no existe ninguna carpeta ni archivo JSON derivado/generado por nuestra pipeline actual; los ?nicos JSON del repo, aparte de config, siguen siendo `PLANS/catalog/santa-barbara.json` y `PLANS/catalog/seminole-2000.json`
 - El plan `docs/superpowers/plans/2026-04-25-slice-1-import-foundation.md` fue sincronizado con el estado real del repo el **2026-04-29**; ahora distingue entre trabajo verificado, trabajo pendiente y evidencia hist?rica no demostrable desde git
-- La nota `obsidian-vault/Implementation/2026-04-29 - Repository Audit Status.md` qued? **superseded** por la auditor?a del **2026-04-30** porque todav?a afirmaba â€œun solo commitâ€, â€œsin SDKâ€, â€œsin Desktopâ€ y â€œsin adaptadores realesâ€, cosas que hoy contradicen git, c?digo y validaciones locales
+- La nota `obsidian-vault/Implementation/2026-04-29 - Repository Audit Status.md` qued? **superseded** por la auditor?a del **2026-04-30** porque todav?a afirmaba “un solo commit”, “sin SDK”, “sin Desktop” y “sin adaptadores reales”, cosas que hoy contradicen git, c?digo y validaciones locales
 - Decisi?n vigente al **2026-04-30**: para cerrar Loop 1 se aprob? este orden de implementaci?n: **WallCandidate/extracci?n -> review/curation persistida -> publish de versi?n activa -> UI de review/curado**
 - Decisi?n vigente al **2026-04-30**: el primer cierre serio de Loop 1 usar? **core sem?ntico + canvas m?nimo real**, evitando tanto el editor CAD rico prematuro como el review ciego sin contexto espacial
 - Hallazgo de producto al **2026-04-30**: el usuario aclar? que el MVP debe poder respetar reglas por ambiente (por ejemplo m?nimos de ba?o o qu? espacios no tocar) y captar medidas exactas de habitaciones; eso genera tensi?n con el scope actual `walls-only` y probablemente exige una capa m?nima de **espacios/ambientes + constraints**
 - Decisi?n vigente al **2026-04-30**: el dise?o de cierre de Loop 1 queda ajustado a **walls exactas + curated spaces m?nimos + constraints b?sicas por ambiente**, mientras que la **creaci?n de paredes nuevas** nace primero en Loop 2 como propuesta de adaptaci?n
+- Implementaci?n en curso al **2026-04-30** en branch eat/loop1-curation-impl: ya aterriz? la **Task 1** del plan de Loop 1 con FloorPlanCuration, ActivePublishedCurationId en FloorPlanTemplate, DTO de Library extendido y entidades/enum estructurales para walls, spaces y constraints; FloorplanFit.Application.Tests qued? verde (**6/6**)
 
 ## Knowledge System Truth
 
@@ -67,14 +68,14 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - Plan ejecutable detallado creado en `docs/superpowers/plans/2026-04-29-slice-1-executable-implementation.md`
 - Documento pedag?gico creado en `docs/explicacion del proyecto/2026-04-25 - explicacion de archivos tocados en slice 1.md` para explicar qu? hace cada archivo tocado
 - Documento pedag?gico exhaustivo agregado en `docs/explicacion del proyecto/2026-04-29 - explicacion exhaustiva de archivos del slice 1 ejecutable.md` para cubrir archivo-por-archivo los componentes nuevos de `FloorplanFit.Desktop`, `FloorplanFit.Infrastructure` y `FloorplanFit.Infrastructure.Tests`
-- Cambio de entorno aplicado el **2026-04-29**: se instal? `.NET SDK 10.0.100` y `dotnet --info` ya queda alineado con `global.json`; el bloqueo de â€œno SDKâ€ ya no existe
+- Cambio de entorno aplicado el **2026-04-29**: se instal? `.NET SDK 10.0.100` y `dotnet --info` ya queda alineado con `global.json`; el bloqueo de “no SDK” ya no existe
 - Cambio de entorno aplicado el **2026-04-29**: Smart App Control fue desactivado temporalmente en Windows para destrabar assemblies de test y tareas de Avalonia que estaban siendo bloqueados por Application Control (`0x800711C7`)
 - Validaci?n real avanzada el **2026-04-29**: `FloorplanFit.Application.Tests` pasa (**4/4**), `FloorplanFit.Infrastructure.Tests` pasa (**6/6**), `FloorplanFit.Desktop` compila sin warnings en build de verificacion y el smoke test manual base de Desktop/import tambi?n fue validado en esta m?quina
 - Estandarizacion de desarrollo aplicada el **2026-04-29**: el launcher recomendado para iterar Desktop ya no es el `.exe` de `bin/Debug/net10.0` sino `scripts/dev-desktop.bat`, que corre `dotnet watch run` sobre `src/FloorplanFit.Desktop/FloorplanFit.Desktop.csproj` y evita confundir binarios viejos con cambios nuevos
-- CorrecciÃ³n de workflow aplicada el **2026-04-30**: para esta etapa de implementaciÃ³n NO podemos usar `scripts/dev-desktop.bat` como verificaciÃ³n porque ejecuta `dotnet watch run` (build + run) y hoy rige la regla del repo **never build after changes**; por lo tanto la verificaciÃ³n activa durante coding queda limitada a `dotnet test`
+- Corrección de workflow aplicada el **2026-04-30**: para esta etapa de implementación NO podemos usar `scripts/dev-desktop.bat` como verificación porque ejecuta `dotnet watch run` (build + run) y hoy rige la regla del repo **never build after changes**; por lo tanto la verificación activa durante coding queda limitada a `dotnet test`
 - Conveniencia local agregada el **2026-04-29**: existe un acceso directo `Floorplan Fit Dev Watch.lnk` en el escritorio que apunta al launcher `scripts/dev-desktop.bat`
 - Sincronizacion documental aplicada el **2026-04-29**: `docs/explicacion del proyecto/2026-04-29 - explicacion exhaustiva de archivos del slice 1 ejecutable.md` fue reescrito para reflejar el estado final del dia, incluyendo query de Library, rehidratacion desde SQLite, bugfix de reimport y launcher dev `.bat`
-- Pasada final de sincronizacion documental aplicada el **2026-04-29**: se corrigieron conteos de tests, referencias viejas a â€œno SDKâ€, estado abierto de `AVLN3001` y se marcaron como historicos los planes que ya no representan el codigo actual
+- Pasada final de sincronizacion documental aplicada el **2026-04-29**: se corrigieron conteos de tests, referencias viejas a “no SDK”, estado abierto de `AVLN3001` y se marcaron como historicos los planes que ya no representan el codigo actual
 - Riesgo operativo documentado al **2026-04-29**: el acceso directo de escritorio a `FloorplanFit.Desktop.exe` sigue sirviendo para smoke tests manuales puntuales, pero NO es la ruta recomendada para desarrollo porque puede apuntar a un output stale
 - Decisi?n vigente al 2026-04-29: el Slice 1 ejecutable copiar? los DXF importados a un workspace administrado por la app (`library/raw-dxf/`) y persistir? esa ruta gestionada como `storage_path`
 - Correcci?n de dise?o al 2026-04-29: despu?s de copiar el DXF al workspace gestionado, la app leer? metadata/fingerprint y calcular? hash sobre esa copia gestionada, no sobre la ruta externa original
@@ -87,10 +88,11 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-1. Reabrir la app desde `scripts/dev-desktop.bat` con un workspace limpio o controlado y confirmar visualmente que la Library reaparece desde SQLite al iniciar en una nueva sesi?n de UI
-2. Revalidar manualmente el caso â€œreimport del mismo originalâ€ seleccionando siempre `PLANS/originalFloorPlans/SANTA-BARBARA.dxf`, no las copias gestionadas dentro de `workspace/library/raw-dxf/`
-3. Reusar `PLANS/` como fuente inicial de fixtures DXF y cat?logos para seguir TDD real sobre importaci?n, normalizaci?n y extracci?n
-4. Construir el primer vertical slice operativo sobre `SANTA-BARBARA`: importaci?n real -> unidades -> persistencia real -> library entry -> base para extracci?n
+1. Completar el resto del lifecycle de Application para Loop 1: StartOrResumeCuration, AcceptWallCandidate, RejectWallCandidate, UpdateCuratedWallMetadata
+2. Extender el schema SQLite y persistir wall_extraction_runs, extracted_wall_candidates y loorplan_curations
+3. Implementar IWallExtractor real y los repositorios SQLite para que el slice pase de Application fake a Infrastructure real
+4. Mantener la verificación secuencial con dotnet test y seguir difiriendo runtime Desktop mientras rija 
+ever build after changes
 
 ## Recommended Implementation Start
 
@@ -127,6 +129,8 @@ Orden recomendado:
 - [[Implementation/2026-04-30 - Loop 1 Curated Walls and Spaces Design]]
 - [[Implementation/2026-04-30 - Loop 1 Implementation Plan]]
 - [[Implementation/2026-04-29 - Repository Audit Status]]
+
+
 
 
 
