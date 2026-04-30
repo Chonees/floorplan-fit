@@ -28,10 +28,17 @@ public sealed class FloorPlanTemplate
 
     public Guid? CurrentVersionId { get; private set; }
 
+    public Guid? ActivePublishedCurationId { get; private set; }
+
     public bool IsActive { get; }
 
     public void SetCurrentVersion(Guid versionId)
     {
         CurrentVersionId = versionId;
+    }
+
+    public void SetActivePublishedCuration(Guid curationId)
+    {
+        ActivePublishedCurationId = curationId;
     }
 }

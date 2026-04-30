@@ -7,4 +7,5 @@ public sealed record FloorPlanLibraryItemDto(
     string Status,
     int ActiveVersionNumber,
     DateTime ImportedAtUtc,
-    string SourceUnit);
+    string SourceUnit,
+    Guid? ActivePublishedCurationId = null);
