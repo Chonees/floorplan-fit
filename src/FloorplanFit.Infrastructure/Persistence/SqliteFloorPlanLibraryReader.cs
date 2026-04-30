@@ -27,7 +27,8 @@ public sealed class SqliteFloorPlanLibraryReader : IFloorPlanLibraryReader
                 t.name,
                 v.version_number,
                 v.created_at_utc,
-                mc.source_unit
+                mc.source_unit,
+                t.active_published_curation_id
             FROM floorplan_templates t
             JOIN floorplan_versions v ON v.id = t.current_version_id
             JOIN imported_documents d ON d.id = v.imported_document_id
@@ -42,15 +43,18 @@ public sealed class SqliteFloorPlanLibraryReader : IFloorPlanLibraryReader
         while (reader.Read())
         {
             var sourceUnit = (LengthUnit)reader.GetInt32(5);
+            Guid? activePublishedCurationId = reader.IsDBNull(6) ? null : Guid.Parse(reader.GetString(6));
+            var status = activePublishedCurationId is null ? "Imported" : "Published";
 
             items.Add(new FloorPlanLibraryItemDto(
                 Guid.Parse(reader.GetString(0)),
                 reader.GetString(1),
                 reader.GetString(2),
-                "Imported",
+                status,
                 reader.GetInt32(3),
                 DateTime.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-                sourceUnit.ToString().ToLowerInvariant()));
+                sourceUnit.ToString().ToLowerInvariant(),
+                activePublishedCurationId));
         }
 
         return Task.FromResult<IReadOnlyList<FloorPlanLibraryItemDto>>(items);
