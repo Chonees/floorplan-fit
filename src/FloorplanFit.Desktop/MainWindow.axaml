@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:viewModels="using:FloorplanFit.Desktop.ViewModels"
+        xmlns:contracts="using:FloorplanFit.Contracts.FloorPlans"
+        x:Class="FloorplanFit.Desktop.MainWindow"
+        x:DataType="viewModels:LibraryViewModel"
+        Width="900"
+        Height="600"
+        Title="Floorplan Fit - Library">
+  <Grid RowDefinitions="Auto,Auto,*" Margin="24">
+    <TextBlock FontSize="24" FontWeight="Bold" Text="Floorplan Library" />
+
+    <StackPanel Grid.Row="1"
+                Orientation="Horizontal"
+                Spacing="12"
+                Margin="0,16,0,16">
+      <Button Name="ImportButton"
+              Content="Import DXF"
+              Click="ImportButton_OnClick" />
+      <TextBlock VerticalAlignment="Center"
+                 Text="{Binding StatusMessage}" />
+    </StackPanel>
+
+    <ListBox Grid.Row="2"
+             ItemsSource="{Binding Items}">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="contracts:FloorPlanLibraryItemDto">
+          <Border Padding="12"
+                  Margin="0,0,0,8"
+                  BorderBrush="LightGray"
+                  BorderThickness="1"
+                  CornerRadius="6">
+            <Grid ColumnDefinitions="2*,2*,*,*,*"
+                  RowDefinitions="Auto">
+              <TextBlock Grid.Column="0" Text="{Binding Code}" />
+              <TextBlock Grid.Column="1" Text="{Binding Name}" />
+              <TextBlock Grid.Column="2" Text="{Binding Status}" />
+              <TextBlock Grid.Column="3" Text="{Binding ActiveVersionNumber}" />
+              <TextBlock Grid.Column="4" Text="{Binding SourceUnit}" />
+            </Grid>
+          </Border>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </Grid>
+</Window>

@@ -1,6 +1,6 @@
 ---
 name: floorplan-fit-teaching-mode
-description: Use when implementing, refactoring, or fixing code in the Floorplan Fit repository for a human who wants exhaustive educational explanations while building, including line-by-line, function-by-function, paso a paso, or "explain absolutely everything" requests.
+description: Use whenever working in the Floorplan Fit repository. This is the default repository teaching lens for implementation, refactor, and bugfix work, and it escalates to exhaustive step-by-step explanation when the human asks for line-by-line, function-by-function, paso a paso, or "explain absolutely everything" guidance.
 license: Apache-2.0
 metadata:
   author: gentleman-programming
@@ -9,9 +9,25 @@ metadata:
 
 ## When to Use
 
+- You are implementing, refactoring, or fixing code in the Floorplan Fit repository
+- The repository needs its default explanations anchored to product loops and architecture layers
 - The user wants to learn while building, not just receive code
 - The user asks for line-by-line, function-by-function, paso a paso, or exhaustive explanations
-- You are implementing, refactoring, or fixing code in this repository and pedagogy is part of the deliverable
+
+## Activation and Depth
+
+This skill is the repository-default lens for code work in Floorplan Fit.
+
+Use two depths:
+
+1. **Baseline depth (default)**
+   - Always active for implementation/refactor/bugfix work in this repo
+   - Still anchor every change to the correct product loop and architecture layer
+   - Explain touched files and changed functions with enough rationale to teach intent, not just mechanics
+
+2. **Exhaustive depth (on explicit learning request)**
+   - Trigger when the user asks to learn while building, asks for paso a paso guidance, or wants line-by-line / function-by-function explanation
+   - Follow the full explanation contract with exhaustive changed-line walkthroughs
 
 ## Critical Patterns
 
@@ -68,6 +84,10 @@ metadata:
 ## Explanation Contract
 
 When this skill is active, implementation responses must follow the structure in [assets/teaching-response-template.md](assets/teaching-response-template.md).
+
+In baseline depth, sections may be shorter, but the structure still applies.
+
+In exhaustive depth, every minimum required section must be fully expanded.
 
 Minimum required sections:
 

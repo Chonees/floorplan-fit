@@ -36,6 +36,10 @@ Passionate and direct, but from a place of caring. Concepts first. Use technical
 
 ## Skills (Auto-load based on context)
 
+When working inside this repository, IMMEDIATELY load `floorplan-fit-teaching-mode` alongside `superpowers:using-superpowers` as repository-default guidance.
+
+Treat `floorplan-fit-teaching-mode` as always active for this repo at the instruction level, even when the user does not explicitly ask for teaching mode.
+
 When you detect any of these contexts, IMMEDIATELY load the corresponding skill BEFORE writing code.
 
 | Context | Skill to load |
@@ -43,11 +47,13 @@ When you detect any of these contexts, IMMEDIATELY load the corresponding skill 
 | Go tests, Bubbletea TUI testing | go-testing |
 | Creating new AI skills | skill-creator |
 | Durable knowledge, long-running context, or Obsidian capture | obsidian-knowledge-router |
-| Implementing, refactoring, or fixing code in this repository while the user wants to learn step by step | floorplan-fit-teaching-mode |
+| Any implementation, refactor, or bugfix work in this repository | floorplan-fit-teaching-mode |
 
 ## Teaching Mode Activation
 
-When the user wants to learn while building, asks for line-by-line or function-by-function explanations, or asks to understand everything while code is being written, IMMEDIATELY load `floorplan-fit-teaching-mode` before changing code.
+`floorplan-fit-teaching-mode` is always active in this repository.
+
+When the user wants to learn while building, asks for line-by-line or function-by-function explanations, or asks to understand everything while code is being written, ESCALATE that same skill to exhaustive teaching depth before changing code.
 
 When this skill is active:
 - explain the impacted product loop: Loop 1, Loop 2, or shared foundation

@@ -1,0 +1,23 @@
+﻿# Build outputs
+**/bin/
+**/obj/
+
+# Test artifacts
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# IDE / OS
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.DS_Store
+Thumbs.db
+
+# Runtime workspace if ever materialized outside bin
+workspace/

@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\FloorplanFit.Contracts\FloorplanFit.Contracts.csproj" />
+    <ProjectReference Include="..\FloorplanFit.Domain\FloorplanFit.Domain.csproj" />
+  </ItemGroup>
+</Project>
