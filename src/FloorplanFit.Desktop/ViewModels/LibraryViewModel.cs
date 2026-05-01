@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FloorplanFit.Application.Abstractions;
+using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Import;
 using FloorplanFit.Application.FloorPlans.Library;
 using FloorplanFit.Contracts.FloorPlans;
@@ -17,6 +19,9 @@ public sealed partial class LibraryViewModel : ObservableObject
     }
 
     public ObservableCollection<FloorPlanLibraryItemDto> Items { get; } = [];
+
+    [ObservableProperty]
+    private FloorPlanLibraryItemDto? selectedItem;
 
     [ObservableProperty]
     private string statusMessage = "Ready";
@@ -38,12 +43,47 @@ public sealed partial class LibraryViewModel : ObservableObject
         var handler = scope.ServiceProvider.GetRequiredService<ImportFloorPlanHandler>();
         var response = await handler.HandleAsync(new ImportFloorPlanRequest(filePath), cancellationToken);
 
+        await ExtractByTemplateAsync(response.Item.TemplateId, cancellationToken);
         await RefreshItemsAsync(cancellationToken);
-        StatusMessage = $"Imported {response.Item.Name} v{response.Item.ActiveVersionNumber}";
+        SelectedItem = Items.FirstOrDefault(item => item.TemplateId == response.Item.TemplateId);
+        StatusMessage = $"Imported and extracted {response.Item.Name} v{response.Item.ActiveVersionNumber}";
+    }
+
+    public async Task ExtractSelectedAsync(CancellationToken cancellationToken)
+    {
+        if (SelectedItem is null)
+        {
+            return;
+        }
+
+        StatusMessage = $"Extracting walls for {SelectedItem.Name}...";
+        await ExtractByTemplateAsync(SelectedItem.TemplateId, cancellationToken);
+        await RefreshItemsAsync(cancellationToken);
+        SelectedItem = Items.FirstOrDefault(item => item.TemplateId == SelectedItem.TemplateId);
+        StatusMessage = $"Extracted walls for {SelectedItem?.Name ?? "floor plan"}";
+    }
+
+    public async Task<FloorPlanReviewViewModel?> OpenSelectedReviewAsync(CancellationToken cancellationToken)
+    {
+        if (SelectedItem is null)
+        {
+            return null;
+        }
+
+        var templateId = SelectedItem.TemplateId;
+        if (string.Equals(SelectedItem.Status, "Imported", StringComparison.OrdinalIgnoreCase))
+        {
+            await ExtractSelectedAsync(cancellationToken);
+        }
+
+        var reviewViewModel = new FloorPlanReviewViewModel(scopeFactory, templateId);
+        await reviewViewModel.LoadAsync(cancellationToken);
+        return reviewViewModel;
     }
 
     private async Task RefreshItemsAsync(CancellationToken cancellationToken)
     {
+        var selectedTemplateId = SelectedItem?.TemplateId;
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<GetFloorPlanLibraryHandler>();
         var items = await handler.HandleAsync(cancellationToken);
@@ -54,5 +94,20 @@ public sealed partial class LibraryViewModel : ObservableObject
         {
             Items.Add(item);
         }
+
+        SelectedItem = selectedTemplateId is null
+            ? Items.FirstOrDefault()
+            : Items.FirstOrDefault(item => item.TemplateId == selectedTemplateId);
+    }
+
+    private async Task ExtractByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var sourceReader = scope.ServiceProvider.GetRequiredService<IFloorPlanExtractionSourceReader>();
+        var source = await sourceReader.GetCurrentSourceAsync(templateId, cancellationToken)
+            ?? throw new InvalidOperationException("Current floor plan version was not found for extraction.");
+
+        var handler = scope.ServiceProvider.GetRequiredService<ExtractWallCandidatesHandler>();
+        await handler.HandleAsync(source.FloorPlanVersionId, source.ManagedFilePath, cancellationToken);
     }
 }

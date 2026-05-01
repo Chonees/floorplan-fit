@@ -17,12 +17,19 @@
       <Button Name="ImportButton"
               Content="Import DXF"
               Click="ImportButton_OnClick" />
+      <Button Name="ExtractButton"
+              Content="Extract Walls"
+              Click="ExtractButton_OnClick" />
+      <Button Name="ReviewButton"
+              Content="Open Review"
+              Click="ReviewButton_OnClick" />
       <TextBlock VerticalAlignment="Center"
                  Text="{Binding StatusMessage}" />
     </StackPanel>
 
     <ListBox Grid.Row="2"
-             ItemsSource="{Binding Items}">
+             ItemsSource="{Binding Items}"
+             SelectedItem="{Binding SelectedItem}">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="contracts:FloorPlanLibraryItemDto">
           <Border Padding="12"

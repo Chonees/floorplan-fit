@@ -51,4 +51,36 @@ public partial class MainWindow : Window
 
         await viewModel.LoadAsync(CancellationToken.None);
     }
+
+    private async void ExtractButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.ExtractSelectedAsync(CancellationToken.None);
+    }
+
+    private async void ReviewButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        var reviewViewModel = await viewModel.OpenSelectedReviewAsync(CancellationToken.None);
+        if (reviewViewModel is null)
+        {
+            return;
+        }
+
+        var reviewWindow = new ReviewFloorPlanWindow
+        {
+            DataContext = reviewViewModel
+        };
+
+        await reviewWindow.ShowDialog(this);
+        await viewModel.LoadAsync(CancellationToken.None);
+    }
 }

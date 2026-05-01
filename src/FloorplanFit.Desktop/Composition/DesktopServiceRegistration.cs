@@ -41,6 +41,7 @@ public static class DesktopServiceRegistration
         services.AddScoped<IFloorPlanCurationRepository, SqliteFloorPlanCurationRepository>();
         services.AddScoped<ICuratedWallRepository, SqliteCuratedWallRepository>();
         services.AddScoped<IFloorPlanLibraryReader, SqliteFloorPlanLibraryReader>();
+        services.AddScoped<IFloorPlanExtractionSourceReader, SqliteFloorPlanExtractionSourceReader>();
         services.AddScoped<IFloorPlanReviewSessionReader, SqliteFloorPlanReviewSessionReader>();
         services.AddScoped<IUnitOfWork, SqliteUnitOfWork>();
         services.AddScoped<ImportFloorPlanHandler>();
