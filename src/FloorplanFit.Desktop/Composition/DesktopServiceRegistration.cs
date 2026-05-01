@@ -1,6 +1,9 @@
 using FloorplanFit.Application.Abstractions;
+using FloorplanFit.Application.FloorPlans.Curation;
+using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Import;
 using FloorplanFit.Application.FloorPlans.Library;
+using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Desktop.ViewModels;
 using FloorplanFit.Infrastructure.Dxf;
 using FloorplanFit.Infrastructure.Persistence;
@@ -18,6 +21,7 @@ public static class DesktopServiceRegistration
         services.AddSingleton(new AppWorkspace(workspaceRoot));
         services.AddSingleton<IManagedFileStorage, ManagedFileStorage>();
         services.AddSingleton<IDxfGateway, IxMiliaDxfGateway>();
+        services.AddSingleton<IWallExtractor, IxMiliaWallExtractor>();
         services.AddSingleton<IFileHashService, Sha256FileHashService>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<ImportFloorPlanResultFactory>();
@@ -32,10 +36,23 @@ public static class DesktopServiceRegistration
         services.AddScoped<IImportedDocumentRepository, SqliteImportedDocumentRepository>();
         services.AddScoped<IFloorPlanTemplateRepository, SqliteFloorPlanTemplateRepository>();
         services.AddScoped<IFloorPlanVersionRepository, SqliteFloorPlanVersionRepository>();
+        services.AddScoped<IWallExtractionRunRepository, SqliteWallExtractionRunRepository>();
+        services.AddScoped<IExtractedWallCandidateRepository, SqliteExtractedWallCandidateRepository>();
+        services.AddScoped<IFloorPlanCurationRepository, SqliteFloorPlanCurationRepository>();
+        services.AddScoped<ICuratedWallRepository, SqliteCuratedWallRepository>();
         services.AddScoped<IFloorPlanLibraryReader, SqliteFloorPlanLibraryReader>();
+        services.AddScoped<IFloorPlanReviewSessionReader, SqliteFloorPlanReviewSessionReader>();
         services.AddScoped<IUnitOfWork, SqliteUnitOfWork>();
         services.AddScoped<ImportFloorPlanHandler>();
+        services.AddScoped<ExtractWallCandidatesHandler>();
         services.AddScoped<GetFloorPlanLibraryHandler>();
+        services.AddScoped<GetFloorPlanReviewSessionHandler>();
+        services.AddScoped<OpenFloorPlanReviewSessionHandler>();
+        services.AddScoped<StartOrResumeCurationHandler>();
+        services.AddScoped<AcceptWallCandidateHandler>();
+        services.AddScoped<RejectWallCandidateHandler>();
+        services.AddScoped<UpdateCuratedWallMetadataHandler>();
+        services.AddScoped<PublishFloorPlanCurationHandler>();
 
         services.AddSingleton<LibraryViewModel>();
 
