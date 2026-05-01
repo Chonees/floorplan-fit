@@ -36,7 +36,7 @@ Este es el primer cierre serio de Loop 1 y deja la base reusable que después nec
 4. extracción real de wall candidates **(completado)**
 5. estados reales de Library **(completado)**
 6. read-model de review session + wiring base de Desktop **(completado)**
-7. review screen mínima en Desktop
+7. review screen mínima en Desktop **(completado)**
 8. curated spaces mínimos + constraints por ambiente
 
 ## Progress Notes
@@ -52,18 +52,21 @@ Este es el primer cierre serio de Loop 1 y deja la base reusable que después nec
   - `SqliteFloorPlanReviewSessionReader`
   - `OpenFloorPlanReviewSessionHandler`
   - registro DI en Desktop para el flujo de review
+- Milestone 7 consolidado: Desktop ya tiene:
+  - botón `Extract Walls`
+  - botón `Open Review`
+  - auto-extracción después del import
+  - `ReviewFloorPlanWindow` con preview geométrico mínimo
+  - inspector para aceptar/rechazar candidates, editar metadata y publicar
 - Verificación actual:
   - sub-suite `FloorPlans.Curation`: **8/8**
   - proyecto `FloorplanFit.Application.Tests`: **16/16**
-  - proyecto `FloorplanFit.Infrastructure.Tests`: **15/15**
-  - proyecto `FloorplanFit.Desktop.Tests`: **1/1**
-- Tradeoff activo: `RejectWallCandidate` hoy remueve la `CuratedWall` derivada desde repositorio; si más adelante hace falta auditoría fina dentro del draft, eso puede evolucionar a desactivación blanda.
+  - proyecto `FloorplanFit.Infrastructure.Tests`: **16/16**
+  - proyecto `FloorplanFit.Desktop.Tests`: **4/4**
+- Tradeoff activo: la preview actual es un canvas mínimo de líneas; todavía no tiene zoom/pan ni edición geométrica compleja.
 
 ## Next Focus
 
-- Subir la review screen mínima en Desktop apoyada en `OpenFloorPlanReviewSessionHandler`.
-- Conectar acciones de review/curation desde la UI:
-  - accept / reject
-  - metadata base
-  - publish
-- Recién después bajar curated spaces mínimos + constraints por ambiente.
+- Validar el runtime manual de la review UI con imports reales cuando el usuario quiera esa pasada.
+- Bajar `CuratedSpaces` mínimos + constraints por ambiente.
+- Dejar para después cualquier operación más pesada de UX geométrica (merge/split, zoom, filtros, navegación avanzada).

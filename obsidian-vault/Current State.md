@@ -29,7 +29,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 ## Repository Truth
 
 - El repo ya no está en estado "solo docs": existe el slice ejecutable de import + Library sobre `SANTA-BARBARA.dxf`.
-- Loop 1 todavía no está cerrado, pero ya tiene implementado su núcleo semántico, lifecycle principal y read-model base de review.
+- Loop 1 todavía no está cerrado, pero ya tiene implementado su núcleo semántico, lifecycle principal, read-model base de review y review UI mínima.
 - Loop 2 todavía no tiene implementación real de envelope, fit engine ni proposals.
 - Los DXF de `PLANS/originalFloorPlans/` son la fuente primaria de verdad para Loop 1.
 - `PLANS/catalog/` queda como referencia legacy/comparativa, no como fuente canónica del dominio.
@@ -61,22 +61,22 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
   - `floorplan_curations`
   - `curated_walls`
   - `geometry_paths` + `geometry_segments` para las geometrías de walls detectadas
-- Infrastructure ya tiene `IxMiliaWallExtractor` real filtrando capas wall-like y `SqliteFloorPlanLibraryReader` ya deriva `Imported`, `Extracted`, `Curated Draft` y `Published`.
-- Infrastructure ya tiene `SqliteFloorPlanReviewSessionReader` para cargar:
-  - session summary del template
-  - wall candidates
-  - curated walls
-  - geometry paths + segments
-- Desktop composition ya registra el slice de review session:
-  - `IFloorPlanReviewSessionReader`
-  - `OpenFloorPlanReviewSessionHandler`
-  - handlers de curado/review necesarios para la UI futura
+- Infrastructure ya tiene:
+  - `IxMiliaWallExtractor` real filtrando capas wall-like
+  - `SqliteFloorPlanLibraryReader` derivando `Imported`, `Extracted`, `Curated Draft` y `Published`
+  - `SqliteFloorPlanReviewSessionReader` para cargar template summary, candidates, curated walls y geometría
+  - `SqliteFloorPlanExtractionSourceReader` para resolver la versión actual y el DXF gestionado que usa la extracción
+- Desktop ya tiene review UI mínima:
+  - `LibraryViewModel` con `SelectedItem`, `Extract Walls` y `Open Review`
+  - import que auto-extrae walls después de guardar el DXF
+  - `ReviewFloorPlanWindow` con lista de candidates, preview geométrico y panel inspector
+  - `FloorPlanReviewViewModel` con acciones de `accept`, `reject`, `save metadata` y `publish`
 - Decisión vigente: en draft, **rechazar** un candidate elimina desde repositorio la `CuratedWall` derivada de ese source candidate. Soft-delete/deactivation queda diferido.
 - Verificación actual:
   - `dotnet test tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj --filter FullyQualifiedName~FloorPlans.Curation` -> **8/8**
   - `dotnet test tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj` -> **16/16**
-  - `dotnet test tests/FloorplanFit.Infrastructure.Tests/FloorplanFit.Infrastructure.Tests.csproj` -> **15/15**
-  - `dotnet test tests/FloorplanFit.Desktop.Tests/FloorplanFit.Desktop.Tests.csproj` -> **1/1**
+  - `dotnet test tests/FloorplanFit.Infrastructure.Tests/FloorplanFit.Infrastructure.Tests.csproj` -> **16/16**
+  - `dotnet test tests/FloorplanFit.Desktop.Tests/FloorplanFit.Desktop.Tests.csproj` -> **4/4**
 
 ## Knowledge / Workflow Truth
 
@@ -92,12 +92,9 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-1. Subir la review screen mínima en Desktop usando el read-model ya implementado.
-2. Conectar acciones de review reales en UI:
-   - aceptar / rechazar candidate
-   - editar metadata base
-   - publicar curado
-3. Después bajar curated spaces mínimos + constraints por ambiente.
+1. Hacer una pasada manual de runtime de la review UI cuando el usuario quiera validar interacción visual real.
+2. Bajar `CuratedSpaces` mínimos + constraints por ambiente para completar la parte espacial que todavía falta en Loop 1.
+3. Mejorar la review UI con operaciones más ricas si hiciera falta (merge/split, filtros, zoom), pero eso ya queda después del cierre canónico.
 4. Mantener la verificación secuencial con `dotnet test` mientras siga vigente la regla `never build after changes`.
 
 ## Relevant Notes
