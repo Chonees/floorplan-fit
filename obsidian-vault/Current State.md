@@ -2,7 +2,7 @@
 project: floorplan-fit
 repo: https://github.com/Chonees/floorplan-fit
 status: active
-updated: 2026-04-30
+updated: 2026-05-02
 ---
 
 # Current State
@@ -75,7 +75,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - Verificación actual:
   - `dotnet test tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj --filter FullyQualifiedName~FloorPlans.Curation` -> **8/8**
   - `dotnet test tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj` -> **16/16**
-  - `dotnet test tests/FloorplanFit.Infrastructure.Tests/FloorplanFit.Infrastructure.Tests.csproj` -> **16/16**
+  - `dotnet test tests/FloorplanFit.Infrastructure.Tests/FloorplanFit.Infrastructure.Tests.csproj` -> **17/17**
   - `dotnet test tests/FloorplanFit.Desktop.Tests/FloorplanFit.Desktop.Tests.csproj` -> **4/4**
 
 ## Knowledge / Workflow Truth
@@ -86,9 +86,11 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - Preferencia activa del usuario: trabajar inline en la branch actual; NO usar worktrees para este repo.
 - Regla vigente del repo: **never build after changes**.
 - Durante implementación, la verificación activa queda limitada a `dotnet test`.
+- Revalidacion secuencial hecha el **2026-05-02**: Application **16/16**, Infrastructure **17/17**, Desktop **4/4**.
 - `scripts/dev-desktop.bat` usa `dotnet watch run`, así que hoy NO cuenta como path válido de verificación durante coding.
 - Gotcha operativo: no correr `dotnet test` en paralelo para distintos proyectos dentro del mismo repo; aparecen locks `CS2012` en `obj/bin`.
 - Gotcha operativo: si quedó abierta una instancia de `FloorplanFit.Desktop`, puede bloquear `bin/Debug` y romper tests que compilan el proyecto Desktop.
+- Drift confirmado: `docs/explicacion del proyecto/2026-04-29 - checklist manual del slice 1 ejecutable.md` ya quedo historico en el punto donde dice que la Library no hidrata desde SQLite al iniciar; el codigo actual si lo hace via `MainWindow_OnOpened -> LibraryViewModel.LoadAsync -> GetFloorPlanLibraryHandler -> SqliteFloorPlanLibraryReader`.
 
 ## Immediate Next Steps
 
@@ -104,3 +106,5 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Decisions/2026-04-30 - Loop 1 Adds Minimal Curated Spaces and Defers New Walls To Loop 2]]
 - [[Implementation/2026-04-30 - Loop 1 Curated Walls and Spaces Design]]
 - [[Implementation/2026-04-30 - Loop 1 Implementation Plan]]
+- [[Bugs/2026-05-02 - Open Review crashes right after extraction because committed SQLite transaction is reused]]
+- [[Implementation/2026-05-02 - Fixed first-open review transaction crash]]

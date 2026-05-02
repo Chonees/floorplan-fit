@@ -46,7 +46,6 @@ public sealed class SqliteFloorPlanExtractionSourceReader : IFloorPlanExtraction
     private SqliteCommand CreateCommand(string sql)
     {
         var command = session.Connection.CreateCommand();
-        command.Transaction = session.Transaction;
         command.CommandText = sql;
         return command;
     }
