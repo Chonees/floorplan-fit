@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using FloorplanFit.Desktop.Controls;
 using FloorplanFit.Desktop.ViewModels;
 
 namespace FloorplanFit.Desktop;
@@ -48,5 +49,15 @@ public partial class ReviewFloorPlanWindow : Window
         }
 
         await viewModel.PublishAsync(CancellationToken.None);
+    }
+
+    private void PreviewControl_OnGeometryPathClicked(object? sender, FloorPlanPreviewControl.GeometryPathClickedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        viewModel.SelectPreviewPath(e.GeometryPathId);
     }
 }

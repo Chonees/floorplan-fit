@@ -62,6 +62,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private Guid? highlightGeometryPathId;
 
     [ObservableProperty]
+    private string previewSelectionLabel = "Previewing floor plan";
+
+    [ObservableProperty]
     private string pendingStableWallId = string.Empty;
 
     [ObservableProperty]
@@ -201,16 +204,41 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         StatusMessage = $"Published curation for {Name}";
     }
 
+    public bool SelectPreviewPath(Guid geometryPathId)
+    {
+        var curatedWall = CuratedWalls.FirstOrDefault(item => item.GeometryPathId == geometryPathId);
+        if (curatedWall is not null)
+        {
+            SelectedCandidate = ResolveSourceCandidate(curatedWall);
+            SelectedCuratedWall = curatedWall;
+            return true;
+        }
+
+        var candidate = WallCandidates.FirstOrDefault(item => item.GeometryPathId == geometryPathId);
+        if (candidate is null)
+        {
+            return false;
+        }
+
+        SelectedCuratedWall = null;
+        SelectedCandidate = candidate;
+        return true;
+    }
+
     partial void OnSelectedCandidateChanged(WallCandidateDto? value)
     {
         if (value is null)
         {
             HighlightGeometryPathId = SelectedCuratedWall?.GeometryPathId;
-            PendingStableWallId = string.Empty;
+            PreviewSelectionLabel = SelectedCuratedWall is null
+                ? "Previewing floor plan"
+                : BuildCuratedWallPreviewLabel(SelectedCuratedWall);
+            PendingStableWallId = SelectedCuratedWall?.StableWallId ?? string.Empty;
             return;
         }
 
         HighlightGeometryPathId = value.GeometryPathId;
+        PreviewSelectionLabel = $"Previewing candidate: {value.SourceEntityRef}";
         PendingStableWallId = CuratedWalls.FirstOrDefault(item => item.SourceCandidateId == value.CandidateId)?.StableWallId
             ?? GenerateStableWallId();
     }
@@ -219,10 +247,15 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         if (value is null)
         {
+            HighlightGeometryPathId = SelectedCandidate?.GeometryPathId;
+            PreviewSelectionLabel = SelectedCandidate is null
+                ? "Previewing floor plan"
+                : $"Previewing candidate: {SelectedCandidate.SourceEntityRef}";
             return;
         }
 
         HighlightGeometryPathId = value.GeometryPathId ?? HighlightGeometryPathId;
+        PreviewSelectionLabel = BuildCuratedWallPreviewLabel(value);
         EditableWallRole = value.WallRole;
         EditableMobilityLevel = value.MobilityLevel;
         EditableProtectionLevel = value.ProtectionLevel;
@@ -283,5 +316,21 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private string GenerateStableWallId()
     {
         return $"W-{CuratedWalls.Count + 1:000}";
+    }
+
+    private WallCandidateDto? ResolveSourceCandidate(CuratedWallDto wall)
+    {
+        return (wall.SourceCandidateId is null
+                ? null
+                : WallCandidates.FirstOrDefault(item => item.CandidateId == wall.SourceCandidateId.Value))
+            ?? WallCandidates.FirstOrDefault(item => item.GeometryPathId == wall.GeometryPathId);
+    }
+
+    private string BuildCuratedWallPreviewLabel(CuratedWallDto wall)
+    {
+        var sourceEntityRef = ResolveSourceCandidate(wall)?.SourceEntityRef;
+        return string.IsNullOrWhiteSpace(sourceEntityRef)
+            ? $"Previewing curated wall: {wall.StableWallId}"
+            : $"Previewing curated wall: {wall.StableWallId} ({sourceEntityRef})";
     }
 }

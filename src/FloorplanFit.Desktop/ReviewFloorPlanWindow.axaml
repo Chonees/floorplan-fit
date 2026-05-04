@@ -35,11 +35,14 @@
               BorderBrush="LightGray"
               BorderThickness="1"
               CornerRadius="6">
-        <StackPanel Spacing="12">
+        <Grid RowDefinitions="Auto,*"
+              RowSpacing="12">
           <TextBlock FontSize="18"
                      FontWeight="SemiBold"
                      Text="Wall Candidates" />
-          <ListBox ItemsSource="{Binding WallCandidates}"
+          <ListBox Grid.Row="1"
+                   MinHeight="0"
+                   ItemsSource="{Binding WallCandidates}"
                    SelectedItem="{Binding SelectedCandidate}">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="contracts:WallCandidateDto">
@@ -57,22 +60,30 @@
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-        </StackPanel>
+        </Grid>
       </Border>
 
       <Border Grid.Column="1"
               Padding="12"
+              Background="White"
               BorderBrush="LightGray"
               BorderThickness="1"
               CornerRadius="6">
-        <StackPanel Spacing="12">
+        <Grid RowDefinitions="Auto,Auto,*"
+              RowSpacing="8">
           <TextBlock FontSize="18"
+                     Foreground="Black"
                      FontWeight="SemiBold"
                      Text="Preview" />
-          <controls:FloorPlanPreviewControl Height="700"
+          <TextBlock Grid.Row="1"
+                     Foreground="DimGray"
+                     Text="{Binding PreviewSelectionLabel}" />
+          <controls:FloorPlanPreviewControl Grid.Row="2"
+                                            MinHeight="0"
+                                            GeometryPathClicked="PreviewControl_OnGeometryPathClicked"
                                             GeometryPaths="{Binding GeometryPaths}"
                                             HighlightGeometryPathId="{Binding HighlightGeometryPathId}" />
-        </StackPanel>
+        </Grid>
       </Border>
 
       <Border Grid.Column="2"
@@ -80,23 +91,32 @@
               BorderBrush="LightGray"
               BorderThickness="1"
               CornerRadius="6">
-        <ScrollViewer>
-          <StackPanel Spacing="12">
-            <TextBlock FontSize="18"
-                       FontWeight="SemiBold"
-                       Text="Inspector" />
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,*"
+              RowSpacing="12">
+          <TextBlock FontSize="18"
+                     FontWeight="SemiBold"
+                     Text="Inspector" />
 
+          <StackPanel Grid.Row="1"
+                      Spacing="4">
             <TextBlock FontWeight="SemiBold" Text="Candidate" />
             <TextBlock Text="{Binding SelectedCandidate.SourceEntityRef}" />
             <TextBlock Text="{Binding SelectedCandidate.SourceLayer}" />
             <TextBlock Text="{Binding SelectedCandidate.Status}" />
-            <TextBlock Text="Stable Wall Id" />
-            <TextBox Text="{Binding PendingStableWallId}" />
+          </StackPanel>
 
-            <Separator />
+          <TextBlock Grid.Row="2"
+                     Text="Stable Wall Id" />
+          <TextBox Grid.Row="3"
+                   Text="{Binding PendingStableWallId}" />
 
+          <Grid Grid.Row="4"
+                RowDefinitions="Auto,*"
+                RowSpacing="8"
+                MinHeight="0">
             <TextBlock FontWeight="SemiBold" Text="Curated Walls" />
-            <ListBox Height="180"
+            <ListBox Grid.Row="1"
+                     MinHeight="0"
                      ItemsSource="{Binding CuratedWalls}"
                      SelectedItem="{Binding SelectedCuratedWall}">
               <ListBox.ItemTemplate>
@@ -115,40 +135,49 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
+          </Grid>
 
-            <TextBlock Text="Role" />
-            <ComboBox ItemsSource="{Binding WallRoleOptions}"
-                      SelectedItem="{Binding EditableWallRole}" />
+          <Separator Grid.Row="5" />
 
-            <TextBlock Text="Mobility" />
-            <ComboBox ItemsSource="{Binding MobilityOptions}"
-                      SelectedItem="{Binding EditableMobilityLevel}" />
+          <ScrollViewer Grid.Row="6"
+                        MinHeight="0"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Role" />
+              <ComboBox ItemsSource="{Binding WallRoleOptions}"
+                        SelectedItem="{Binding EditableWallRole}" />
 
-            <TextBlock Text="Protection" />
-            <ComboBox ItemsSource="{Binding ProtectionOptions}"
-                      SelectedItem="{Binding EditableProtectionLevel}" />
+              <TextBlock Text="Mobility" />
+              <ComboBox ItemsSource="{Binding MobilityOptions}"
+                        SelectedItem="{Binding EditableMobilityLevel}" />
 
-            <TextBlock Text="Thickness (mm)" />
-            <TextBox Text="{Binding EditableThicknessMm}" />
+              <TextBlock Text="Protection" />
+              <ComboBox ItemsSource="{Binding ProtectionOptions}"
+                        SelectedItem="{Binding EditableProtectionLevel}" />
 
-            <TextBlock Text="Assembly" />
-            <TextBox Text="{Binding EditableAssemblyCode}" />
+              <TextBlock Text="Thickness (mm)" />
+              <TextBox Text="{Binding EditableThicknessMm}" />
 
-            <TextBlock Text="Height (mm)" />
-            <TextBox Text="{Binding EditableHeightMm}" />
+              <TextBlock Text="Assembly" />
+              <TextBox Text="{Binding EditableAssemblyCode}" />
 
-            <CheckBox Content="Exterior"
-                      IsChecked="{Binding EditableIsExterior}" />
+              <TextBlock Text="Height (mm)" />
+              <TextBox Text="{Binding EditableHeightMm}" />
 
-            <CheckBox Content="Structural Hint"
-                      IsChecked="{Binding EditableIsStructuralHint}" />
+              <CheckBox Content="Exterior"
+                        IsChecked="{Binding EditableIsExterior}" />
 
-            <TextBlock Text="Notes" />
-            <TextBox AcceptsReturn="True"
-                     Height="120"
-                     Text="{Binding EditableNotes}" />
-          </StackPanel>
-        </ScrollViewer>
+              <CheckBox Content="Structural Hint"
+                        IsChecked="{Binding EditableIsStructuralHint}" />
+
+              <TextBlock Text="Notes" />
+              <TextBox AcceptsReturn="True"
+                       Height="120"
+                       Text="{Binding EditableNotes}" />
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
       </Border>
     </Grid>
   </Grid>

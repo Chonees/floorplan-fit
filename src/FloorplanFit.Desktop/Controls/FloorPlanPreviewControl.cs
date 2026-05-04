@@ -1,12 +1,28 @@
+using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using FloorplanFit.Contracts.FloorPlans;
 
 namespace FloorplanFit.Desktop.Controls;
 
 public sealed class FloorPlanPreviewControl : Control
 {
+    private const double PreviewPadding = 16d;
+    private const double HitTestTolerance = 8d;
+    private INotifyCollectionChanged? observedGeometryPaths;
+
+    static FloorPlanPreviewControl()
+    {
+        AffectsRender<FloorPlanPreviewControl>(GeometryPathsProperty, HighlightGeometryPathIdProperty);
+        GeometryPathsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
+            control.OnGeometryPathsChanged(
+                args.GetOldValue<IReadOnlyList<GeometryPathDto>?>(),
+                args.GetNewValue<IReadOnlyList<GeometryPathDto>?>()));
+    }
+
     public static readonly StyledProperty<IReadOnlyList<GeometryPathDto>?> GeometryPathsProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<GeometryPathDto>?>(nameof(GeometryPaths));
 
@@ -25,6 +41,45 @@ public sealed class FloorPlanPreviewControl : Control
         set => SetValue(HighlightGeometryPathIdProperty, value);
     }
 
+    public event EventHandler<GeometryPathClickedEventArgs>? GeometryPathClicked;
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        AttachGeometryPathsCollectionObserver(GeometryPaths);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        DetachGeometryPathsCollectionObserver();
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        var geometryPathId = FloorPlanPreviewGeometry.HitTestPath(
+            GeometryPaths,
+            Bounds,
+            e.GetPosition(this),
+            PreviewPadding,
+            HitTestTolerance);
+
+        if (geometryPathId is null)
+        {
+            return;
+        }
+
+        GeometryPathClicked?.Invoke(this, new GeometryPathClickedEventArgs(geometryPathId.Value));
+        e.Handled = true;
+    }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);
@@ -38,50 +93,76 @@ public sealed class FloorPlanPreviewControl : Control
             return;
         }
 
-        var segments = GeometryPaths
-            .SelectMany(path => path.Segments.Select(segment => (Path: path, Segment: segment)))
-            .ToArray();
-
-        if (segments.Length == 0)
+        var viewport = FloorPlanPreviewGeometry.CalculateViewport(GeometryPaths, bounds, PreviewPadding);
+        if (viewport is null)
         {
             return;
         }
 
-        var minX = segments.Min(item => Math.Min((double)item.Segment.StartX, (double)item.Segment.EndX));
-        var minY = segments.Min(item => Math.Min((double)item.Segment.StartY, (double)item.Segment.EndY));
-        var maxX = segments.Max(item => Math.Max((double)item.Segment.StartX, (double)item.Segment.EndX));
-        var maxY = segments.Max(item => Math.Max((double)item.Segment.StartY, (double)item.Segment.EndY));
+        var orderedPaths = GeometryPaths
+            .OrderBy(path => FloorPlanPreviewGeometry.GetPathStyle(path.Id, HighlightGeometryPathId).IsHighlighted)
+            .ToArray();
 
-        const double padding = 16d;
-        var width = Math.Max(maxX - minX, 1d);
-        var height = Math.Max(maxY - minY, 1d);
-        var availableWidth = Math.Max(bounds.Width - (padding * 2d), 1d);
-        var availableHeight = Math.Max(bounds.Height - (padding * 2d), 1d);
-        var scale = Math.Min(availableWidth / width, availableHeight / height);
-        var offsetX = padding + ((availableWidth - (width * scale)) / 2d);
-        var offsetY = padding + ((availableHeight - (height * scale)) / 2d);
-
-        Point Project(decimal x, decimal y)
+        foreach (var path in orderedPaths)
         {
-            var projectedX = offsetX + (((double)x - minX) * scale);
-            var projectedY = bounds.Height - (offsetY + (((double)y - minY) * scale));
-            return new Point(projectedX, projectedY);
-        }
-
-        foreach (var path in GeometryPaths)
-        {
-            var isHighlighted = HighlightGeometryPathId == path.Id;
-            var pen = new Pen(
-                isHighlighted ? Brushes.OrangeRed : Brushes.SlateGray,
-                isHighlighted ? 2.5d : 1.25d);
+            var style = FloorPlanPreviewGeometry.GetPathStyle(path.Id, HighlightGeometryPathId);
+            var pen = new Pen(new SolidColorBrush(style.Color), style.Thickness);
 
             foreach (var segment in path.Segments)
             {
                 context.DrawLine(
                     pen,
-                    Project(segment.StartX, segment.StartY),
-                    Project(segment.EndX, segment.EndY));
+                    viewport.Value.Project(segment.StartX, segment.StartY),
+                    viewport.Value.Project(segment.EndX, segment.EndY));
             }
         }
+    }
+
+    private void OnGeometryPathsChanged(IReadOnlyList<GeometryPathDto>? oldValue, IReadOnlyList<GeometryPathDto>? newValue)
+    {
+        if (!ReferenceEquals(oldValue, newValue))
+        {
+            DetachGeometryPathsCollectionObserver();
+            AttachGeometryPathsCollectionObserver(newValue);
+        }
+
+        InvalidateVisual();
+    }
+
+    private void AttachGeometryPathsCollectionObserver(IReadOnlyList<GeometryPathDto>? value)
+    {
+        if (ReferenceEquals(observedGeometryPaths, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
+        {
+            return;
+        }
+
+        observedGeometryPaths = notifyCollectionChanged;
+        observedGeometryPaths.CollectionChanged += GeometryPathsCollectionChanged;
+    }
+
+    private void DetachGeometryPathsCollectionObserver()
+    {
+        if (observedGeometryPaths is null)
+        {
+            return;
+        }
+
+        observedGeometryPaths.CollectionChanged -= GeometryPathsCollectionChanged;
+        observedGeometryPaths = null;
+    }
+
+    private void GeometryPathsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        InvalidateVisual();
+    }
+
+    public sealed class GeometryPathClickedEventArgs : EventArgs
+    {
+        public GeometryPathClickedEventArgs(Guid geometryPathId)
+        {
+            GeometryPathId = geometryPathId;
+        }
+
+        public Guid GeometryPathId { get; }
     }
 }
