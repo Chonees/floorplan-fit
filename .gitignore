@@ -24,3 +24,9 @@ workspace/
 
 # Local git worktrees for isolated feature execution
 .worktrees/
+
+# Local Obsidian UI state (not project knowledge)
+obsidian-vault/.obsidian/app.json
+obsidian-vault/.obsidian/appearance.json
+obsidian-vault/.obsidian/graph.json
+obsidian-vault/.obsidian/workspace.json
