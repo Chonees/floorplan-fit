@@ -1,5 +1,14 @@
 # Loop 1 Curated Walls and Spaces Implementation Plan
 
+
+> [!WARNING] SUPERSEDED ? 2026-05-09
+> This implementation plan is historical. Do not execute it as written.
+>
+> It creates `CuratedWall`, `CuratedWallDto`, `ICuratedWallRepository`, `AcceptWallCandidateHandler`, `UpdateCuratedWallMetadataHandler`, and `SqliteCuratedWallRepository`, all of which are outside the active review/curation flow in the current branch.
+>
+> Current implementation direction: CAD-faithful review with wall candidates, room labels, openings, fixed components, protected details, named pinch groups/markers, and a published curation consumed by future site-plan fit.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement the first full Loop 1 close: extracted wall candidates, draft/published curations, exact curated walls, minimal curated spaces, basic wall/space constraints, Library state progression, and a minimal real Desktop review screen.

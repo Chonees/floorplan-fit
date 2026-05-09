@@ -11,16 +11,6 @@ public partial class ReviewFloorPlanWindow : Window
         InitializeComponent();
     }
 
-    private async void AcceptButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is not FloorPlanReviewViewModel viewModel)
-        {
-            return;
-        }
-
-        await viewModel.AcceptSelectedCandidateAsync(CancellationToken.None);
-    }
-
     private async void RejectButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is not FloorPlanReviewViewModel viewModel)
@@ -29,16 +19,6 @@ public partial class ReviewFloorPlanWindow : Window
         }
 
         await viewModel.RejectSelectedCandidateAsync(CancellationToken.None);
-    }
-
-    private async void SaveMetadataButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is not FloorPlanReviewViewModel viewModel)
-        {
-            return;
-        }
-
-        await viewModel.SaveSelectedWallMetadataAsync(CancellationToken.None);
     }
 
     private async void PublishButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -51,13 +31,83 @@ public partial class ReviewFloorPlanWindow : Window
         await viewModel.PublishAsync(CancellationToken.None);
     }
 
-    private void PreviewControl_OnGeometryPathClicked(object? sender, FloorPlanPreviewControl.GeometryPathClickedEventArgs e)
+    private void AddPinchButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is not FloorPlanReviewViewModel viewModel)
         {
             return;
         }
 
-        viewModel.SelectPreviewPath(e.GeometryPathId);
+        viewModel.TogglePinchPlacement();
+    }
+
+    private async void AddPinchGroupButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.AddPinchGroupAsync(CancellationToken.None);
+    }
+
+    private async void RemovePinchButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RemoveSelectedPinchAsync(CancellationToken.None);
+    }
+
+    private async void RemoveOpeningCandidateButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RemoveSelectedOpeningCandidateAsync(CancellationToken.None);
+    }
+
+    private async void RemoveOpeningLabelButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RemoveSelectedOpeningLabelAsync(CancellationToken.None);
+    }
+
+    private async void RemoveFixedPlanComponentButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RemoveSelectedFixedPlanComponentAsync(CancellationToken.None);
+    }
+
+    private async void RemoveProtectedDetailAssemblyButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RemoveSelectedProtectedDetailAssemblyAsync(CancellationToken.None);
+    }
+
+    private async void PreviewControl_OnGeometryPathClicked(object? sender, FloorPlanPreviewControl.GeometryPathClickedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.HandlePreviewInteractionAsync(e.GeometryPathId, e.PositionRatio, CancellationToken.None);
     }
 }

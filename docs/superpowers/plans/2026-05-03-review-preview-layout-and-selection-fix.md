@@ -1,5 +1,12 @@
 # Review Preview Layout and Selection Fix Implementation Plan
 
+
+> [!NOTE] HISTORICAL / UI-SUPERSEDED ? 2026-05-09
+> This plan documents a real preview/layout fix, but the current review surface has moved beyond the old candidates/curated-walls layout.
+>
+> Keep the lessons about layout, clipping, hit-test, and scroll. Do not treat curated-wall UI references as current product truth.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Hacer que la review UI de Loop 1 centre mejor el preview, actualice el highlight en tiempo real, permita click-to-select sobre el plano y tenga listas con scroll real.

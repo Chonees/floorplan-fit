@@ -29,8 +29,14 @@ public sealed class OpenFloorPlanReviewSessionHandlerTests
             ActiveVersionNumber: 1,
             ActivePublishedCurationId: null,
             GeometryPaths: [],
+            RoomLabels: [],
+            OpeningCandidates: [],
+            OpeningLabels: [],
+            FixedPlanComponents: [],
+            ProtectedDetailAssemblies: [],
             WallCandidates: [],
-            CuratedWalls: []);
+            PinchGroups: [],
+            PinchMarkers: []);
         var reviewReader = new FakeFloorPlanReviewSessionReader(expectedSession);
         var handler = new OpenFloorPlanReviewSessionHandler(templateRepository, reviewReader, startOrResumeHandler);
 

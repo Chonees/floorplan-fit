@@ -7,37 +7,29 @@ namespace FloorplanFit.Application.Tests.FloorPlans.Curation;
 public sealed class RejectWallCandidateHandlerTests
 {
     [Fact]
-    public async Task HandleAsync_rejects_a_pending_candidate_and_removes_its_curated_wall_from_the_draft()
+    public async Task HandleAsync_rejects_a_pending_candidate_and_removes_its_pinch_markers_from_the_draft()
     {
+        var curationId = Guid.NewGuid();
         var candidate = new ExtractedWallCandidate(Guid.NewGuid(), Guid.NewGuid(), "LINE:12", "A-WALL", Guid.NewGuid(), 101.6m, 0.95m, null, ExtractedWallCandidateStatus.Pending, 1);
-        var wall = new CuratedWall(
+        var marker = new PinchMarker(
             Guid.NewGuid(),
+            curationId,
             Guid.NewGuid(),
-            "W-001",
             candidate.Id,
-            candidate.SourceEntityRef,
-            candidate.GeometryPathId,
-            WallRole.Partition,
-            WallMobilityLevel.Flexible,
-            WallProtectionLevel.None,
-            101.6m,
-            "2x4",
-            null,
-            isExterior: false,
-            isStructuralHint: false,
-            wallGroupId: null,
-            sortOrder: 1,
-            notes: null);
+            candidate.GeometryPathId ?? Guid.NewGuid(),
+            0.5m,
+            120m,
+            1);
         var candidateRepository = new InMemoryExtractedWallCandidateRepository(candidate);
-        var wallRepository = new InMemoryCuratedWallRepository([wall]);
+        var markerRepository = new InMemoryPinchMarkerRepository([marker]);
         var unitOfWork = new FakeUnitOfWork();
 
-        var handler = new RejectWallCandidateHandler(candidateRepository, wallRepository, unitOfWork);
+        var handler = new RejectWallCandidateHandler(candidateRepository, markerRepository, unitOfWork);
 
-        await handler.HandleAsync(wall.FloorPlanCurationId, candidate.Id, CancellationToken.None);
+        await handler.HandleAsync(curationId, candidate.Id, CancellationToken.None);
 
         Assert.Equal(ExtractedWallCandidateStatus.Rejected, candidate.Status);
-        Assert.Empty(wallRepository.Items);
+        Assert.Empty(markerRepository.Items);
         Assert.True(unitOfWork.SaveChangesCalled);
     }
 
@@ -60,32 +52,32 @@ public sealed class RejectWallCandidateHandlerTests
             => Task.CompletedTask;
     }
 
-    private sealed class InMemoryCuratedWallRepository : ICuratedWallRepository
+    private sealed class InMemoryPinchMarkerRepository : IPinchMarkerRepository
     {
-        public InMemoryCuratedWallRepository(IReadOnlyList<CuratedWall> seed)
+        public InMemoryPinchMarkerRepository(IReadOnlyList<PinchMarker> seed)
         {
             Items = [.. seed];
         }
 
-        public List<CuratedWall> Items { get; }
+        public List<PinchMarker> Items { get; }
 
-        public Task AddAsync(CuratedWall wall, CancellationToken cancellationToken)
+        public Task AddAsync(PinchMarker marker, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
-        public Task<CuratedWall?> GetByIdAsync(Guid curatedWallId, CancellationToken cancellationToken)
-            => Task.FromResult(Items.SingleOrDefault(item => item.Id == curatedWallId));
+        public Task<PinchMarker?> GetByIdAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
+            => Task.FromResult(Items.SingleOrDefault(item => item.Id == pinchMarkerId));
 
-        public Task<IReadOnlyList<CuratedWall>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken)
-            => Task.FromResult<IReadOnlyList<CuratedWall>>(Items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
+        public Task<IReadOnlyList<PinchMarker>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<PinchMarker>>(Items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
+
+        public Task RemoveAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
 
         public Task RemoveBySourceCandidateAsync(Guid curationId, Guid sourceCandidateId, CancellationToken cancellationToken)
         {
             Items.RemoveAll(item => item.FloorPlanCurationId == curationId && item.SourceCandidateId == sourceCandidateId);
             return Task.CompletedTask;
         }
-
-        public Task UpdateAsync(CuratedWall wall, CancellationToken cancellationToken)
-            => Task.CompletedTask;
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

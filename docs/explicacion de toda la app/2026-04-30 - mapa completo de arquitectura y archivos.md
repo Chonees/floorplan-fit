@@ -1,1174 +1,938 @@
 ---
-
 type: architecture-map
-
 date: 2026-04-30
-
-last_verified: 2026-05-04
-
+last_verified: 2026-05-09
 status: active
-
 scope: current-working-tree-files
-
-file_count: 209
-
+file_count: 323
 ---
-
-
 
 # Mapa completo de arquitectura y archivos de Floorplan Fit
 
+## Proposito del documento
 
+Este documento es el mapa exhaustivo del repositorio. Explica que parte de la arquitectura toca cada archivo, que responsabilidad tiene, por que importa y como encaja en el producto.
 
-## Propósito del documento
+Cobertura revalidada el **2026-05-09** contra `git ls-files` y `git ls-files --others --exclude-standard`: **323 archivos relevantes presentes** = **302 versionados presentes** + **21 nuevos no versionados todavia**. Se excluyen `bin/`, `obj/`, `.artifacts-test/`, `.git/`, `.vs/`, `workspace/` y archivos locales de usuario.
 
+## Actualizacion 2026-05-08
 
-
-Este documento es el **mapa exhaustivo del repositorio**. Su misión es explicar **qué parte de la arquitectura toca cada archivo**, **qué responsabilidad tiene** y **cómo encaja en el objetivo del producto**.
-
-
-
-La cobertura fue revalidada contra `git ls-files`, `git ls-files --deleted` y los archivos nuevos relevantes del working tree el **2026-05-04**. El total cubierto es **209 archivos relevantes del working tree**: **202 archivos versionados presentes** m?s **7 archivos nuevos de esta pasada**. Esto sigue excluyendo a prop?sito `bin/`, `obj/`, caches locales, procesos temporales y directorios no versionados irrelevantes, porque **no son fuente can?nica de la app**.
-
-
-
-## Actualización 2026-05-03
-
-
-
-- se incorporaron los archivos nuevos del fix de review UI: spec, plan, helper de preview, metadato de ensamblado, tests y bitácora de implementación
-
-- el mapa ahora cubre **202 archivos versionados presentes** m?s **7 archivos nuevos relevantes del working tree**
-
-- se mantuvo el mismo patrón de redacción de **misión + importancia + use case** para las piezas nuevas
-
-
-
-## Actualización 2026-05-02
-
-
-
-- se revalidó la cobertura real contra `git ls-files`
-
-- se incorporaron los archivos agregados desde la creación inicial del mapa
-
-- cada entrada ahora explica **misión + importancia + use case** para que el documento sirva no solo para navegar, sino también para entender por qué cada pieza importa
-
-
+- La arquitectura activa de Loop 1 es **CAD-faithful curation + pinch-native shrink zones**.
+- El centro del curado ya no es `CuratedWall`; ahora se publican artefactos separados: wall candidates, pinch groups/markers, room labels, opening candidates/labels, fixed plan components y protected detail assemblies.
+- `DxfExtractionProfile.PointeHomes` concentra convenciones debiles de Pointe Homes para no esconder reglas de SEMINOLE2000 en extractores genericos.
+- `FloorPlanPreviewControl` queda como shell interactivo; el dibujo vive en renderers chicos bajo `Controls/Preview/`.
+- Las dimensiones CAD siguen pendientes, pero deben entrar como familia propia de artifacts: geometry + text + anchors + valor original/recalculable durante pinches/adaptacion.
 
 ## Big Picture
 
+Floorplan Fit es un monolito modular local-first en .NET 10 con Avalonia, SQLite e IxMilia DXF. La promesa de `MVP-UX.md` es curar un floor plan una vez, reutilizarlo muchas veces y transformar cada site plan en una decision tecnica corta y auditable.
+
+Loop 1 hoy busca una superficie de curado visualmente fiel al CAD: cada familia entra separada, se selecciona, se corrige/remueve y se persiste antes de publicar. Loop 2 —site plan envelope, deterministic fit, proposals y output adaptado— todavia consume esta base publicada en el futuro.
+
+## Pipeline activo por familia CAD
+
+```text
+DXF real -> profile/conventions -> extractor IxMilia -> detected model Application -> entidad Domain -> SQLite/read-model -> DTO Contracts -> preview layer/seleccion/curado -> published library truth
+```
+
+| Familia | Proposito | Estado |
+| --- | --- | --- |
+| Wall candidates | Estructura base detectada | Activa, con hints 2x4/2x6 por geometria |
+| Pinch groups/markers | Zonas recortables autorizadas | Activa, grupos nombrados por Width/Height |
+| Room labels | Nombres de ambientes | Activa, render DXF-like |
+| Opening candidates/labels | Puertas/ventanas y modelo/tamano | Activa, seleccion/removal |
+| Fixed plan components | Fixtures/cabinets/toilets/tubs | Activa, color DXF preservado |
+| Protected detail assemblies | Detalles humedos/protegidos | Activa, MISC/HATCH como WetAreaDetail |
+| Dimensions | Cotas CAD recalculables | Pendiente; debe ser familia separada |
+
+## Convencion de lectura
+
+Cada entrada usa: **Mision**, **Importancia**, **Use case**. Si algo dice pendiente/futuro, existe como soporte o decision pero no recorre todo el loop aun.
 
 
-Floorplan Fit es un monolito modular local-first en .NET 10 con Avalonia, SQLite e IxMilia DXF. Hoy la parte más desarrollada del producto es **Loop 1**: importar un floor plan, extraer walls, revisarlas, curarlas y publicar una versión reusable. Loop 2 (adaptación contra site plan, fit engine y propuestas) sigue mayormente como diseño.
+## Raiz del repositorio y gobierno tecnico
+
+Gobierno tecnico, solucion, fuentes canonicas y configuracion global.
+
+- `.gitignore` — Mision: Archivo de gobierno/proyecto .gitignore. Importancia: mantiene la solucion operable. Use case: configurar, abrir o entender el repo.
 
 
+- `AGENTS.md` — Mision: Reglas humanas/operativas del repo. Importancia: es pieza estructural de la arquitectura actual. Use case: mantener Loop 1 curable y auditable.
 
-## Mapa de arquitectura
+- `Directory.Build.props` — Mision: Archivo de gobierno/proyecto Directory.Build. Importancia: mantiene la solucion operable. Use case: configurar, abrir o entender el repo.
 
+- `FloorplanFit.sln` — Mision: Archivo de gobierno/proyecto Floorplan Fit. Importancia: mantiene la solucion operable. Use case: configurar, abrir o entender el repo.
 
+- `LICENSE` — Mision: Archivo de gobierno/proyecto LICENSE. Importancia: mantiene la solucion operable. Use case: configurar, abrir o entender el repo.
 
-- **Raíz del repo**: gobierno técnico, solución, fuentes canónicas y configuración global.
+- `MVP-UX.md` — Mision: Fuente canonica de la promesa UX: curar una vez y reutilizar muchas. Importancia: es pieza estructural de la arquitectura actual. Use case: mantener Loop 1 curable y auditable.
 
-- **PLANS/**: fixtures DXF y referencias legacy usadas como verdad de entrada o comparación.
+- `TECH-STACK-ARCHITECTURE-DATAFLOW.md` — Mision: Fuente canonica de stack, capas y flujo de datos. Importancia: es pieza estructural de la arquitectura actual. Use case: mantener Loop 1 curable y auditable.
 
-- **docs/**: documentación narrativa, specs y planes ejecutables.
-
-- **obsidian-vault/**: conocimiento duradero del proyecto para estado, decisiones, bugs e implementación.
-
-- **skills/**: skill local que obliga a explicar el repo con foco en loops y capas.
-
-- **src/FloorplanFit.Domain/**: reglas puras del negocio.
-
-- **src/FloorplanFit.Application/**: puertos y casos de uso.
-
-- **src/FloorplanFit.Contracts/**: DTOs de intercambio para UI/read-models.
-
-- **src/FloorplanFit.Infrastructure/**: SQLite, DXF, storage, hashing y runtime local.
-
-- **src/FloorplanFit.Desktop/**: app Avalonia MVVM que orquesta la experiencia del usuario.
-
-- **tests/**: evidencia automatizada por capa.
-
-
-
-## Convención de lectura
-
-
-
-- **Archivo**: path exacto trackeado por git.
-
-- **Misión**: por qué existe y qué responsabilidad sostiene.
-
-- **Importancia**: qué se rompería, se mezclaría o se volvería opaco si esta pieza no existiera.
-
-- **Use case**: en qué situación concreta del producto, del runtime o del mantenimiento aparece el valor de este archivo.
-
-- **Capa/Área**: se deduce por la sección donde aparece el archivo.
-
-
-
-## Raíz del repositorio y gobierno técnico
-
-
-
-Estos archivos definen la identidad del repositorio y la verdad global que todas las capas deben respetar.
-
-
-
-- `.gitignore` — Misión: Define qué archivos locales, temporales o generados no deben entrar al control de versiones. Importancia: sin este archivo el repo se llenaría de residuos locales y artefactos generados. Use case: cuando ejecutás la app, corrés tests o usás herramientas que generan archivos efímeros.
-
-- `AGENTS.md` — Misión: Fija las reglas operativas del agente en este repo: tono, verificación, skills obligatorias, TDD estricto y protocolos de documentación/memoria. Importancia: sin este archivo no habría un contrato operativo explícito para trabajar bien en este repo. Use case: cuando un agente o colaborador necesita saber reglas, tono, skills y protocolos obligatorios.
-
-- `Directory.Build.props` — Misión: Centraliza propiedades compartidas de compilación/target para todos los proyectos .NET de la solución. Importancia: sin este archivo cada proyecto repetiría configuración compartida y sería más fácil desalinearlos. Use case: cuando la solución restaura o compila proyectos con propiedades comunes.
-
-- `FloorplanFit.sln` — Misión: Agrupa todos los proyectos de la app, infraestructura, dominio, contratos y tests en una sola solución. Importancia: sin este archivo no se podría abrir y operar cómodamente la solución completa como unidad. Use case: cuando querés navegar, testear o trabajar todos los proyectos desde Visual Studio, Rider o CLI.
-
-- `LICENSE` — Misión: Declara la licencia legal del repositorio. Importancia: sin este archivo quedaría ambigua la licencia legal del repositorio. Use case: cuando alguien necesita saber bajo qué términos se puede usar o compartir el código.
-
-- `MVP-UX.md` — Misión: Fuente canónica del flujo de producto y de las pantallas esperadas para Loop 1 y Loop 2. Importancia: sin este archivo el producto correría el riesgo de diseñarse por intuición y no por experiencia objetivo. Use case: cuando querés validar si una pantalla o flujo respeta la promesa UX del MVP.
-
-- `TECH-STACK-ARCHITECTURE-DATAFLOW.md` — Misión: Fuente canónica del stack, las capas, el modelo de datos y el flujo extremo a extremo de la app. Importancia: sin este archivo faltaría la verdad arquitectónica de referencia para capas, stack y flujo de datos. Use case: cuando querés decidir dónde pertenece un cambio o cómo debería viajar la información extremo a extremo.
-
-- `global.json` — Misión: Ancla la versión del SDK .NET que debe usar el repo. Importancia: sin este archivo el repo podría ejecutarse con SDKs distintos y volverse menos reproducible. Use case: cuando otra máquina o CI necesita usar la misma versión de .NET que el proyecto espera.
-
+- `global.json` — Mision: Archivo de gobierno/proyecto global. Importancia: mantiene la solucion operable. Use case: configurar, abrir o entender el repo.
 
 
 ## Fixtures catalogados y referencias legacy
 
+JSONs historicos: referencia comparativa, no fuente primaria.
 
+- `PLANS/catalog/santa-barbara.json` — Mision: Fixture santa-barbara.json. Importancia: material real/legacy para validar el pipeline. Use case: correr extracciones o comparar resultados.
 
-Estos archivos son fixtures o insumos del producto usados para importar, comparar o más adelante adaptar.
+- `PLANS/catalog/seminole-2000.json` — Mision: Fixture seminole-2000.json. Importancia: material real/legacy para validar el pipeline. Use case: correr extracciones o comparar resultados.
 
 
+## Fixtures canonicos de floor plans
 
-- `PLANS/catalog/santa-barbara.json` — Misión: Referencia catalogada legacy para santa barbara; sirve como oracle comparativo mientras la verdad canónica sigue siendo el DXF original. Importancia: sin este archivo faltaría un oracle legacy útil para contrastar la evolución del flujo sobre Santa Barbara. Use case: cuando querés comparar la salida actual contra la referencia catalogada histórica de Santa Barbara.
+DXF reales desde donde Loop 1 extrae y cura artefactos CAD.
 
-- `PLANS/catalog/seminole-2000.json` — Misión: Referencia catalogada legacy para seminole 2000; sirve como oracle comparativo mientras la verdad canónica sigue siendo el DXF original. Importancia: sin este archivo faltaría un oracle legacy útil para contrastar la evolución del flujo sobre Seminole 2000. Use case: cuando querés comparar la salida actual contra la referencia catalogada histórica de Seminole 2000.
+- `PLANS/originalFloorPlans/SANTA-BARBARA.dxf` — Mision: Fixture SANTA-BARBARA.dxf. Importancia: material real/legacy para validar el pipeline. Use case: correr extracciones o comparar resultados.
 
+- `PLANS/originalFloorPlans/SEMINOLE2000.dxf` — Mision: Fixture SEMINOLE2000.dxf. Importancia: material real/legacy para validar el pipeline. Use case: correr extracciones o comparar resultados.
 
 
-## Fixtures canónicos de floor plans
+## Fixtures canonicos de site plans
 
+DXF reales para Loop 2: envelope, fit y auditoria futura.
 
+- `PLANS/originalsSitePlans/158 DAWSON STREET.dxf` — Mision: Fixture 158 DAWSON STREET.dxf. Importancia: material real/legacy para validar el pipeline. Use case: correr extracciones o comparar resultados.
 
-Estos archivos son fixtures o insumos del producto usados para importar, comparar o más adelante adaptar.
 
+## Documentacion narrativa historica
 
+Explicaciones humanas de slices, fixes y validaciones.
 
-- `PLANS/originalFloorPlans/SANTA-BARBARA.dxf` — Misión: Fixture DXF canónico de floor plan usado para importar, extraer walls y validar el Loop 1 sobre SANTA-BARBARA.dxf. Importancia: sin este archivo faltaría el fixture canónico más importante para validar el Loop 1 real del repo. Use case: cuando importás y extraés walls del caso Santa Barbara para validar el slice ejecutable actual.
+- `docs/explicacion del proyecto/2026-04-25 - explicacion de archivos tocados en slice 1.md` — Mision: Documento de trabajo 2026 04 25   explicacion de archivos tocados en slice 1. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
-- `PLANS/originalFloorPlans/SEMINOLE2000.dxf` — Misión: Fixture DXF canónico de floor plan usado para importar, extraer walls y validar el Loop 1 sobre SEMINOLE2000.dxf. Importancia: sin este archivo faltaría un fixture canónico alternativo para validar que el flujo no depende de un solo plano. Use case: cuando querés probar el pipeline de importación y extracción sobre un floor plan distinto de Santa Barbara.
+- `docs/explicacion del proyecto/2026-04-29 - bugfix de versionado al reimportar el mismo dxf.md` — Mision: Documento de trabajo 2026 04 29   bugfix de versionado al reimportar el mismo dxf. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/explicacion del proyecto/2026-04-29 - checklist manual del slice 1 ejecutable.md` — Mision: Documento de trabajo 2026 04 29   checklist manual del slice 1 ejecutable. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/explicacion del proyecto/2026-04-29 - explicacion exhaustiva de archivos del slice 1 ejecutable.md` — Mision: Documento de trabajo 2026 04 29   explicacion exhaustiva de archivos del slice 1 ejecutable. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
-## Fixtures canónicos de site plans
+- `docs/explicacion del proyecto/2026-04-29 - hidratacion de library desde sqlite y fix de avln3001.md` — Mision: Documento de trabajo 2026 04 29   hidratacion de library desde sqlite y fix de avln3001. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/explicacion del proyecto/2026-04-29 - validacion real del slice 1 ejecutable.md` — Mision: Documento de trabajo 2026 04 29   validacion real del slice 1 ejecutable. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
 
-Estos archivos son fixtures o insumos del producto usados para importar, comparar o más adelante adaptar.
+## Mapa exhaustivo y navegacion total
 
+Este documento vivo de arquitectura.
 
+- `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` — Mision: Documento de trabajo 2026 04 30   mapa completo de arquitectura y archivos. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
-- `PLANS/originalsSitePlans/158 DAWSON STREET.dxf` — Misión: Fixture DXF canónico de site plan reservado para el futuro Loop 2 sobre 158 DAWSON STREET.dxf. Importancia: sin este archivo faltaría el fixture base previsto para empezar a verificar el futuro Loop 2. Use case: cuando Loop 2 necesite importar y analizar un lote real de referencia.
 
+## Planes de implementacion ejecutables
 
+Planes operativos antes/durante cambios grandes.
 
-## Documentación narrativa histórica del proyecto
+- `docs/superpowers/plans/2026-04-25-slice-1-import-foundation.md` — Mision: Documento de trabajo 2026 04 25 slice 1 import foundation. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/superpowers/plans/2026-04-29-slice-1-executable-implementation.md` — Mision: Documento de trabajo 2026 04 29 slice 1 executable implementation. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/superpowers/plans/2026-04-30-loop-1-curated-walls-and-spaces-implementation.md` — Mision: Documento de trabajo 2026 04 30 loop 1 curated walls and spaces implementation. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
-Estos archivos documentan el diseño, el plan o la historia de implementación del repositorio.
+- `docs/superpowers/plans/2026-05-03-review-preview-layout-and-selection-fix.md` — Mision: Documento de trabajo 2026 05 03 review preview layout and selection fix. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/superpowers/plans/2026-05-04-loop1-pinch-curation-preview.md` — Mision: Documento de trabajo 2026 05 04 loop1 pinch curation preview. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/superpowers/plans/2026-05-04-pinch-native-cleanup.md` — Mision: Documento de trabajo 2026 05 04 pinch native cleanup. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
-- `docs/explicacion del proyecto/2026-04-25 - explicacion de archivos tocados en slice 1.md` — Misión: Documento explicativo histórico sobre explicacion de archivos tocados en slice 1; captura decisiones, validaciones o walkthroughs hechos durante la evolución del repo. Importancia: sin este archivo se perdería contexto verificable sobre cómo evolucionó el repo. Use case: cuando alguien necesita reconstruir por qué se hizo, validó o corrigió algo en esa etapa.
+- `docs/superpowers/plans/2026-05-04-pinch-review-ux-redesign.md` — Mision: Documento de trabajo 2026 05 04 pinch review ux redesign. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/superpowers/plans/2026-05-07-preview-layer-refactor.md` — Mision: Documento de trabajo 2026 05 07 preview layer refactor. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
-- `docs/explicacion del proyecto/2026-04-29 - bugfix de versionado al reimportar el mismo dxf.md` — Misión: Documento explicativo histórico sobre bugfix de versionado al reimportar el mismo dxf; captura decisiones, validaciones o walkthroughs hechos durante la evolución del repo. Importancia: sin este archivo se perdería contexto verificable sobre cómo evolucionó el repo. Use case: cuando alguien necesita reconstruir por qué se hizo, validó o corrigió algo en esa etapa.
+- `docs/superpowers/plans/2026-05-07-protected-detail-assemblies.md` — Mision: Documento de trabajo 2026 05 07 protected detail assemblies. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
-- `docs/explicacion del proyecto/2026-04-29 - checklist manual del slice 1 ejecutable.md` — Misión: Documento explicativo histórico sobre checklist manual del slice 1 ejecutable; captura decisiones, validaciones o walkthroughs hechos durante la evolución del repo. Importancia: sin este archivo se perdería contexto verificable sobre cómo evolucionó el repo. Use case: cuando alguien necesita reconstruir por qué se hizo, validó o corrigió algo en esa etapa.
+- `docs/superpowers/plans/2026-05-07-room-label-candidates.md` — Mision: Documento de trabajo 2026 05 07 room label candidates. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
-- `docs/explicacion del proyecto/2026-04-29 - explicacion exhaustiva de archivos del slice 1 ejecutable.md` — Misión: Documento explicativo histórico sobre explicacion exhaustiva de archivos del slice 1 ejecutable; captura decisiones, validaciones o walkthroughs hechos durante la evolución del repo. Importancia: sin este archivo se perdería contexto verificable sobre cómo evolucionó el repo. Use case: cuando alguien necesita reconstruir por qué se hizo, validó o corrigió algo en esa etapa.
 
-- `docs/explicacion del proyecto/2026-04-29 - hidratacion de library desde sqlite y fix de avln3001.md` — Misión: Documento explicativo histórico sobre hidratacion de library desde sqlite y fix de avln3001; captura decisiones, validaciones o walkthroughs hechos durante la evolución del repo. Importancia: sin este archivo se perdería contexto verificable sobre cómo evolucionó el repo. Use case: cuando alguien necesita reconstruir por qué se hizo, validó o corrigió algo en esa etapa.
+## Disenos y especificaciones tecnicas
 
+Specs de comportamiento, alcance y tradeoffs.
 
-- `docs/explicacion del proyecto/2026-04-29 - validacion real del slice 1 ejecutable.md` — Misión: Documento explicativo histórico sobre validacion real del slice 1 ejecutable; captura decisiones, validaciones o walkthroughs hechos durante la evolución del repo. Importancia: sin este archivo se perdería contexto verificable sobre cómo evolucionó el repo. Use case: cuando alguien necesita reconstruir por qué se hizo, validó o corrigió algo en esa etapa.
+- `docs/superpowers/specs/2026-04-25-slice-1-import-foundation-design.md` — Mision: Documento de trabajo 2026 04 25 slice 1 import foundation design. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/superpowers/specs/2026-04-29-slice-1-executable-design.md` — Mision: Documento de trabajo 2026 04 29 slice 1 executable design. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/superpowers/specs/2026-04-30-loop-1-curated-walls-and-spaces-design.md` — Mision: Documento de trabajo 2026 04 30 loop 1 curated walls and spaces design. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
-## Mapa exhaustivo y navegación total del repositorio
+- `docs/superpowers/specs/2026-05-03-review-preview-layout-and-selection-design.md` — Mision: Documento de trabajo 2026 05 03 review preview layout and selection design. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/superpowers/specs/2026-05-04-loop1-pinch-curation-preview-design.md` — Mision: Documento de trabajo 2026 05 04 loop1 pinch curation preview design. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
+- `docs/superpowers/specs/2026-05-04-pinch-native-cleanup-design.md` — Mision: Documento de trabajo 2026 05 04 pinch native cleanup design. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
-Estos archivos documentan el diseño, el plan o la historia de implementación del repositorio.
+- `docs/superpowers/specs/2026-05-04-pinch-review-ux-redesign-design.md` — Mision: Documento de trabajo 2026 05 04 pinch review ux redesign design. Importancia: conserva razonamiento y planificacion. Use case: entender por que se toco una zona sin leer todo el historial.
 
 
+## Configuracion interna del vault
 
-- `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` — Misión: Mapa exhaustivo del repositorio creado para explicar la arquitectura y la misión de cada archivo existente de la app. Importancia: sin este archivo navegar el repo completo sería mucho más lento y propenso a malentendidos. Use case: cuando alguien necesita orientarse rápido en capas, áreas y archivos del sistema.
+Soporte de Obsidian para el repositorio de conocimiento.
 
-
-
-## Planes de implementación ejecutables
-
-
-
-Estos archivos documentan el diseño, el plan o la historia de implementación del repositorio.
-
-
-
-- `docs/superpowers/plans/2026-04-25-slice-1-import-foundation.md` — Misión: Plan ejecutable de implementación para 2026 04 25 slice 1 import foundation; descompone milestones y orden de trabajo. Importancia: sin este archivo el trabajo se haría con más improvisación y menos orden. Use case: cuando hay que ejecutar un cambio grande siguiendo milestones concretos.
-
-- `docs/superpowers/plans/2026-04-29-slice-1-executable-implementation.md` — Misión: Plan ejecutable de implementación para 2026 04 29 slice 1 executable implementation; descompone milestones y orden de trabajo. Importancia: sin este archivo el trabajo se haría con más improvisación y menos orden. Use case: cuando hay que ejecutar un cambio grande siguiendo milestones concretos.
-
-- `docs/superpowers/plans/2026-04-30-loop-1-curated-walls-and-spaces-implementation.md` — Misión: Plan ejecutable de implementación para 2026 04 30 loop 1 curated walls and spaces implementation; descompone milestones y orden de trabajo. Importancia: sin este archivo el trabajo se haría con más improvisación y menos orden. Use case: cuando hay que ejecutar un cambio grande siguiendo milestones concretos.
-
-- `docs/superpowers/plans/2026-05-03-review-preview-layout-and-selection-fix.md` — Misión: Plan ejecutable de implementación del ajuste de preview, layout y selección en la review UI; descompone el fix para centrar el plano, repintar el highlight y ordenar el scroll. Importancia: sin este archivo el trabajo se haría con más improvisación y menos orden. Use case: cuando hay que ejecutar un ajuste UI multiarchivo sin perder el objetivo de UX real.
-
-
-
-## Diseños y especificaciones técnicas
-
-
-
-Estos archivos documentan el diseño, el plan o la historia de implementación del repositorio.
-
-
-
-- `docs/superpowers/specs/2026-04-25-slice-1-import-foundation-design.md` — Misión: Especificación o diseño técnico de 2026 04 25 slice 1 import foundation design; define modelo, alcance y decisiones de arquitectura. Importancia: sin este archivo habría más riesgo de implementar sin respetar el diseño acordado. Use case: cuando querés implementar o auditar un cambio con la arquitectura correcta en mente.
-
-- `docs/superpowers/specs/2026-04-29-slice-1-executable-design.md` — Misión: Especificación o diseño técnico de 2026 04 29 slice 1 executable design; define modelo, alcance y decisiones de arquitectura. Importancia: sin este archivo habría más riesgo de implementar sin respetar el diseño acordado. Use case: cuando querés implementar o auditar un cambio con la arquitectura correcta en mente.
-
-- `docs/superpowers/specs/2026-04-30-loop-1-curated-walls-and-spaces-design.md` — Misión: Especificación o diseño técnico de 2026 04 30 loop 1 curated walls and spaces design; define modelo, alcance y decisiones de arquitectura. Importancia: sin este archivo habría más riesgo de implementar sin respetar el diseño acordado. Use case: cuando querés implementar o auditar un cambio con la arquitectura correcta en mente.
-
-- `docs/superpowers/specs/2026-05-03-review-preview-layout-and-selection-design.md` — Misión: Especificación o diseño técnico del ajuste de preview, layout y selección en la review UI; define causa raíz, alcance y criterios de aceptación visual. Importancia: sin este archivo habría más riesgo de implementar sin respetar el diseño acordado. Use case: cuando querés implementar o auditar el fix de UX de review con la arquitectura correcta en mente.
-
-
-
-## Configuración interna del vault
-
-
-
-Estos archivos forman parte del conocimiento persistente del proyecto dentro del vault de Obsidian.
-
-
-
-
-- `obsidian-vault/.obsidian/core-plugins.json` — Misión: Configuración de plugins core habilitados dentro del vault de Obsidian. Importancia: sin este archivo los plugins core activos del vault quedarían menos definidos. Use case: cuando Obsidian necesita saber qué capacidades base del vault deben estar encendidas.
-
-
-
-
+- `obsidian-vault/.obsidian/core-plugins.json` — Mision: Nota/configuracion durable core plugins. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
 
 ## Registro de bugs
 
+Causas raiz y fixes persistidos.
 
+- `obsidian-vault/Bugs/2026-04-29 - Reimport creates new template from managed filename suffix.md` — Mision: Nota/configuracion durable 2026 04 29   Reimport creates new template from managed filename suffix. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-Estos archivos forman parte del conocimiento persistente del proyecto dentro del vault de Obsidian.
+- `obsidian-vault/Bugs/2026-05-02 - Open Review crashes right after extraction because committed SQLite transaction is reused.md` — Mision: Nota/configuracion durable 2026 05 02   Open Review crashes right after extraction because committed SQLite transaction is reused. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Bugs/2026-05-04 - Legacy pinch markers schema crashes open review.md` — Mision: Nota/configuracion durable 2026 05 04   Legacy pinch markers schema crashes open review. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Bugs/2026-05-04 - Wrong Avalonia XML namespace breaks compiled app XAML.md` — Mision: Nota/configuracion durable 2026 05 04   Wrong Avalonia XML namespace breaks compiled app XAML. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Bugs/2026-05-02 - Open Review crashes right after extraction because committed SQLite transaction is reused.md` — Misión: Nota de bug que documenta el crash del primer Open Review después de extracción, su causa raíz transaccional y el fix aplicado. Importancia: sin este archivo se perdería la memoria exacta del síntoma, la causa raíz y la forma correcta de evitar su regreso. Use case: cuando reaparece un fallo parecido en SQLite, drafts de curación o apertura de review y necesitás ir directo a la raíz.
+- `obsidian-vault/Bugs/2026-05-05 - Height preview handles were implicit instead of draggable visible controls.md` — Mision: Nota/configuracion durable 2026 05 05   Height preview handles were implicit instead of draggable visible controls. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Bugs/2026-04-29 - Reimport creates new template from managed filename suffix.md` — Misión: Nota de bug sobre Reimport creates new template from managed filename suffix; documenta síntoma, causa raíz o fix relacionado. Importancia: sin este archivo se perdería la memoria exacta del síntoma, la causa raíz y la forma correcta de evitar su regreso. Use case: cuando reaparece un síntoma o querés entender qué fix ya se hizo.
+- `obsidian-vault/Bugs/2026-05-05 - Preview axis and viewport were misaligned with selected pinch.md` — Mision: Nota/configuracion durable 2026 05 05   Preview axis and viewport were misaligned with selected pinch. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Bugs/README.md` — Misión: Nota de bug sobre README; documenta síntoma, causa raíz o fix relacionado. Importancia: sin este archivo se perdería la memoria exacta del síntoma, la causa raíz y la forma correcta de evitar su regreso. Use case: cuando reaparece un síntoma o querés entender qué fix ya se hizo.
+- `obsidian-vault/Bugs/2026-05-05 - Preview canvas overflowed its parent container vertically.md` — Mision: Nota/configuracion durable 2026 05 05   Preview canvas overflowed its parent container vertically. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Bugs/2026-05-05 - Preview control used parent bounds for local rendering.md` — Mision: Nota/configuracion durable 2026 05 05   Preview control used parent bounds for local rendering. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Bugs/2026-05-05 - Review window used a rigid size that overflowed smaller screens.md` — Mision: Nota/configuracion durable 2026 05 05   Review window used a rigid size that overflowed smaller screens. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-## Decisiones arquitectónicas persistentes
+- `obsidian-vault/Bugs/2026-05-06 - Axis-tagged pinch migration duplicated markers when groups shared an axis.md` — Mision: Nota/configuracion durable 2026 05 06   Axis tagged pinch migration duplicated markers when groups shared an axis. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Bugs/2026-05-07 - Opening labels rendered white and included non-opening notes.md` — Mision: Nota/configuracion durable 2026 05 07   Opening labels rendered white and included non opening notes. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Bugs/README.md` — Mision: Nota/configuracion durable README. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-Estos archivos forman parte del conocimiento persistente del proyecto dentro del vault de Obsidian.
 
+## Decisiones arquitectonicas persistentes
 
+Decisiones que condicionan producto y arquitectura.
 
-- `obsidian-vault/Decisions/2026-04-25 - DXF as Primary Truth and Catalog as Legacy Reference.md` — Misión: Decisión persistente del proyecto sobre DXF as Primary Truth and Catalog as Legacy Reference; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-25 - DXF as Primary Truth and Catalog as Legacy Reference.md` — Mision: Nota/configuracion durable 2026 04 25   DXF as Primary Truth and Catalog as Legacy Reference. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-25 - Floorplan Teaching Skill Always On.md` — Misión: Decisión persistente del proyecto sobre Floorplan Teaching Skill Always On; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-25 - Floorplan Teaching Skill Always On.md` — Mision: Nota/configuracion durable 2026 04 25   Floorplan Teaching Skill Always On. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-25 - Initial Implementation Order.md` — Misión: Decisión persistente del proyecto sobre Initial Implementation Order; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-25 - Initial Implementation Order.md` — Mision: Nota/configuracion durable 2026 04 25   Initial Implementation Order. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-25 - Project Identity and Knowledge Stack.md` — Misión: Decisión persistente del proyecto sobre Project Identity and Knowledge Stack; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-25 - Project Identity and Knowledge Stack.md` — Mision: Nota/configuracion durable 2026 04 25   Project Identity and Knowledge Stack. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-25 - Santa Barbara as First Canonical Fixture.md` — Misión: Decisión persistente del proyecto sobre Santa Barbara as First Canonical Fixture; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-25 - Santa Barbara as First Canonical Fixture.md` — Mision: Nota/configuracion durable 2026 04 25   Santa Barbara as First Canonical Fixture. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-25 - Slice 1 Import Foundation Architecture.md` — Misión: Decisión persistente del proyecto sobre Slice 1 Import Foundation Architecture; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-25 - Slice 1 Import Foundation Architecture.md` — Mision: Nota/configuracion durable 2026 04 25   Slice 1 Import Foundation Architecture. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-29 - Copy Imported DXFs Into Managed Workspace.md` — Misión: Decisión persistente del proyecto sobre Copy Imported DXFs Into Managed Workspace; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-29 - Copy Imported DXFs Into Managed Workspace.md` — Mision: Nota/configuracion durable 2026 04 29   Copy Imported DXFs Into Managed Workspace. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-29 - Keep Legacy Catalog JSONs as Oracle During Slice 1.md` — Misión: Decisión persistente del proyecto sobre Keep Legacy Catalog JSONs as Oracle During Slice 1; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-29 - Keep Legacy Catalog JSONs as Oracle During Slice 1.md` — Mision: Nota/configuracion durable 2026 04 29   Keep Legacy Catalog JSONs as Oracle During Slice 1. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-29 - Parse And Hash Managed DXF Copy.md` — Misión: Decisión persistente del proyecto sobre Parse And Hash Managed DXF Copy; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-29 - Parse And Hash Managed DXF Copy.md` — Mision: Nota/configuracion durable 2026 04 29   Parse And Hash Managed DXF Copy. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-29 - Thin Desktop Included In Executable Slice 1.md` — Misión: Decisión persistente del proyecto sobre Thin Desktop Included In Executable Slice 1; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-29 - Thin Desktop Included In Executable Slice 1.md` — Mision: Nota/configuracion durable 2026 04 29   Thin Desktop Included In Executable Slice 1. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-30 - Loop 1 Adds Minimal Curated Spaces and Defers New Walls To Loop 2.md` — Misión: Decisión persistente del proyecto sobre Loop 1 Adds Minimal Curated Spaces and Defers New Walls To Loop 2; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-30 - Loop 1 Adds Minimal Curated Spaces and Defers New Walls To Loop 2.md` — Mision: Nota/configuracion durable 2026 04 30   Loop 1 Adds Minimal Curated Spaces and Defers New Walls To Loop 2. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-30 - Loop 1 Completion Order.md` — Misión: Decisión persistente del proyecto sobre Loop 1 Completion Order; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-30 - Loop 1 Completion Order.md` — Mision: Nota/configuracion durable 2026 04 30   Loop 1 Completion Order. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Decisions/2026-04-30 - Loop 1 Uses Semantic Core Plus Minimal Review Canvas.md` — Misión: Decisión persistente del proyecto sobre Loop 1 Uses Semantic Core Plus Minimal Review Canvas; explica el porqué arquitectónico o de workflow. Importancia: sin este archivo la decisión quedaría implícita y sería mucho más fácil rediscutirla sin contexto. Use case: cuando hay que recordar por qué se eligió una dirección arquitectónica o de workflow.
+- `obsidian-vault/Decisions/2026-04-30 - Loop 1 Uses Semantic Core Plus Minimal Review Canvas.md` — Mision: Nota/configuracion durable 2026 04 30   Loop 1 Uses Semantic Core Plus Minimal Review Canvas. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Decisions/2026-05-07 - CAD-faithful curation is the library publishing contract.md` — Mision: Nota/configuracion durable 2026 05 07   CAD faithful curation is the library publishing contract. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Decisions/2026-05-07 - Extraction pipeline targets Pointe floorplans with profile-backed conventions.md` — Mision: Nota/configuracion durable 2026 05 07   Extraction pipeline targets Pointe floorplans with profile backed conventions. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-## Área de experimentos del vault
 
+## Experimentos del vault
 
+Evidencia y exploraciones no siempre canonicas.
 
-Estos archivos forman parte del conocimiento persistente del proyecto dentro del vault de Obsidian.
+- `obsidian-vault/Experiments/2026-05-06 - DXF wall thickness signals from geometry not color.md` — Mision: Nota/configuracion durable 2026 05 06   DXF wall thickness signals from geometry not color. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Experiments/README.md` — Mision: Nota/configuracion durable README. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
 
-- `obsidian-vault/Experiments/README.md` — Misión: README contenedor del área de experimentos del vault. Importancia: sin este archivo el área de experimentos quedaría huérfana y menos entendible. Use case: cuando alguien necesita saber cómo usar o poblar el espacio de experimentación.
+## Bitacora de implementacion
 
+Que se implemento, por que y donde.
 
+- `obsidian-vault/Implementation/2026-04-29 - .NET 10 SDK Installed.md` — Mision: Nota/configuracion durable 2026 04 29   .NET 10 SDK Installed. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-## Bitácora de implementación
+- `obsidian-vault/Implementation/2026-04-29 - Desktop Dev Watch Launcher.md` — Mision: Nota/configuracion durable 2026 04 29   Desktop Dev Watch Launcher. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Implementation/2026-04-29 - Desktop Shortcut Created.md` — Mision: Nota/configuracion durable 2026 04 29   Desktop Shortcut Created. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Implementation/2026-04-29 - Documentation Sync Final Pass.md` — Mision: Nota/configuracion durable 2026 04 29   Documentation Sync Final Pass. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-Estos archivos forman parte del conocimiento persistente del proyecto dentro del vault de Obsidian.
+- `obsidian-vault/Implementation/2026-04-29 - Library Startup Hydration and MainWindow Loader Fix.md` — Mision: Nota/configuracion durable 2026 04 29   Library Startup Hydration and Main Window Loader Fix. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Implementation/2026-04-29 - Manual Validation Checklist for Slice 1 Executable.md` — Mision: Nota/configuracion durable 2026 04 29   Manual Validation Checklist for Slice 1 Executable. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Implementation/2026-04-29 - Reimport Versioning Bug Fixed.md` — Mision: Nota/configuracion durable 2026 04 29   Reimport Versioning Bug Fixed. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-05-02 - Fixed first-open review transaction crash.md` — Misión: Bitácora de implementación del fix que evita el crash al abrir Review por primera vez después de extraer walls. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando necesitás auditar el arreglo del bug transaccional de Open Review y entender por qué el fix fue en los readers y no en SqliteSession.
+- `obsidian-vault/Implementation/2026-04-29 - Repository Audit Status.md` — Mision: Nota/configuracion durable 2026 04 29   Repository Audit Status. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-05-03 - Review preview layout and highlight fix.md` — Misión: Bitácora de implementación del arreglo de layout, highlight y scroll de la review UI. Importancia: sin este archivo se perdería trazabilidad concreta de cómo se resolvió el problema visual del curated draft y con qué evidencia quedó respaldado. Use case: cuando necesitás auditar por qué la selección del preview ahora repinta en tiempo real y cómo se reorganizó la ventana.
+- `obsidian-vault/Implementation/2026-04-29 - Slice 1 Executable Design.md` — Mision: Nota/configuracion durable 2026 04 29   Slice 1 Executable Design. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-05-02 - Revalidacion del estado actual y drift del checklist manual.md` — Misión: Bitácora de revalidación del estado real del repo y del drift detectado entre documentación histórica y runtime actual. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés distinguir entre notas históricas y verdad actual verificada del repositorio.
+- `obsidian-vault/Implementation/2026-04-29 - Slice 1 Executable Implementation Plan.md` — Mision: Nota/configuracion durable 2026 04 29   Slice 1 Executable Implementation Plan. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Implementation/2026-04-29 - Slice 1 Executable Kickoff.md` — Mision: Nota/configuracion durable 2026 04 29   Slice 1 Executable Kickoff. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - .NET 10 SDK Installed.md` — Misión: Bitácora de implementación o validación sobre .NET 10 SDK Installed; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-04-29 - Slice 1 Infrastructure Import Pipeline.md` — Mision: Nota/configuracion durable 2026 04 29   Slice 1 Infrastructure Import Pipeline. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Desktop Dev Watch Launcher.md` — Misión: Bitácora de implementación o validación sobre Desktop Dev Watch Launcher; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-04-29 - Validation Results and App Control Blockers.md` — Mision: Nota/configuracion durable 2026 04 29   Validation Results and App Control Blockers. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Desktop Shortcut Created.md` — Misión: Bitácora de implementación o validación sobre Desktop Shortcut Created; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-04-30 - Loop 1 Curated Walls and Spaces Design.md` — Mision: Nota/configuracion durable 2026 04 30   Loop 1 Curated Walls and Spaces Design. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Documentation Sync Final Pass.md` — Misión: Bitácora de implementación o validación sobre Documentation Sync Final Pass; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-04-30 - Loop 1 Implementation Plan.md` — Mision: Nota/configuracion durable 2026 04 30   Loop 1 Implementation Plan. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Implementation/2026-04-30 - Mapa completo de arquitectura y archivos del repo.md` — Mision: Nota/configuracion durable 2026 04 30   Mapa completo de arquitectura y archivos del repo. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Implementation/2026-04-30 - Requirement Tension Between Walls-Only and Room Constraints.md` — Mision: Nota/configuracion durable 2026 04 30   Requirement Tension Between Walls Only and Room Constraints. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Library Startup Hydration and MainWindow Loader Fix.md` — Misión: Bitácora de implementación o validación sobre Library Startup Hydration and MainWindow Loader Fix; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-04-30 - Status Audit and Documentation Drift.md` — Mision: Nota/configuracion durable 2026 04 30   Status Audit and Documentation Drift. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Manual Validation Checklist for Slice 1 Executable.md` — Misión: Bitácora de implementación o validación sobre Manual Validation Checklist for Slice 1 Executable; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-02 - Fixed first-open review transaction crash.md` — Mision: Nota/configuracion durable 2026 05 02   Fixed first open review transaction crash. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Reimport Versioning Bug Fixed.md` — Misión: Bitácora de implementación o validación sobre Reimport Versioning Bug Fixed; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-02 - Revalidacion del estado actual y drift del checklist manual.md` — Mision: Nota/configuracion durable 2026 05 02   Revalidacion del estado actual y drift del checklist manual. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Repository Audit Status.md` — Misión: Bitácora de implementación o validación sobre Repository Audit Status; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-03 - Review preview layout and highlight fix.md` — Mision: Nota/configuracion durable 2026 05 03   Review preview layout and highlight fix. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Slice 1 Executable Design.md` — Misión: Bitácora de implementación o validación sobre Slice 1 Executable Design; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-04 - Pinch curation preview prototype.md` — Mision: Nota/configuracion durable 2026 05 04   Pinch curation preview prototype. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Slice 1 Executable Implementation Plan.md` — Misión: Bitácora de implementación o validación sobre Slice 1 Executable Implementation Plan; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-04 - Pinch native cleanup and minimal review UI.md` — Mision: Nota/configuracion durable 2026 05 04   Pinch native cleanup and minimal review UI. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Slice 1 Executable Kickoff.md` — Misión: Bitácora de implementación o validación sobre Slice 1 Executable Kickoff; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-06 - Geometry-based wall thickness inference.md` — Mision: Nota/configuracion durable 2026 05 06   Geometry based wall thickness inference. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Slice 1 Infrastructure Import Pipeline.md` — Misión: Bitácora de implementación o validación sobre Slice 1 Infrastructure Import Pipeline; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-06 - Pinch groups persisted for named shrink zones.md` — Mision: Nota/configuracion durable 2026 05 06   Pinch groups persisted for named shrink zones. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-29 - Validation Results and App Control Blockers.md` — Misión: Bitácora de implementación o validación sobre Validation Results and App Control Blockers; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-07 - DXF-like room label rendering.md` — Mision: Nota/configuracion durable 2026 05 07   DXF like room label rendering. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-30 - Loop 1 Curated Walls and Spaces Design.md` — Misión: Bitácora de implementación o validación sobre Loop 1 Curated Walls and Spaces Design; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-07 - Door and window opening candidates extracted into review.md` — Mision: Nota/configuracion durable 2026 05 07   Door and window opening candidates extracted into review. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-30 - Loop 1 Implementation Plan.md` — Misión: Bitácora de implementación o validación sobre Loop 1 Implementation Plan; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-07 - Fixed plan components extracted into review.md` — Mision: Nota/configuracion durable 2026 05 07   Fixed plan components extracted into review. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-30 - Requirement Tension Between Walls-Only and Room Constraints.md` — Misión: Bitácora de implementación o validación sobre Requirement Tension Between Walls Only and Room Constraints; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-07 - Pointe Homes CAD extraction profile.md` — Mision: Nota/configuracion durable 2026 05 07   Pointe Homes CAD extraction profile. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-30 - Status Audit and Documentation Drift.md` — Misión: Bitácora de implementación o validación sobre Status Audit and Documentation Drift; registra progreso, checks y hallazgos concretos del repo. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-07 - Preview layer refactor for CAD-faithful curation.md` — Mision: Nota/configuracion durable 2026 05 07   Preview layer refactor for CAD faithful curation. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/Vault Bootstrap.md` — Misión: Nota base que describe cómo quedó inicializado el vault y cómo se organiza el conocimiento persistente. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-07 - Preview wheel zoom and dotted workspace.md` — Mision: Nota/configuracion durable 2026 05 07   Preview wheel zoom and dotted workspace. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
-- `obsidian-vault/Implementation/2026-04-30 - Mapa completo de arquitectura y archivos del repo.md` — Misión: Nota de implementación que registra la creación del mapa exhaustivo de arquitectura y archivos del repositorio. Importancia: sin este archivo se perdería trazabilidad concreta de qué se hizo, cuándo y con qué evidencia quedó respaldado. Use case: cuando querés auditar progreso real, verificaciones o hallazgos de una fecha puntual.
+- `obsidian-vault/Implementation/2026-05-07 - Preview-selectable openings for false positive removal.md` — Mision: Nota/configuracion durable 2026 05 07   Preview selectable openings for false positive removal. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Implementation/2026-05-07 - Protected detail assemblies for wet-area curation.md` — Mision: Nota/configuracion durable 2026 05 07   Protected detail assemblies for wet area curation. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
+- `obsidian-vault/Implementation/2026-05-07 - Removable opening false positives in review.md` — Mision: Nota/configuracion durable 2026 05 07   Removable opening false positives in review. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Implementation/2026-05-07 - Room label baseline alignment fix.md` — Mision: Nota/configuracion durable 2026 05 07   Room label baseline alignment fix. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Implementation/2026-05-07 - Room label candidates extracted into review.md` — Mision: Nota/configuracion durable 2026 05 07   Room label candidates extracted into review. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Implementation/2026-05-07 - Room label overlay rendered on preview canvas.md` — Mision: Nota/configuracion durable 2026 05 07   Room label overlay rendered on preview canvas. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Implementation/Vault Bootstrap.md` — Mision: Nota/configuracion durable Vault Bootstrap. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+
+
+- `obsidian-vault/Implementation/2026-05-08 - Architecture map refreshed for CAD-faithful curation.md` ? Mision: Nota durable del refresh del mapa completo de arquitectura. Importancia: deja trazable por que el mapa paso a reflejar CAD-faithful curation y pinch-native shrink zones. Use case: recuperar el contexto del inventario arquitectonico actualizado.
+
+- `obsidian-vault/Implementation/2026-05-09 - MVP UX refreshed for CAD-faithful pinch curation.md` ? Mision: Nota durable del refresh de la fuente UX canonica. Importancia: registra el reemplazo del flujo accept-first por CAD-faithful curation con pinch groups/markers. Use case: entender por que `MVP-UX.md` ya no describe curated-wall UX.
+
+- `obsidian-vault/Implementation/2026-05-09 - Tech stack architecture dataflow refreshed for CAD artifacts and pinch fit.md` ? Mision: Nota durable del refresh de la fuente tecnica canonica. Importancia: registra el reemplazo del modelo wall-only por artifact families, published curation y fit con zonas autorizadas. Use case: entender por que `TECH-STACK-ARCHITECTURE-DATAFLOW.md` ya no habla de CuratedWalls ni walls-only.
 
 ## Inbox del vault
 
+Captura rapida de necesidades y tensiones.
+
+- `obsidian-vault/Inbox/2026-05-04 - Curation requirement for shrinkable spans and protected openings.md` — Mision: Nota/configuracion durable 2026 05 04   Curation requirement for shrinkable spans and protected openings. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-04 - MVP pinch tool workflow from line review.md` — Mision: Nota/configuracion durable 2026 05 04   MVP pinch tool workflow from line review. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-04 - Pinch placement UX gotchas in prototype.md` — Mision: Nota/configuracion durable 2026 05 04   Pinch placement UX gotchas in prototype. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-04 - Pinch zones for non-scaling floor plan compression.md` — Mision: Nota/configuracion durable 2026 05 04   Pinch zones for non scaling floor plan compression. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-04 - Proposed MVP simplification axis-tagged pinch zones.md` — Mision: Nota/configuracion durable 2026 05 04   Proposed MVP simplification axis tagged pinch zones. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-04 - Recommended MVP grouped line pinches with optional twin pairing.md` — Mision: Nota/configuracion durable 2026 05 04   Recommended MVP grouped line pinches with optional twin pairing. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-06 - Existing extraction runs do not backfill new wall thickness hints.md` — Mision: Nota/configuracion durable 2026 05 06   Existing extraction runs do not backfill new wall thickness hints. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-06 - Requirement to bring wall assemblies and room names into curation.md` — Mision: Nota/configuracion durable 2026 05 06   Requirement to bring wall assemblies and room names into curation. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-07 - Guided SDD questions for protected detail assemblies.md` — Mision: Nota/configuracion durable 2026 05 07   Guided SDD questions for protected detail assemblies. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-07 - Room labels are persisted but not drawn on preview canvas.md` — Mision: Nota/configuracion durable 2026 05 07   Room labels are persisted but not drawn on preview canvas. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-07 - Room names extraction for review curation.md` — Mision: Nota/configuracion durable 2026 05 07   Room names extraction for review curation. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/2026-05-07 - Wet area enclosure curation gap in Seminole2000.md` — Mision: Nota/configuracion durable 2026 05 07   Wet area enclosure curation gap in Seminole2000. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Inbox/README.md` — Mision: Nota/configuracion durable README. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
 
-Estos archivos forman parte del conocimiento persistente del proyecto dentro del vault de Obsidian.
+## Raiz de Obsidian
+
+Estado actual, home e indices del vault.
+
+- `obsidian-vault/Current State.md` — Mision: Nota/configuracion durable Current State. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
+
+- `obsidian-vault/Home.md` — Mision: Nota/configuracion durable Home. Importancia: conserva contexto entre sesiones. Use case: recuperar decisiones, bugs, experimentos o estado actual.
 
 
+## Automatizacion local operativa
 
-- `obsidian-vault/Inbox/README.md` — Misión: README contenedor del inbox del vault para capturas rápidas. Importancia: sin este archivo el inbox del vault quedaría menos claro para capturas rápidas. Use case: cuando alguien necesita volcar una nota rápida sin romper la organización del vault.
+Scripts de conveniencia para operar la app.
 
-
-
-## Raíz del conocimiento en Obsidian
-
-
-
-Estos archivos forman parte del conocimiento persistente del proyecto dentro del vault de Obsidian.
-
-
-
-- `obsidian-vault/Current State.md` — Misión: Resumen vivo del estado real del repo, verificación, próximos pasos y verdad canónica del proyecto. Importancia: sin este archivo sería mucho más difícil saber cuál es la verdad actual verificada del repo. Use case: cuando necesitás entender rápido dónde estamos de verdad, qué funciona y qué sigue pendiente.
-
-- `obsidian-vault/Home.md` — Misión: Home del vault: punto de entrada humano para navegar decisiones, implementación, bugs y estado actual. Importancia: sin este archivo el vault perdería su punto de entrada humano más claro. Use case: cuando abrís Obsidian y querés saltar a estado, decisiones, bugs o implementación sin perderte.
-
-
-
-## Automatización local operativa
-
-
-
-- `scripts/dev-desktop.bat` — Misión: Atajo local para desarrollo continuo de la app desktop con dotnet watch; hoy no se usa como verificación de coding por la regla never build after changes. Importancia: sin este archivo levantar el desktop en modo watch sería más manual y propenso a errores operativos. Use case: cuando querés iterar la app localmente con dotnet watch sin recordar el comando completo.
-
-
-
-## Activos del skill local
-
-
-
-Estos archivos enseñan al agente cómo explicar y trabajar correctamente dentro de este repositorio.
-
-
-
-- `skills/floorplan-fit-teaching-mode/assets/teaching-response-template.md` — Misión: Template base de la respuesta pedagógica que se usa al explicar cambios en este repo. Importancia: sin este archivo teaching mode perdería una estructura concreta para respuestas profundas y consistentes. Use case: cuando hace falta responder con big picture, archivos tocados, walkthrough y tradeoffs.
-
-
-
-## Referencias del skill local
-
-
-
-Estos archivos enseñan al agente cómo explicar y trabajar correctamente dentro de este repositorio.
-
-
-
-- `skills/floorplan-fit-teaching-mode/references/pressure-scenarios.md` — Misión: Escenarios de presión para verificar que la enseñanza siga siendo rigurosa incluso bajo pedidos ambiguos o apurados. Importancia: sin este archivo teaching mode tendría menos material para probarse contra casos exigentes. Use case: cuando querés tensar o verificar que una explicación siga siendo útil bajo presión o ambigüedad.
-
+- `scripts/dev-desktop.bat` — Mision: Script local dev desktop. Importancia: reduce pasos manuales fragiles. Use case: lanzar o preparar la app local.
 
 
 ## Skill local del repositorio
 
+Reglas de trabajo/ensenanza para este repo.
 
+- `skills/floorplan-fit-teaching-mode/SKILL.md` — Mision: Recurso del skill local SKILL. Importancia: sostiene la metodologia de trabajo del repo. Use case: explicar cambios por loop/capa/tradeoff.
 
-Estos archivos enseñan al agente cómo explicar y trabajar correctamente dentro de este repositorio.
+- `skills/floorplan-fit-teaching-mode/assets/teaching-response-template.md` — Mision: Recurso del skill local teaching response template. Importancia: sostiene la metodologia de trabajo del repo. Use case: explicar cambios por loop/capa/tradeoff.
 
-
-
-- `skills/floorplan-fit-teaching-mode/SKILL.md` — Misión: Skill local del repo que obliga a explicar cambios anclados a loops de producto y capas de arquitectura. Importancia: sin este archivo se perdería la regla explícita de enseñar cambios por loop, capa y tradeoff. Use case: cuando el agente tiene que explicar trabajo en Floorplan Fit sin caer en respuestas superficiales.
-
+- `skills/floorplan-fit-teaching-mode/references/pressure-scenarios.md` — Mision: Recurso del skill local pressure scenarios. Importancia: sostiene la metodologia de trabajo del repo. Use case: explicar cambios por loop/capa/tradeoff.
 
 
 ## Puertos y contratos internos de Application
 
+Boundary de casos de uso: modelos detectados y puertos, sin SQLite/Avalonia/IxMilia.
 
+- `src/FloorplanFit.Application/Abstractions/DetectedFixedPlanComponent.cs` — Mision: Modelo/puerto de Application para Detected Fixed Plan Component. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-Acá vive la **orquestación de casos de uso**. No debería haber detalles concretos de SQLite, Avalonia o IxMilia.
+- `src/FloorplanFit.Application/Abstractions/DetectedFloorPlanDocument.cs` — Mision: Modelo/puerto de Application para Detected Floor Plan Document. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
+- `src/FloorplanFit.Application/Abstractions/DetectedOpeningCandidate.cs` — Mision: Modelo/puerto de Application para Detected Opening Candidate. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
+- `src/FloorplanFit.Application/Abstractions/DetectedOpeningExtraction.cs` — Mision: Modelo/puerto de Application para Detected Opening Extraction. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/DetectedFloorPlanDocument.cs` — Misión: DTO técnico que representa el resultado de leer un DXF de floor plan: versión DXF, unidad, factor a milímetros y fingerprint geométrico. Importancia: sin este archivo Application perdería una forma explícita de representar datos intermedios sin depender de infraestructura. Use case: cuando el runtime necesita leer un DXF real o extraerle información útil.
+- `src/FloorplanFit.Application/Abstractions/DetectedOpeningLabel.cs` — Mision: Modelo/puerto de Application para Detected Opening Label. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/DetectedWallCandidate.cs` — Misión: DTO técnico de salida del extractor de walls antes de convertirlo en entidad de dominio persistible. Importancia: sin este archivo Application perdería una forma explícita de representar datos intermedios sin depender de infraestructura. Use case: cuando una capa necesita transportar datos claros hacia la UI o entre boundaries sin exponer entidades internas.
+- `src/FloorplanFit.Application/Abstractions/DetectedProtectedDetailAssembly.cs` — Mision: Modelo/puerto de Application para Detected Protected Detail Assembly. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/FloorPlanExtractionSource.cs` — Misión: Describe desde qué versión y qué archivo gestionado hay que correr la extracción de walls. Importancia: sin este archivo Application perdería una forma explícita de representar datos intermedios sin depender de infraestructura. Use case: cuando esa parte del sistema entra en juego.
+- `src/FloorplanFit.Application/Abstractions/DetectedRoomLabel.cs` — Mision: Modelo/puerto de Application para Detected Room Label. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/GeometryPoint.cs` — Misión: Valor simple 2D usado por extractores para describir geometría sin acoplarse a Infrastructure. Importancia: sin este archivo Application perdería una forma explícita de representar datos intermedios sin depender de infraestructura. Use case: cuando esa parte del sistema entra en juego.
+- `src/FloorplanFit.Application/Abstractions/DetectedWallCandidate.cs` — Mision: Modelo/puerto de Application para Detected Wall Candidate. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IClock.cs` — Misión: Puerto para abstraer el tiempo actual y volver testeables las operaciones temporales. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando esa parte del sistema entra en juego.
+- `src/FloorplanFit.Application/Abstractions/FloorPlanExtractionSource.cs` — Mision: Modelo/puerto de Application para Floor Plan Extraction Source. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/ICuratedWallRepository.cs` — Misión: Puerto de escritura/lectura para curated walls. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Application/Abstractions/GeometryPoint.cs` — Mision: Modelo/puerto de Application para Geometry Point. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IDxfGateway.cs` — Misión: Puerto para leer DXF de floor plans sin acoplar Application a IxMilia. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando el runtime necesita leer un DXF real o extraerle información útil.
+- `src/FloorplanFit.Application/Abstractions/IClock.cs` — Mision: Modelo/puerto de Application para IClock. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IExtractedWallCandidateRepository.cs` — Misión: Puerto para persistir y consultar wall candidates extraídos. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando el pipeline necesita convertir geometría DXF en wall candidates revisables.
+- `src/FloorplanFit.Application/Abstractions/IDxfGateway.cs` — Mision: Modelo/puerto de Application para IDxf Gateway. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IFileHashService.cs` — Misión: Puerto para calcular hashes de archivos importados. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando el pipeline necesita mover, ubicar o identificar técnicamente archivos del workspace.
+- `src/FloorplanFit.Application/Abstractions/IExtractedFixedPlanComponentRepository.cs` — Mision: Modelo/puerto de Application para IExtracted Fixed Plan Component Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IFloorPlanCurationRepository.cs` — Misión: Puerto para manejar draft/published de curaciones de floor plans. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando abrir Review exige crear o retomar un draft antes de seguir.
+- `src/FloorplanFit.Application/Abstractions/IExtractedOpeningCandidateRepository.cs` — Mision: Modelo/puerto de Application para IExtracted Opening Candidate Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IFloorPlanExtractionSourceReader.cs` — Misión: Puerto de lectura optimizado para resolver la versión actual y el path DXF gestionado usado por la extracción. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Application/Abstractions/IExtractedOpeningLabelRepository.cs` — Mision: Modelo/puerto de Application para IExtracted Opening Label Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IFloorPlanLibraryReader.cs` — Misión: Puerto de lectura optimizado para hidratar la Library desde persistencia. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando la pantalla principal necesita cargar, refrescar o derivar el estado visible de la Library.
+- `src/FloorplanFit.Application/Abstractions/IExtractedProtectedDetailAssemblyRepository.cs` — Mision: Modelo/puerto de Application para IExtracted Protected Detail Assembly Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IFloorPlanReviewSessionReader.cs` — Misión: Puerto de lectura optimizado para construir una sesión de review completa desde SQLite. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando la Review necesita abrir, leer, mostrar o validar su estado actual.
+- `src/FloorplanFit.Application/Abstractions/IExtractedRoomLabelRepository.cs` — Mision: Modelo/puerto de Application para IExtracted Room Label Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IFloorPlanTemplateRepository.cs` — Misión: Puerto para crear, actualizar y consultar floor plan templates. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Application/Abstractions/IExtractedWallCandidateRepository.cs` — Mision: Modelo/puerto de Application para IExtracted Wall Candidate Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IFloorPlanVersionRepository.cs` — Misión: Puerto para persistir versiones de floor plans y calcular el próximo número de versión. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Application/Abstractions/IFileHashService.cs` — Mision: Modelo/puerto de Application para IFile Hash Service. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IImportedDocumentRepository.cs` — Misión: Puerto para persistir los documentos DXF importados. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Application/Abstractions/IFixedPlanComponentExtractor.cs` — Mision: Modelo/puerto de Application para IFixed Plan Component Extractor. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IManagedFileStorage.cs` — Misión: Puerto para copiar archivos importados al workspace gestionado de la app. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando el pipeline necesita mover, ubicar o identificar técnicamente archivos del workspace.
+- `src/FloorplanFit.Application/Abstractions/IFloorPlanCurationRepository.cs` — Mision: Modelo/puerto de Application para IFloor Plan Curation Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IMeasurementContextRepository.cs` — Misión: Puerto para persistir el contexto de unidades/tolerancias de cada import. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando el sistema detecta unidades del DXF y necesita normalizar medidas y tolerancias.
+- `src/FloorplanFit.Application/Abstractions/IFloorPlanExtractionSourceReader.cs` — Mision: Modelo/puerto de Application para IFloor Plan Extraction Source Reader. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IUnitOfWork.cs` — Misión: Puerto transaccional para confirmar cambios coordinados entre varios repositorios. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando el sistema detecta unidades del DXF y necesita normalizar medidas y tolerancias.
+- `src/FloorplanFit.Application/Abstractions/IFloorPlanLibraryReader.cs` — Mision: Modelo/puerto de Application para IFloor Plan Library Reader. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IWallExtractionRunRepository.cs` — Misión: Puerto para persistir cada corrida automática de extracción. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Application/Abstractions/IFloorPlanReviewSessionReader.cs` — Mision: Modelo/puerto de Application para IFloor Plan Review Session Reader. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/Abstractions/IWallExtractor.cs` — Misión: Puerto del extractor real de walls a partir de un DXF gestionado. Importancia: sin este archivo Application quedaría más acoplada a implementaciones concretas y perdería claridad de boundary. Use case: cuando el runtime necesita leer un DXF real o extraerle información útil.
+- `src/FloorplanFit.Application/Abstractions/IFloorPlanTemplateRepository.cs` — Mision: Modelo/puerto de Application para IFloor Plan Template Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
+- `src/FloorplanFit.Application/Abstractions/IFloorPlanVersionRepository.cs` — Mision: Modelo/puerto de Application para IFloor Plan Version Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
+- `src/FloorplanFit.Application/Abstractions/IImportedDocumentRepository.cs` — Mision: Modelo/puerto de Application para IImported Document Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-## Casos de uso del curado Loop 1
+- `src/FloorplanFit.Application/Abstractions/IManagedFileStorage.cs` — Mision: Modelo/puerto de Application para IManaged File Storage. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
+- `src/FloorplanFit.Application/Abstractions/IMeasurementContextRepository.cs` — Mision: Modelo/puerto de Application para IMeasurement Context Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
+- `src/FloorplanFit.Application/Abstractions/IOpeningExtractor.cs` — Mision: Modelo/puerto de Application para IOpening Extractor. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-Acá vive la **orquestación de casos de uso**. No debería haber detalles concretos de SQLite, Avalonia o IxMilia.
+- `src/FloorplanFit.Application/Abstractions/IPinchGroupRepository.cs` — Mision: Modelo/puerto de Application para IPinch Group Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
+- `src/FloorplanFit.Application/Abstractions/IPinchMarkerRepository.cs` — Mision: Modelo/puerto de Application para IPinch Marker Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
+- `src/FloorplanFit.Application/Abstractions/IProtectedDetailAssemblyExtractor.cs` — Mision: Modelo/puerto de Application para IProtected Detail Assembly Extractor. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/FloorPlans/Curation/AcceptWallCandidateHandler.cs` — Misión: Caso de uso que acepta un candidate pendiente y lo convierte en CuratedWall inicial dentro de un draft. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando abrir Review exige crear o retomar un draft antes de seguir.
+- `src/FloorplanFit.Application/Abstractions/IRoomLabelExtractor.cs` — Mision: Modelo/puerto de Application para IRoom Label Extractor. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/FloorPlans/Curation/PublishFloorPlanCurationHandler.cs` — Misión: Caso de uso que valida y publica una curación draft, activándola en el template. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando el usuario publica una curación y deja una versión activa reutilizable.
+- `src/FloorplanFit.Application/Abstractions/IUnitOfWork.cs` — Mision: Modelo/puerto de Application para IUnit Of Work. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/FloorPlans/Curation/RejectWallCandidateHandler.cs` — Misión: Caso de uso que rechaza un candidate y elimina la CuratedWall derivada en el draft actual. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando abrir Review exige crear o retomar un draft antes de seguir.
+- `src/FloorplanFit.Application/Abstractions/IWallExtractionRunRepository.cs` — Mision: Modelo/puerto de Application para IWall Extraction Run Repository. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/FloorPlans/Curation/StartOrResumeCurationHandler.cs` — Misión: Caso de uso que crea o retoma el draft de curación de una versión de floor plan. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando abrir Review exige crear o retomar un draft antes de seguir.
+- `src/FloorplanFit.Application/Abstractions/IWallExtractor.cs` — Mision: Modelo/puerto de Application para IWall Extractor. Importancia: mantiene casos de uso desacoplados de Infrastructure/Desktop. Use case: transportar o persistir artefactos detectados sin filtrar detalles concretos.
 
-- `src/FloorplanFit.Application/FloorPlans/Curation/UpdateCuratedWallMetadataHandler.cs` — Misión: Caso de uso que actualiza la metadata semántica de una wall ya curada. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando el usuario cambia role, mobility, protection u otra metadata desde el inspector de review.
 
+## Casos de uso de curado Loop 1
 
+Acciones humanas persistidas: pinches, rechazo, remocion de falsos positivos y publish.
 
-## Casos de uso de extracción automática
+- `src/FloorplanFit.Application/FloorPlans/Curation/AddPinchGroupHandler.cs` — Mision: Caso de uso o helper de Application para Add Pinch Group Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
+- `src/FloorplanFit.Application/FloorPlans/Curation/AddPinchMarkerHandler.cs` — Mision: Caso de uso o helper de Application para Add Pinch Marker Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
+- `src/FloorplanFit.Application/FloorPlans/Curation/PublishFloorPlanCurationHandler.cs` — Mision: Caso de uso o helper de Application para Publish Floor Plan Curation Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
-Acá vive la **orquestación de casos de uso**. No debería haber detalles concretos de SQLite, Avalonia o IxMilia.
+- `src/FloorplanFit.Application/FloorPlans/Curation/RejectWallCandidateHandler.cs` — Mision: Caso de uso o helper de Application para Reject Wall Candidate Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
+- `src/FloorplanFit.Application/FloorPlans/Curation/RemoveFixedPlanComponentHandler.cs` — Mision: Caso de uso o helper de Application para Remove Fixed Plan Component Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
+- `src/FloorplanFit.Application/FloorPlans/Curation/RemoveOpeningCandidateHandler.cs` — Mision: Caso de uso o helper de Application para Remove Opening Candidate Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
-- `src/FloorplanFit.Application/FloorPlans/Extraction/ExtractWallCandidatesHandler.cs` — Misión: Caso de uso que corre el extractor, crea la corrida de extracción y persiste wall candidates + geometría. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando el pipeline necesita convertir geometría DXF en wall candidates revisables.
+- `src/FloorplanFit.Application/FloorPlans/Curation/RemoveOpeningLabelHandler.cs` — Mision: Caso de uso o helper de Application para Remove Opening Label Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
+- `src/FloorplanFit.Application/FloorPlans/Curation/RemovePinchMarkerHandler.cs` — Mision: Caso de uso o helper de Application para Remove Pinch Marker Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
+- `src/FloorplanFit.Application/FloorPlans/Curation/RemoveProtectedDetailAssemblyHandler.cs` — Mision: Caso de uso o helper de Application para Remove Protected Detail Assembly Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
-## Casos de uso de importación
+- `src/FloorplanFit.Application/FloorPlans/Curation/StartOrResumeCurationHandler.cs` — Mision: Caso de uso o helper de Application para Start Or Resume Curation Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
 
+## Casos de uso de extraccion automatica
 
-Acá vive la **orquestación de casos de uso**. No debería haber detalles concretos de SQLite, Avalonia o IxMilia.
+Orquestacion de DXF -> extraction run -> artefactos persistidos.
 
+- `src/FloorplanFit.Application/FloorPlans/Extraction/ExtractWallCandidatesHandler.cs` — Mision: Orquesta la extraction run completa: walls, rooms, openings, fixed components y protected details. Importancia: es pieza estructural de la arquitectura actual. Use case: mantener Loop 1 curable y auditable.
 
 
-- `src/FloorplanFit.Application/FloorPlans/Import/FloorPlanCodeNormalizer.cs` — Misión: Normaliza nombres de archivos en códigos estables de templates para evitar duplicados semánticos. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando el usuario elige un DXF y la app lo incorpora a la Library con su metadata y versión.
+## Casos de uso de importacion
 
-- `src/FloorplanFit.Application/FloorPlans/Import/ImportFloorPlanHandler.cs` — Misión: Caso de uso de importación: copia DXF, lo lee, crea template/version/document/measurement context y persiste todo. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando el usuario elige un DXF y la app lo incorpora a la Library con su metadata y versión.
+Entrada de DXF a Library local.
 
-- `src/FloorplanFit.Application/FloorPlans/Import/ImportFloorPlanResultFactory.cs` — Misión: Fábrica que traduce el resultado de importación a DTOs de Contracts para la UI. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando el usuario elige un DXF y la app lo incorpora a la Library con su metadata y versión.
+- `src/FloorplanFit.Application/FloorPlans/Import/FloorPlanCodeNormalizer.cs` — Mision: Caso de uso o helper de Application para Floor Plan Code Normalizer. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
+- `src/FloorplanFit.Application/FloorPlans/Import/ImportFloorPlanHandler.cs` — Mision: Caso de uso o helper de Application para Import Floor Plan Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
+- `src/FloorplanFit.Application/FloorPlans/Import/ImportFloorPlanResultFactory.cs` — Mision: Caso de uso o helper de Application para Import Floor Plan Result Factory. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
-## Casos de uso de lectura de Library
 
+## Casos de uso de Library
 
+Lecturas para la pantalla principal.
 
-Acá vive la **orquestación de casos de uso**. No debería haber detalles concretos de SQLite, Avalonia o IxMilia.
-
-
-
-- `src/FloorplanFit.Application/FloorPlans/Library/GetFloorPlanLibraryHandler.cs` — Misión: Caso de uso de lectura que devuelve la Library de floor plans desde el read-model. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando la pantalla principal necesita cargar, refrescar o derivar el estado visible de la Library.
-
+- `src/FloorplanFit.Application/FloorPlans/Library/GetFloorPlanLibraryHandler.cs` — Mision: Caso de uso o helper de Application para Get Floor Plan Library Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
 
 ## Casos de uso de review
 
+Apertura e hidratacion de la sesion de curado.
 
+- `src/FloorplanFit.Application/FloorPlans/Review/GetFloorPlanReviewSessionHandler.cs` — Mision: Caso de uso o helper de Application para Get Floor Plan Review Session Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
-Acá vive la **orquestación de casos de uso**. No debería haber detalles concretos de SQLite, Avalonia o IxMilia.
-
-
-
-- `src/FloorplanFit.Application/FloorPlans/Review/GetFloorPlanReviewSessionHandler.cs` — Misión: Caso de uso de lectura que devuelve la review session ya hidratada para un template. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando la app necesita mostrar la sesión completa de review con summary, candidates y curated walls.
-
-- `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs` — Misión: Caso de uso que asegura draft activo y luego abre la sesión de review completa. Importancia: sin este archivo este caso de uso quedaría mezclado en otra capa. Use case: cuando el usuario abre Review por primera vez o reabre una sesión existente y la app tiene que hidratar draft, candidates y geometry.
-
+- `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs` — Mision: Caso de uso o helper de Application para Open Floor Plan Review Session Handler. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
 
 ## Proyecto Application
 
+Proyecto .NET de puertos y casos de uso.
 
-
-Acá vive la **orquestación de casos de uso**. No debería haber detalles concretos de SQLite, Avalonia o IxMilia.
-
-
-
-- `src/FloorplanFit.Application/FloorplanFit.Application.csproj` — Misión: Proyecto de Application: define el ensamblado que contiene puertos y casos de uso. Importancia: sin este archivo no se podría compilar, restaurar ni referenciar correctamente este proyecto dentro de la solución. Use case: cuando la solución necesita restaurar dependencias, compilar este proyecto o usarlo como referencia desde otra capa.
-
+- `src/FloorplanFit.Application/FloorplanFit.Application.csproj` — Mision: Caso de uso o helper de Application para Floorplan Fit.Application. Importancia: concentra orquestacion de producto fuera de UI y SQLite. Use case: ejecutar acciones de Loop 1 desde Desktop/tests.
 
 
 ## DTOs de Contracts
 
+Datos planos entre Application/Infrastructure/Desktop.
 
+- `src/FloorplanFit.Contracts/FloorPlans/FixedPlanComponentDto.cs` — Mision: DTO/contrato de Fixed Plan Component Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
-- `src/FloorplanFit.Contracts/FloorPlans/CuratedWallDto.cs` — Misión: DTO plano que la UI usa para mostrar y editar walls curadas sin tocar entidades de dominio. Importancia: sin este archivo el intercambio entre capas sería más frágil o demasiado acoplado a entidades internas. Use case: cuando una capa necesita transportar datos claros hacia la UI o entre boundaries sin exponer entidades internas.
+- `src/FloorplanFit.Contracts/FloorPlans/FloorPlanLibraryItemDto.cs` — Mision: DTO/contrato de Floor Plan Library Item Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
-- `src/FloorplanFit.Contracts/FloorPlans/FloorPlanLibraryItemDto.cs` — Misión: DTO de cada fila de la Library con estado derivado, versión activa y unidad fuente. Importancia: sin este archivo el intercambio entre capas sería más frágil o demasiado acoplado a entidades internas. Use case: cuando la pantalla principal necesita cargar, refrescar o derivar el estado visible de la Library.
+- `src/FloorplanFit.Contracts/FloorPlans/FloorPlanReviewSessionDto.cs` — Mision: DTO/contrato de Floor Plan Review Session Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
-- `src/FloorplanFit.Contracts/FloorPlans/FloorPlanReviewSessionDto.cs` — Misión: DTO agregado que empaqueta resumen del template, geometría, candidates y curated walls para la review UI. Importancia: sin este archivo el intercambio entre capas sería más frágil o demasiado acoplado a entidades internas. Use case: cuando la Review necesita abrir, leer, mostrar o validar su estado actual.
+- `src/FloorplanFit.Contracts/FloorPlans/GeometryPathDto.cs` — Mision: DTO/contrato de Geometry Path Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
-- `src/FloorplanFit.Contracts/FloorPlans/GeometryPathDto.cs` — Misión: DTO de una trayectoria geométrica compuesta por segmentos ordenados. Importancia: sin este archivo el intercambio entre capas sería más frágil o demasiado acoplado a entidades internas. Use case: cuando una capa necesita transportar datos claros hacia la UI o entre boundaries sin exponer entidades internas.
+- `src/FloorplanFit.Contracts/FloorPlans/GeometrySegmentDto.cs` — Mision: DTO/contrato de Geometry Segment Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
-- `src/FloorplanFit.Contracts/FloorPlans/GeometrySegmentDto.cs` — Misión: DTO de un segmento lineal individual dentro de un geometry path. Importancia: sin este archivo el intercambio entre capas sería más frágil o demasiado acoplado a entidades internas. Use case: cuando una capa necesita transportar datos claros hacia la UI o entre boundaries sin exponer entidades internas.
+- `src/FloorplanFit.Contracts/FloorPlans/ImportFloorPlanRequest.cs` — Mision: DTO/contrato de Import Floor Plan Request. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
-- `src/FloorplanFit.Contracts/FloorPlans/ImportFloorPlanRequest.cs` — Misión: Contrato de entrada para solicitar importación de un DXF. Importancia: sin este archivo el intercambio entre capas sería más frágil o demasiado acoplado a entidades internas. Use case: cuando el usuario elige un DXF y la app lo incorpora a la Library con su metadata y versión.
+- `src/FloorplanFit.Contracts/FloorPlans/ImportFloorPlanResponse.cs` — Mision: DTO/contrato de Import Floor Plan Response. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
-- `src/FloorplanFit.Contracts/FloorPlans/ImportFloorPlanResponse.cs` — Misión: Contrato de salida de la importación para refrescar la UI. Importancia: sin este archivo el intercambio entre capas sería más frágil o demasiado acoplado a entidades internas. Use case: cuando el usuario elige un DXF y la app lo incorpora a la Library con su metadata y versión.
+- `src/FloorplanFit.Contracts/FloorPlans/OpenFloorPlanReviewSessionResponse.cs` — Mision: DTO/contrato de Open Floor Plan Review Session Response. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
-- `src/FloorplanFit.Contracts/FloorPlans/OpenFloorPlanReviewSessionResponse.cs` — Misión: Contrato de salida que devuelve draft activo + review session al abrir review. Importancia: sin este archivo el intercambio entre capas sería más frágil o demasiado acoplado a entidades internas. Use case: cuando el usuario abre Review por primera vez o reabre una sesión existente y la app tiene que hidratar draft, candidates y geometry.
+- `src/FloorplanFit.Contracts/FloorPlans/OpeningCandidateDto.cs` — Mision: DTO/contrato de Opening Candidate Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
-- `src/FloorplanFit.Contracts/FloorPlans/WallCandidateDto.cs` — Misión: DTO de cada wall candidate extraída con estado, confianza y referencia geométrica. Importancia: sin este archivo el intercambio entre capas sería más frágil o demasiado acoplado a entidades internas. Use case: cuando el pipeline necesita convertir geometría DXF en wall candidates revisables.
+- `src/FloorplanFit.Contracts/FloorPlans/OpeningLabelDto.cs` — Mision: DTO/contrato de Opening Label Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
+- `src/FloorplanFit.Contracts/FloorPlans/PinchGroupDto.cs` — Mision: DTO/contrato de Pinch Group Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
+
+- `src/FloorplanFit.Contracts/FloorPlans/PinchMarkerDto.cs` — Mision: DTO/contrato de Pinch Marker Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
+
+- `src/FloorplanFit.Contracts/FloorPlans/ProtectedDetailAssemblyDto.cs` — Mision: DTO/contrato de Protected Detail Assembly Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
+
+- `src/FloorplanFit.Contracts/FloorPlans/RoomLabelDto.cs` — Mision: DTO/contrato de Room Label Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
+
+- `src/FloorplanFit.Contracts/FloorPlans/WallCandidateDto.cs` — Mision: DTO/contrato de Wall Candidate Dto. Importancia: cruza boundaries con datos planos. Use case: renderizar, seleccionar o actualizar estado en Review/Library.
 
 
 ## Proyecto Contracts
 
+Proyecto .NET de contratos compartidos.
+
+- `src/FloorplanFit.Contracts/FloorplanFit.Contracts.csproj` — Mision: Archivo de gobierno/proyecto Floorplan Fit.Contracts. Importancia: mantiene la solucion operable. Use case: configurar, abrir o entender el repo.
 
 
-- `src/FloorplanFit.Contracts/FloorplanFit.Contracts.csproj` — Misión: Proyecto de Contracts: define los DTOs que desacoplan UI/read-models de las entidades de dominio. Importancia: sin este archivo no se podría compilar, restaurar ni referenciar correctamente este proyecto dentro de la solución. Use case: cuando la solución necesita restaurar dependencias, compilar este proyecto o usarlo como referencia desde otra capa.
+## Composicion DI del desktop
 
+Wiring de handlers, repos, extractores y viewmodels.
 
-
-## Composición DI del desktop
-
-
-
-Acá vive la **experiencia de usuario desktop** sobre Avalonia + MVVM.
-
-
-
-- `src/FloorplanFit.Desktop/Composition/DesktopServiceRegistration.cs` — Misión: Punto de composición DI del slice desktop: registra infrastructure, handlers, readers y viewmodels necesarios. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
-
+- `src/FloorplanFit.Desktop/Composition/DesktopServiceRegistration.cs` — Mision: Pieza Desktop/Avalonia para Desktop Service Registration. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
 
 ## Controles visuales custom
 
+Base del canvas/geometry de Review.
+
+- `src/FloorplanFit.Desktop/Controls/FloorPlanPreviewControl.cs` — Mision: Shell interactivo del preview: zoom, pan, seleccion, hit-test y delegacion a renderers. Importancia: es pieza estructural de la arquitectura actual. Use case: mantener Loop 1 curable y auditable.
+
+- `src/FloorplanFit.Desktop/Controls/FloorPlanPreviewGeometry.cs` — Mision: Pieza Desktop/Avalonia para Floor Plan Preview Geometry. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
 
-Acá vive la **experiencia de usuario desktop** sobre Avalonia + MVVM.
+## Renderers modulares del preview CAD-faithful
 
+Capas chicas de dibujo/hit-test; evitan un mega-renderer.
 
+- `src/FloorplanFit.Desktop/Controls/Preview/CadTextPreviewLayerRenderer.cs` — Mision: Pieza Desktop/Avalonia para Cad Text Preview Layer Renderer. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
-- `src/FloorplanFit.Desktop/Controls/FloorPlanPreviewControl.cs` — Misión: Canvas mínimo custom que dibuja geometry paths y resalta la selección actual en review. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando la Review necesita abrir, leer, mostrar o validar su estado actual.
+- `src/FloorplanFit.Desktop/Controls/Preview/CompressionHandlePreviewLayerRenderer.cs` — Mision: Pieza Desktop/Avalonia para Compression Handle Preview Layer Renderer. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
-- `src/FloorplanFit.Desktop/Controls/FloorPlanPreviewGeometry.cs` — Misión: Helper de geometría del preview que centraliza viewport, proyección y estilo visual del highlight. Importancia: sin este archivo la lógica visual del canvas quedaría más acoplada, más difícil de testear y más frágil ante cambios de render. Use case: cuando la Review necesita recentrar el plano o resaltar en tiempo real la línea o path seleccionado.
+- `src/FloorplanFit.Desktop/Controls/Preview/FixedPlanComponentPreviewLayerRenderer.cs` — Mision: Pieza Desktop/Avalonia para Fixed Plan Component Preview Layer Renderer. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
+- `src/FloorplanFit.Desktop/Controls/Preview/OpeningPreviewLayerRenderer.cs` — Mision: Pieza Desktop/Avalonia para Opening Preview Layer Renderer. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
+
+- `src/FloorplanFit.Desktop/Controls/Preview/PinchMarkerPreviewLayerRenderer.cs` — Mision: Pieza Desktop/Avalonia para Pinch Marker Preview Layer Renderer. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
+
+- `src/FloorplanFit.Desktop/Controls/Preview/PreviewArtifactGeometryIndex.cs` — Mision: Indice de hit-test con prioridad entre protected details, fixed components, openings y walls. Importancia: es pieza estructural de la arquitectura actual. Use case: mantener Loop 1 curable y auditable.
+
+- `src/FloorplanFit.Desktop/Controls/Preview/PreviewWorkspaceRenderer.cs` — Mision: Pieza Desktop/Avalonia para Preview Workspace Renderer. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
+
+- `src/FloorplanFit.Desktop/Controls/Preview/ProtectedDetailPreviewLayerRenderer.cs` — Mision: Pieza Desktop/Avalonia para Protected Detail Preview Layer Renderer. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
 
 ## ViewModels MVVM
 
+Estado y comandos de UI.
 
+- `src/FloorplanFit.Desktop/ViewModels/FloorPlanReviewViewModel.cs` — Mision: Pieza Desktop/Avalonia para Floor Plan Review View Model. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
-Acá vive la **experiencia de usuario desktop** sobre Avalonia + MVVM.
-
-
-
-- `src/FloorplanFit.Desktop/ViewModels/FloorPlanReviewViewModel.cs` — Misión: ViewModel del flujo de review: abre sesión, maneja selección, accept/reject, edición de metadata y publish. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando la Review necesita abrir, leer, mostrar o validar su estado actual.
-
-- `src/FloorplanFit.Desktop/ViewModels/LibraryViewModel.cs` — Misión: ViewModel de la Library: carga items, importa DXF, dispara extracción y abre la review session. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando la app necesita mostrar la sesión completa de review con summary, candidates y curated walls.
-
+- `src/FloorplanFit.Desktop/ViewModels/LibraryViewModel.cs` — Mision: Pieza Desktop/Avalonia para Library View Model. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
 
 ## Proyecto Avalonia desktop
 
+Vistas, entry point, code-behind minimo y metadata.
 
+- `src/FloorplanFit.Desktop/App.axaml` — Mision: Pieza Desktop/Avalonia para App. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
-Acá vive la **experiencia de usuario desktop** sobre Avalonia + MVVM.
+- `src/FloorplanFit.Desktop/App.axaml.cs` — Mision: Pieza Desktop/Avalonia para App.axaml. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
+- `src/FloorplanFit.Desktop/FloorplanFit.Desktop.csproj` — Mision: Pieza Desktop/Avalonia para Floorplan Fit.Desktop. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
+- `src/FloorplanFit.Desktop/MainWindow.axaml` — Mision: Pieza Desktop/Avalonia para Main Window. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
-- `src/FloorplanFit.Desktop/App.axaml` — Misión: Define recursos y arranque visual global de la app Avalonia. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando el usuario interactúa con la UI desktop y espera ver o disparar acciones de Loop 1.
+- `src/FloorplanFit.Desktop/MainWindow.axaml.cs` — Mision: Pieza Desktop/Avalonia para Main Window.axaml. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
-- `src/FloorplanFit.Desktop/App.axaml.cs` — Misión: Bootstrap code-behind del Application de Avalonia. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando el usuario interactúa con la UI desktop y espera ver o disparar acciones de Loop 1.
+- `src/FloorplanFit.Desktop/Program.cs` — Mision: Pieza Desktop/Avalonia para Program. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
-- `src/FloorplanFit.Desktop/FloorplanFit.Desktop.csproj` — Misión: Proyecto de la app Avalonia desktop: composición, vistas, viewmodels y arranque. Importancia: sin este archivo no se podría compilar, restaurar ni referenciar correctamente este proyecto dentro de la solución. Use case: cuando la solución necesita restaurar dependencias, compilar este proyecto o usarlo como referencia desde otra capa.
+- `src/FloorplanFit.Desktop/Properties/AssemblyInfo.cs` — Mision: Pieza Desktop/Avalonia para Assembly Info. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
-- `src/FloorplanFit.Desktop/Properties/AssemblyInfo.cs` — Misión: Metadatos de ensamblado del proyecto Desktop, incluyendo la exposición controlada de internos hacia los tests. Importancia: sin este archivo ciertos tests de helpers internos obligarían a volver pública lógica que debería seguir encapsulada o directamente no podrían compilar. Use case: cuando querés testear piezas internas del preview desktop sin romper el diseño de la API productiva.
+- `src/FloorplanFit.Desktop/ReviewFloorPlanWindow.axaml` — Mision: Pieza Desktop/Avalonia para Review Floor Plan Window. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
-- `src/FloorplanFit.Desktop/MainWindow.axaml` — Misión: Pantalla principal Library: listado de floor plans y acciones de import/extract/review. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando la pantalla principal necesita cargar, refrescar o derivar el estado visible de la Library.
-
-- `src/FloorplanFit.Desktop/MainWindow.axaml.cs` — Misión: Code-behind mínimo que conecta clicks de la Library con el LibraryViewModel y abre la review window. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando la pantalla principal necesita cargar, refrescar o derivar el estado visible de la Library.
-
-- `src/FloorplanFit.Desktop/Program.cs` — Misión: Entry point real de la app desktop; construye y lanza Avalonia. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando el usuario abre la aplicación y navega el flujo principal de Loop 1.
-
-- `src/FloorplanFit.Desktop/ReviewFloorPlanWindow.axaml` — Misión: Pantalla de review mínima con lista de candidates, preview geométrico e inspector de curated walls. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando la Review necesita abrir, leer, mostrar o validar su estado actual.
-
-- `src/FloorplanFit.Desktop/ReviewFloorPlanWindow.axaml.cs` — Misión: Code-behind mínimo que delega acciones de review al FloorPlanReviewViewModel. Importancia: sin este archivo la experiencia desktop perdería una pieza concreta de arranque, wiring, visualización o interacción. Use case: cuando la Review necesita abrir, leer, mostrar o validar su estado actual.
-
+- `src/FloorplanFit.Desktop/ReviewFloorPlanWindow.axaml.cs` — Mision: Pieza Desktop/Avalonia para Review Floor Plan Window.axaml. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
 
 ## Entidades de documentos
 
+Dominio de documentos importados.
 
+- `src/FloorplanFit.Domain/Documents/ImportedDocument.cs` — Mision: Entidad/valor de dominio para Imported Document. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
 
-Acá vive la **verdad del negocio**. Son entidades, enums y reglas que deberían sobrevivir aunque cambie la infraestructura.
-
-
-
-- `src/FloorplanFit.Domain/Documents/ImportedDocument.cs` — Misión: Entidad de dominio del documento DXF importado y almacenado por la app. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando el runtime necesita leer un DXF real o extraerle información útil.
-
-- `src/FloorplanFit.Domain/Documents/ImportedDocumentType.cs` — Misión: Enum del tipo de documento importado. Importancia: sin este archivo faltaría vocabulario cerrado para expresar reglas de negocio sin ambigüedad. Use case: cuando un DXF entra al sistema y hay que tratarlo como documento de negocio versionable.
-
+- `src/FloorplanFit.Domain/Documents/ImportedDocumentType.cs` — Mision: Entidad/valor de dominio para Imported Document Type. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
 
 
 ## Entidades y enums de floor plans
 
+Verdad de negocio de templates, curations, extraction runs y artefactos curables.
+
+- `src/FloorplanFit.Domain/FloorPlans/ConstraintIntentNote.cs` — Mision: Entidad/valor de dominio para Constraint Intent Note. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/ConstraintKind.cs` — Mision: Entidad/valor de dominio para Constraint Kind. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/ConstraintStrength.cs` — Mision: Entidad/valor de dominio para Constraint Strength. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/CuratedSpace.cs` — Mision: Entidad/valor de dominio para Curated Space. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/CuratedWallGroup.cs` — Mision: Entidad/valor de dominio para Curated Wall Group. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/CuratedWallJoin.cs` — Mision: Entidad/valor de dominio para Curated Wall Join. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/ExtractedFixedPlanComponent.cs` — Mision: Entidad/valor de dominio para Extracted Fixed Plan Component. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/ExtractedOpeningCandidate.cs` — Mision: Entidad/valor de dominio para Extracted Opening Candidate. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/ExtractedOpeningLabel.cs` — Mision: Entidad/valor de dominio para Extracted Opening Label. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/ExtractedProtectedDetailAssembly.cs` — Mision: Entidad/valor de dominio para Extracted Protected Detail Assembly. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/ExtractedRoomLabel.cs` — Mision: Entidad/valor de dominio para Extracted Room Label. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/ExtractedWallCandidate.cs` — Mision: Entidad/valor de dominio para Extracted Wall Candidate. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/ExtractedWallCandidateStatus.cs` — Mision: Entidad/valor de dominio para Extracted Wall Candidate Status. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/FloorPlanCuration.cs` — Mision: Entidad/valor de dominio para Floor Plan Curation. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/FloorPlanCurationStatus.cs` — Mision: Entidad/valor de dominio para Floor Plan Curation Status. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/FloorPlanTemplate.cs` — Mision: Entidad/valor de dominio para Floor Plan Template. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/FloorPlanVersion.cs` — Mision: Entidad/valor de dominio para Floor Plan Version. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/PinchAxisTag.cs` — Mision: Entidad/valor de dominio para Pinch Axis Tag. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/PinchGroup.cs` — Mision: Entidad/valor de dominio para Pinch Group. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/PinchMarker.cs` — Mision: Entidad/valor de dominio para Pinch Marker. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/SpaceType.cs` — Mision: Entidad/valor de dominio para Space Type. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/StructuredConstraint.cs` — Mision: Entidad/valor de dominio para Structured Constraint. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/WallExtractionRun.cs` — Mision: Entidad/valor de dominio para Wall Extraction Run. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/WallMobilityLevel.cs` — Mision: Entidad/valor de dominio para Wall Mobility Level. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/WallProtectionLevel.cs` — Mision: Entidad/valor de dominio para Wall Protection Level. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
+
+- `src/FloorplanFit.Domain/FloorPlans/WallRole.cs` — Mision: Entidad/valor de dominio para Wall Role. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
 
 
-Acá vive la **verdad del negocio**. Son entidades, enums y reglas que deberían sobrevivir aunque cambie la infraestructura.
+## Valores de medicion y unidades
 
+Unidades y escala real 1:1.
 
+- `src/FloorplanFit.Domain/Measurement/LengthUnit.cs` — Mision: Entidad/valor de dominio para Length Unit. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
 
-- `src/FloorplanFit.Domain/FloorPlans/ConstraintIntentNote.cs` — Misión: Entidad prevista para notas humanas de constraints todavía no estructuradas. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/ConstraintKind.cs` — Misión: Enum de tipos de constraints estructuradas posibles. Importancia: sin este archivo faltaría vocabulario cerrado para expresar reglas de negocio sin ambigüedad. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/ConstraintStrength.cs` — Misión: Enum de fuerza o prioridad de una constraint. Importancia: sin este archivo faltaría vocabulario cerrado para expresar reglas de negocio sin ambigüedad. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/CuratedSpace.cs` — Misión: Entidad prevista para representar ambientes/espacios curados; hoy existe en dominio pero todavía no recorre el flujo completo. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/CuratedWall.cs` — Misión: Entidad canónica de una wall ya validada por humano y enriquecida con metadata reusable. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/CuratedWallGroup.cs` — Misión: Entidad prevista para agrupar walls curadas con significado conjunto. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/CuratedWallJoin.cs` — Misión: Entidad prevista para registrar joins o uniones entre walls curadas. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/ExtractedWallCandidate.cs` — Misión: Entidad de dominio de una wall candidata detectada automáticamente y pendiente/aceptada/rechazada. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/ExtractedWallCandidateStatus.cs` — Misión: Enum de estados de un wall candidate. Importancia: sin este archivo faltaría vocabulario cerrado para expresar reglas de negocio sin ambigüedad. Use case: cuando el pipeline necesita convertir geometría DXF en wall candidates revisables.
-
-- `src/FloorplanFit.Domain/FloorPlans/FloorPlanCuration.cs` — Misión: Entidad que modela una versión draft/published del curado humano de un floor plan. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando abrir Review exige crear o retomar un draft antes de seguir.
-
-- `src/FloorplanFit.Domain/FloorPlans/FloorPlanCurationStatus.cs` — Misión: Enum del ciclo de vida de la curación. Importancia: sin este archivo faltaría vocabulario cerrado para expresar reglas de negocio sin ambigüedad. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/FloorPlanTemplate.cs` — Misión: Raíz de agregado de la tipología reusable: separa current version importada de active published curation. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/FloorPlanVersion.cs` — Misión: Entidad que representa una versión importada concreta del template. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/SpaceType.cs` — Misión: Enum de tipos de ambientes previstos para curated spaces. Importancia: sin este archivo faltaría vocabulario cerrado para expresar reglas de negocio sin ambigüedad. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/StructuredConstraint.cs` — Misión: Entidad prevista para constraints tipadas aplicables a walls/spaces. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/WallExtractionRun.cs` — Misión: Entidad que registra una corrida automática del extractor sobre una versión. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/WallMobilityLevel.cs` — Misión: Enum que indica cuánto se puede mover/estirar una wall. Importancia: sin este archivo faltaría vocabulario cerrado para expresar reglas de negocio sin ambigüedad. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/WallProtectionLevel.cs` — Misión: Enum que indica nivel de protección o intocabilidad de una wall. Importancia: sin este archivo faltaría vocabulario cerrado para expresar reglas de negocio sin ambigüedad. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-- `src/FloorplanFit.Domain/FloorPlans/WallRole.cs` — Misión: Enum semántico del rol de una wall (partition, exterior, etc.). Importancia: sin este archivo faltaría vocabulario cerrado para expresar reglas de negocio sin ambigüedad. Use case: cuando Loop 1 necesita representar candidates, curations, walls publicadas o constraints futuras.
-
-
-
-## Valores de medición y unidades
-
-
-
-Acá vive la **verdad del negocio**. Son entidades, enums y reglas que deberían sobrevivir aunque cambie la infraestructura.
-
-
-
-- `src/FloorplanFit.Domain/Measurement/LengthUnit.cs` — Misión: Enum de unidades lineales soportadas. Importancia: sin este archivo faltaría vocabulario cerrado para expresar reglas de negocio sin ambigüedad. Use case: cuando el sistema detecta unidades del DXF y necesita normalizar medidas y tolerancias.
-
-- `src/FloorplanFit.Domain/Measurement/MeasurementContext.cs` — Misión: Entidad que encapsula unidad fuente, factor a milímetros y tolerancias geométricas. Importancia: sin este archivo el dominio no podría representar esta parte del negocio de forma explícita y reusable. Use case: cuando el sistema detecta unidades del DXF y necesita normalizar medidas y tolerancias.
-
+- `src/FloorplanFit.Domain/Measurement/MeasurementContext.cs` — Mision: Entidad/valor de dominio para Measurement Context. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
 
 
 ## Proyecto Domain
 
+Nucleo puro de negocio.
 
-
-Acá vive la **verdad del negocio**. Son entidades, enums y reglas que deberían sobrevivir aunque cambie la infraestructura.
-
-
-
-- `src/FloorplanFit.Domain/FloorplanFit.Domain.csproj` — Misión: Proyecto de Domain: núcleo puro del negocio sin dependencias de infraestructura. Importancia: sin este archivo no se podría compilar, restaurar ni referenciar correctamente este proyecto dentro de la solución. Use case: cuando la solución necesita restaurar dependencias, compilar este proyecto o usarlo como referencia desde otra capa.
-
+- `src/FloorplanFit.Domain/FloorplanFit.Domain.csproj` — Mision: Entidad/valor de dominio para Floorplan Fit.Domain. Importancia: expresa verdad de negocio independiente de UI/SQLite. Use case: persistir y razonar sobre floor plans, curations, pinches o medicion.
 
 
 ## Adaptadores DXF
 
+IxMilia + profile/conventions que traducen CAD real a modelos detectados.
 
+- `src/FloorplanFit.Infrastructure/Dxf/DxfExtractionProfile.cs` — Mision: Centraliza convenciones CAD debiles de Pointe Homes para no hardcodearlas en extractores. Importancia: es pieza estructural de la arquitectura actual. Use case: mantener Loop 1 curable y auditable.
 
-Acá viven los **adaptadores reales**: DXF, SQLite, filesystem y servicios técnicos.
+- `src/FloorplanFit.Infrastructure/Dxf/IxMiliaDxfGateway.cs` — Mision: Adaptador DXF para Ix Milia Dxf Gateway. Importancia: traduce CAD real a modelos de Application. Use case: extraer layers, bloques, labels, colores y geometry paths desde IxMilia.
 
+- `src/FloorplanFit.Infrastructure/Dxf/IxMiliaFixedPlanComponentExtractor.cs` — Mision: Adaptador DXF para Ix Milia Fixed Plan Component Extractor. Importancia: traduce CAD real a modelos de Application. Use case: extraer layers, bloques, labels, colores y geometry paths desde IxMilia.
 
+- `src/FloorplanFit.Infrastructure/Dxf/IxMiliaOpeningExtractor.cs` — Mision: Adaptador DXF para Ix Milia Opening Extractor. Importancia: traduce CAD real a modelos de Application. Use case: extraer layers, bloques, labels, colores y geometry paths desde IxMilia.
 
-- `src/FloorplanFit.Infrastructure/Dxf/IxMiliaDxfGateway.cs` — Misión: Adaptador real del puerto IDxfGateway para leer metadata de DXF con IxMilia. Importancia: sin este archivo no habría integración real con DXF para esta responsabilidad concreta. Use case: cuando el runtime necesita leer un DXF real o extraerle información útil.
+- `src/FloorplanFit.Infrastructure/Dxf/IxMiliaProtectedDetailAssemblyExtractor.cs` — Mision: Adaptador DXF para Ix Milia Protected Detail Assembly Extractor. Importancia: traduce CAD real a modelos de Application. Use case: extraer layers, bloques, labels, colores y geometry paths desde IxMilia.
 
-- `src/FloorplanFit.Infrastructure/Dxf/IxMiliaWallExtractor.cs` — Misión: Adaptador real del extractor de walls; filtra capas wall-like y descompone line/polyline en candidates. Importancia: sin este archivo no habría integración real con DXF para esta responsabilidad concreta. Use case: cuando el runtime necesita leer un DXF real o extraerle información útil.
+- `src/FloorplanFit.Infrastructure/Dxf/IxMiliaRoomLabelExtractor.cs` — Mision: Adaptador DXF para Ix Milia Room Label Extractor. Importancia: traduce CAD real a modelos de Application. Use case: extraer layers, bloques, labels, colores y geometry paths desde IxMilia.
 
+- `src/FloorplanFit.Infrastructure/Dxf/IxMiliaWallExtractor.cs` — Mision: Adaptador DXF para Ix Milia Wall Extractor. Importancia: traduce CAD real a modelos de Application. Use case: extraer layers, bloques, labels, colores y geometry paths desde IxMilia.
 
 
 ## Persistencia SQLite y read-models
 
+Repositorios, schema y readers locales.
 
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteExtractedFixedPlanComponentRepository.cs` — Mision: Pieza SQLite para Sqlite Extracted Fixed Plan Component Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-Acá viven los **adaptadores reales**: DXF, SQLite, filesystem y servicios técnicos.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteExtractedOpeningCandidateRepository.cs` — Mision: Pieza SQLite para Sqlite Extracted Opening Candidate Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteExtractedOpeningLabelRepository.cs` — Mision: Pieza SQLite para Sqlite Extracted Opening Label Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteExtractedProtectedDetailAssemblyRepository.cs` — Mision: Pieza SQLite para Sqlite Extracted Protected Detail Assembly Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteCuratedWallRepository.cs` — Misión: Repositorio SQLite de curated walls. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteExtractedRoomLabelRepository.cs` — Mision: Pieza SQLite para Sqlite Extracted Room Label Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteExtractedWallCandidateRepository.cs` — Misión: Repositorio SQLite de wall candidates; también persiste su geometría en geometry_paths/segments. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando el pipeline necesita convertir geometría DXF en wall candidates revisables.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteExtractedWallCandidateRepository.cs` — Mision: Pieza SQLite para Sqlite Extracted Wall Candidate Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanCurationRepository.cs` — Misión: Repositorio SQLite de curations draft/published y su versionado. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando abrir Review exige crear o retomar un draft antes de seguir.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanCurationRepository.cs` — Mision: Pieza SQLite para Sqlite Floor Plan Curation Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanExtractionSourceReader.cs` — Misión: Reader SQLite que resuelve qué archivo/version actual usar para extracción desde la Library. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando la pantalla principal necesita cargar, refrescar o derivar el estado visible de la Library.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanExtractionSourceReader.cs` — Mision: Pieza SQLite para Sqlite Floor Plan Extraction Source Reader. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanLibraryReader.cs` — Misión: Read-model SQLite de la Library; deriva Imported/Extracted/Curated Draft/Published. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando abrir Review exige crear o retomar un draft antes de seguir.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanLibraryReader.cs` — Mision: Pieza SQLite para Sqlite Floor Plan Library Reader. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanReviewSessionReader.cs` — Misión: Read-model SQLite de review; junta template summary, candidates, curated walls y geometry paths. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando la Review necesita abrir, leer, mostrar o validar su estado actual.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanReviewSessionReader.cs` — Mision: Hidrata la review completa desde SQLite. Importancia: es pieza estructural de la arquitectura actual. Use case: mantener Loop 1 curable y auditable.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanTemplateRepository.cs` — Misión: Repositorio SQLite de floor plan templates y active published curation. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanTemplateRepository.cs` — Mision: Pieza SQLite para Sqlite Floor Plan Template Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanVersionRepository.cs` — Misión: Repositorio SQLite de versiones de floor plans. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteFloorPlanVersionRepository.cs` — Mision: Pieza SQLite para Sqlite Floor Plan Version Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteImportedDocumentRepository.cs` — Misión: Repositorio SQLite de documentos importados. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteImportedDocumentRepository.cs` — Mision: Pieza SQLite para Sqlite Imported Document Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteMeasurementContextRepository.cs` — Misión: Repositorio SQLite de measurement contexts. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando el sistema detecta unidades del DXF y necesita normalizar medidas y tolerancias.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteMeasurementContextRepository.cs` — Mision: Pieza SQLite para Sqlite Measurement Context Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteSchemaInitializer.cs` — Misión: Inicializador del schema SQLite; crea tablas y columnas necesarias del producto. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Infrastructure/Persistence/SqlitePinchGroupRepository.cs` — Mision: Pieza SQLite para Sqlite Pinch Group Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteSession.cs` — Misión: Encapsula conexión y transacción activas de SQLite para que los repos compartan contexto. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Infrastructure/Persistence/SqlitePinchMarkerRepository.cs` — Mision: Pieza SQLite para Sqlite Pinch Marker Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteUnitOfWork.cs` — Misión: Implementación SQLite del Unit of Work. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando el sistema detecta unidades del DXF y necesita normalizar medidas y tolerancias.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteSchemaInitializer.cs` — Mision: Crea y migra el schema SQLite de Library, curado y artefactos CAD. Importancia: es pieza estructural de la arquitectura actual. Use case: mantener Loop 1 curable y auditable.
 
-- `src/FloorplanFit.Infrastructure/Persistence/SqliteWallExtractionRunRepository.cs` — Misión: Repositorio SQLite de corridas de extracción. Importancia: sin este archivo no se podría persistir o rehidratar esta parte del modelo local en SQLite con una responsabilidad clara. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteSession.cs` — Mision: Pieza SQLite para Sqlite Session. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteUnitOfWork.cs` — Mision: Pieza SQLite para Sqlite Unit Of Work. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
+
+- `src/FloorplanFit.Infrastructure/Persistence/SqliteWallExtractionRunRepository.cs` — Mision: Pieza SQLite para Sqlite Wall Extraction Run Repository. Importancia: persiste/lee la verdad local-first. Use case: reabrir Library/Review con estado, geometry paths y removals consistentes.
 
 
 ## Workspace y runtime local
 
+Carpetas locales gestionadas.
+
+- `src/FloorplanFit.Infrastructure/Runtime/AppWorkspace.cs` — Mision: Adaptador tecnico para App Workspace. Importancia: implementa capacidades reales detras de puertos. Use case: operar filesystem, runtime, hashing o storage gestionado.
 
 
-Acá viven los **adaptadores reales**: DXF, SQLite, filesystem y servicios técnicos.
+## Servicios de seguridad tecnica
 
+Hashing e integridad tecnica.
 
-
-- `src/FloorplanFit.Infrastructure/Runtime/AppWorkspace.cs` — Misión: Resuelve la carpeta workspace local de la app y sus subdirectorios gestionados. Importancia: sin este archivo el runtime local perdería una convención importante para ubicarse y operar. Use case: cuando el pipeline necesita mover, ubicar o identificar técnicamente archivos del workspace.
-
-
-
-## Servicios de seguridad técnica
-
-
-
-Acá viven los **adaptadores reales**: DXF, SQLite, filesystem y servicios técnicos.
-
-
-
-- `src/FloorplanFit.Infrastructure/Security/Sha256FileHashService.cs` — Misión: Implementación real del cálculo SHA-256 sobre archivos. Importancia: sin este archivo faltaría una pieza técnica clave para identidad e integridad de archivos. Use case: cuando el pipeline necesita mover, ubicar o identificar técnicamente archivos del workspace.
-
+- `src/FloorplanFit.Infrastructure/Security/Sha256FileHashService.cs` — Mision: Adaptador tecnico para Sha256 File Hash Service. Importancia: implementa capacidades reales detras de puertos. Use case: operar filesystem, runtime, hashing o storage gestionado.
 
 
 ## Storage gestionado
 
+Copia controlada de DXF importados.
 
-
-Acá viven los **adaptadores reales**: DXF, SQLite, filesystem y servicios técnicos.
-
-
-
-- `src/FloorplanFit.Infrastructure/Storage/ManagedFileStorage.cs` — Misión: Implementación real del storage gestionado que copia DXF al library/raw-dxf del workspace. Importancia: sin este archivo no habría una implementación real y consistente del storage gestionado. Use case: cuando la pantalla principal necesita cargar, refrescar o derivar el estado visible de la Library.
-
+- `src/FloorplanFit.Infrastructure/Storage/ManagedFileStorage.cs` — Mision: Adaptador tecnico para Managed File Storage. Importancia: implementa capacidades reales detras de puertos. Use case: operar filesystem, runtime, hashing o storage gestionado.
 
 
 ## Proyecto Infrastructure
 
+Proyecto .NET de adaptadores reales.
 
+- `src/FloorplanFit.Infrastructure/FloorplanFit.Infrastructure.csproj` — Mision: Adaptador tecnico para Floorplan Fit.Infrastructure. Importancia: implementa capacidades reales detras de puertos. Use case: operar filesystem, runtime, hashing o storage gestionado.
 
-Acá viven los **adaptadores reales**: DXF, SQLite, filesystem y servicios técnicos.
+- `src/FloorplanFit.Infrastructure/InfrastructureAssemblyMarker.cs` — Mision: Adaptador tecnico para Infrastructure Assembly Marker. Importancia: implementa capacidades reales detras de puertos. Use case: operar filesystem, runtime, hashing o storage gestionado.
 
 
+## Tests de Application
 
-- `src/FloorplanFit.Infrastructure/FloorplanFit.Infrastructure.csproj` — Misión: Proyecto de Infrastructure: implementaciones reales de DXF, SQLite, storage, hashing y runtime. Importancia: sin este archivo no se podría compilar, restaurar ni referenciar correctamente este proyecto dentro de la solución. Use case: cuando la solución necesita restaurar dependencias, compilar este proyecto o usarlo como referencia desde otra capa.
+Evidencia de casos de uso y reglas de curado.
 
-- `src/FloorplanFit.Infrastructure/InfrastructureAssemblyMarker.cs` — Misión: Marcador simple del ensamblado de Infrastructure útil para composición o referencias. Importancia: sin este archivo perderías un ancla mínima y segura para referenciar el ensamblado de Infrastructure sin arrastrar tipos con más responsabilidad. Use case: cuando la composición o alguna reflexión liviana necesita apuntar al ensamblado de Infrastructure de forma explícita.
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/AddPinchGroupHandlerTests.cs` — Mision: Test/soporte de Add Pinch Group Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/AddPinchMarkerHandlerTests.cs` — Mision: Test/soporte de Add Pinch Marker Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/FloorPlanCurationTests.cs` — Mision: Test/soporte de Floor Plan Curation Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-## Tests de Application sobre curado
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/PublishFloorPlanCurationHandlerTests.cs` — Mision: Test/soporte de Publish Floor Plan Curation Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/RejectWallCandidateHandlerTests.cs` — Mision: Test/soporte de Reject Wall Candidate Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/RemoveOpeningArtifactHandlerTests.cs` — Mision: Test/soporte de Remove Opening Artifact Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/StartOrResumeCurationHandlerTests.cs` — Mision: Test/soporte de Start Or Resume Curation Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Extraction/ExtractWallCandidatesHandlerTests.cs` — Mision: Test/soporte de Extract Wall Candidates Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Import/ImportFloorPlanHandlerTests.cs` — Mision: Test/soporte de Import Floor Plan Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/AcceptWallCandidateHandlerTests.cs` — Misión: Verifica que aceptar candidates actualice estado y cree curated walls correctamente. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el usuario acepta una wall candidate propuesta por la extracción.
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Library/GetFloorPlanLibraryHandlerTests.cs` — Mision: Test/soporte de Get Floor Plan Library Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/FloorPlanCurationTests.cs` — Misión: Verifica invariantes de la entidad FloorPlanCuration. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando tocás esa zona del sistema y querés saber rápido si una regresión se coló.
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Review/GetFloorPlanReviewSessionHandlerTests.cs` — Mision: Test/soporte de Get Floor Plan Review Session Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/PublishFloorPlanCurationHandlerTests.cs` — Misión: Verifica reglas de publicación y activación de curaciones. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el usuario publica una curación y deja una versión activa reutilizable.
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Review/OpenFloorPlanReviewSessionHandlerTests.cs` — Mision: Test/soporte de Open Floor Plan Review Session Handler Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/RejectWallCandidateHandlerTests.cs` — Misión: Verifica que rechazar candidates actualice estado y remueva curated walls derivadas. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el usuario descarta una candidate que la extracción detectó mal o no quiere conservar.
+- `tests/FloorplanFit.Application.Tests/FloorPlans/Review/WallCandidateDtoTests.cs` — Mision: Test/soporte de Wall Candidate Dto Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/StartOrResumeCurationHandlerTests.cs` — Misión: Verifica creación/retoma de drafts de curación. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando abrir Review exige crear o retomar un draft antes de seguir.
+- `tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj` — Mision: Test/soporte de Floorplan Fit.Application.Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Curation/UpdateCuratedWallMetadataHandlerTests.cs` — Misión: Verifica persistencia de metadata semántica de curated walls. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el usuario cambia role, mobility, protection u otra metadata desde el inspector de review.
+- `tests/FloorplanFit.Application.Tests/GlobalUsings.cs` — Mision: Test/soporte de Global Usings. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
 
+## Tests de Desktop
 
-## Tests de Application sobre extracción
+Evidencia de DI, VM, preview, layout y XAML.
 
+- `tests/FloorplanFit.Desktop.Tests/Composition/DesktopServiceRegistrationTests.cs` — Mision: Test/soporte de Desktop Service Registration Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Desktop.Tests/Controls/FloorPlanPreviewControlTests.cs` — Mision: Test/soporte de Floor Plan Preview Control Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
+- `tests/FloorplanFit.Desktop.Tests/Controls/FloorPlanPreviewGeometryTests.cs` — Mision: Test/soporte de Floor Plan Preview Geometry Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Desktop.Tests/FloorplanFit.Desktop.Tests.csproj` — Mision: Test/soporte de Floorplan Fit.Desktop.Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Desktop.Tests/Layout/AppXamlInitializationTests.cs` — Mision: Test/soporte de App Xaml Initialization Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Extraction/ExtractWallCandidatesHandlerTests.cs` — Misión: Verifica orquestación del caso de uso de extracción sin depender del extractor real. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el pipeline necesita convertir geometría DXF en wall candidates revisables.
+- `tests/FloorplanFit.Desktop.Tests/Layout/ReviewFloorPlanWindowLayoutTests.cs` — Mision: Test/soporte de Review Floor Plan Window Layout Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Desktop.Tests/ViewModels/FloorPlanReviewViewModelTests.cs` — Mision: Test/soporte de Floor Plan Review View Model Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Desktop.Tests/ViewModels/LibraryViewModelTests.cs` — Mision: Test/soporte de Library View Model Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-## Tests de Application sobre importación
 
+## Tests de Infrastructure
 
+Evidencia de SQLite, DXF, extraction profile y read-models.
 
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
+- `tests/FloorplanFit.Infrastructure.Tests/Curation/FloorPlanCurationPersistenceIntegrationTests.cs` — Mision: Test/soporte de Floor Plan Curation Persistence Integration Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/Dxf/IxMiliaDxfGatewayTests.cs` — Mision: Test/soporte de Ix Milia Dxf Gateway Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/Extraction/DxfExtractionProfileTests.cs` — Mision: Test/soporte de Dxf Extraction Profile Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Import/ImportFloorPlanHandlerTests.cs` — Misión: Verifica el flujo Application de importación de floor plans. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el usuario elige un DXF y la app lo incorpora a la Library con su metadata y versión.
+- `tests/FloorplanFit.Infrastructure.Tests/Extraction/IxMiliaFixedPlanComponentExtractorTests.cs` — Mision: Test/soporte de Ix Milia Fixed Plan Component Extractor Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/Extraction/IxMiliaOpeningExtractorTests.cs` — Mision: Test/soporte de Ix Milia Opening Extractor Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/Extraction/IxMiliaProtectedDetailAssemblyExtractorTests.cs` — Mision: Test/soporte de Ix Milia Protected Detail Assembly Extractor Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-## Tests de Application sobre Library
+- `tests/FloorplanFit.Infrastructure.Tests/Extraction/IxMiliaRoomLabelExtractorTests.cs` — Mision: Test/soporte de Ix Milia Room Label Extractor Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/Extraction/IxMiliaWallExtractorTests.cs` — Mision: Test/soporte de Ix Milia Wall Extractor Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/FloorplanFit.Infrastructure.Tests.csproj` — Mision: Test/soporte de Floorplan Fit.Infrastructure.Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
+- `tests/FloorplanFit.Infrastructure.Tests/GlobalUsings.cs` — Mision: Test/soporte de Global Usings. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/Imports/FloorPlanLibraryReaderIntegrationTests.cs` — Mision: Test/soporte de Floor Plan Library Reader Integration Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/Imports/ImportFloorPlanIntegrationTests.cs` — Mision: Test/soporte de Import Floor Plan Integration Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Library/GetFloorPlanLibraryHandlerTests.cs` — Misión: Verifica que el handler de Library devuelva el read-model esperado. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando la pantalla principal necesita cargar, refrescar o derivar el estado visible de la Library.
+- `tests/FloorplanFit.Infrastructure.Tests/Imports/ManagedFileStorageTests.cs` — Mision: Test/soporte de Managed File Storage Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/Library/FloorPlanExtractionSourceReaderIntegrationTests.cs` — Mision: Test/soporte de Floor Plan Extraction Source Reader Integration Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/Review/FloorPlanReviewSessionReaderIntegrationTests.cs` — Mision: Test/soporte de Floor Plan Review Session Reader Integration Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
-## Tests de Application sobre review
+- `tests/FloorplanFit.Infrastructure.Tests/Review/OpenFloorPlanReviewSessionIntegrationTests.cs` — Mision: Test/soporte de Open Floor Plan Review Session Integration Tests. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
+- `tests/FloorplanFit.Infrastructure.Tests/TestSupport/RepositoryPaths.cs` — Mision: Test/soporte de Repository Paths. Importancia: convierte comportamiento esperado en evidencia automatizada. Use case: detectar regresiones antes de probar manualmente.
 
 
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
+## Verificacion de cobertura
 
+- Conteo total cubierto: **323**
+- Base fisica actual: **302 archivos versionados presentes**
+- Nuevos relevantes no versionados todavia: **21**
+- No lista archivos borrados del flujo viejo de curated walls; esa ausencia es intencional en esta branch pinch-native.
+- Regla de mantenimiento: toda familia CAD nueva debe tener extractor, detected model, domain/persistence, DTO, preview layer, accion de curado y tests.
 
+## Que NO cubre este mapa
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Review/GetFloorPlanReviewSessionHandlerTests.cs` — Misión: Verifica la lectura de review sessions desde Application. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando la app necesita mostrar la sesión completa de review con summary, candidates y curated walls.
+- No cubre caches, binarios ni salidas temporales.
+- No reemplaza `MVP-UX.md` ni `TECH-STACK-ARCHITECTURE-DATAFLOW.md`; los complementa con inventario operacional actual.
 
-- `tests/FloorplanFit.Application.Tests/FloorPlans/Review/OpenFloorPlanReviewSessionHandlerTests.cs` — Misión: Verifica que abrir review asegure draft activo y devuelva la sesión completa. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el usuario abre Review por primera vez o reabre una sesión existente y la app tiene que hidratar draft, candidates y geometry.
+## Como usar este documento
 
-
-
-## Proyecto de tests de Application
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj` — Misión: Proyecto de tests unitarios de Application. Importancia: sin este archivo no se podría compilar, restaurar ni referenciar correctamente este proyecto dentro de la solución. Use case: cuando la solución necesita restaurar dependencias, compilar este proyecto o usarlo como referencia desde otra capa.
-
-- `tests/FloorplanFit.Application.Tests/GlobalUsings.cs` — Misión: Importaciones globales para simplificar los tests de Application. Importancia: sin este archivo habría más ruido y repetición en imports compartidos, sobre todo en tests. Use case: cuando esa suite necesita imports compartidos para que los tests sean más legibles y menos repetitivos.
-
-
-
-## Tests de wiring Desktop
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Desktop.Tests/Composition/DesktopServiceRegistrationTests.cs` — Misión: Verifica que el contenedor DI desktop resuelva el slice principal sin faltantes. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando tocás esa zona del sistema y querés saber rápido si una regresión se coló.
-
-
-
-## Tests de ViewModels Desktop
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Desktop.Tests/ViewModels/FloorPlanReviewViewModelTests.cs` — Misión: Verifica el comportamiento principal del ViewModel de review. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando la Review necesita abrir, leer, mostrar o validar su estado actual.
-
-- `tests/FloorplanFit.Desktop.Tests/ViewModels/LibraryViewModelTests.cs` — Misión: Verifica el comportamiento principal del ViewModel de Library. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando la pantalla principal necesita cargar, refrescar o derivar el estado visible de la Library.
-
-
-
-## Tests del preview Desktop
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Desktop.Tests/Controls/FloorPlanPreviewGeometryTests.cs` — Misión: Verifica centrado, proyección y estilo del highlight en el preview geométrico de review. Importancia: sin este archivo una regresión visual clave del preview podría pasar desapercibida hasta el test manual. Use case: cuando tocás el canvas de review y querés saber rápido si sigue centrando y resaltando bien.
-
-
-
-## Tests de layout Desktop
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Desktop.Tests/Layout/ReviewFloorPlanWindowLayoutTests.cs` — Misión: Verifica que la ventana de review no vuelva a caer en alturas rígidas para preview y curated walls. Importancia: sin este archivo el layout podría degradarse silenciosamente y volver al problema de mostrar solo unas pocas líneas. Use case: cuando tocás la composición visual de la review y querés blindar sizing y scroll contra regresiones.
-
-
-
-## Proyecto de tests de Desktop
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Desktop.Tests/FloorplanFit.Desktop.Tests.csproj` — Misión: Proyecto de tests del wiring y viewmodels de Desktop. Importancia: sin este archivo no se podría compilar, restaurar ni referenciar correctamente este proyecto dentro de la solución. Use case: cuando la solución necesita restaurar dependencias, compilar este proyecto o usarlo como referencia desde otra capa.
-
-
-
-## Tests de persistencia de curación
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Infrastructure.Tests/Curation/FloorPlanCurationPersistenceIntegrationTests.cs` — Misión: Verifica round-trips reales de persistencia SQLite para curations y curated walls. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
-
-
-
-## Tests de adaptadores DXF
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Infrastructure.Tests/Dxf/IxMiliaDxfGatewayTests.cs` — Misión: Verifica lectura real de metadata DXF a través del gateway IxMilia. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el runtime necesita leer un DXF real o extraerle información útil.
-
-
-
-## Tests del extractor real
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Infrastructure.Tests/Extraction/IxMiliaWallExtractorTests.cs` — Misión: Verifica extracción real de wall candidates desde fixtures DXF. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el pipeline necesita convertir geometría DXF en wall candidates revisables.
-
-
-
-## Tests del pipeline de importación
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Infrastructure.Tests/Imports/FloorPlanLibraryReaderIntegrationTests.cs` — Misión: Verifica que el read-model de Library derive los estados correctos desde SQLite. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el usuario elige un DXF y la app lo incorpora a la Library con su metadata y versión.
-
-- `tests/FloorplanFit.Infrastructure.Tests/Imports/ImportFloorPlanIntegrationTests.cs` — Misión: Verifica el pipeline real de importación con SQLite, storage y DXF. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el usuario elige un DXF y la app lo incorpora a la Library con su metadata y versión.
-
-- `tests/FloorplanFit.Infrastructure.Tests/Imports/ManagedFileStorageTests.cs` — Misión: Verifica la copia gestionada de DXF al workspace. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando el usuario elige un DXF y la app lo incorpora a la Library con su metadata y versión.
-
-
-
-## Tests del source reader
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Infrastructure.Tests/Library/FloorPlanExtractionSourceReaderIntegrationTests.cs` — Misión: Verifica la resolución del source de extracción para la versión actual. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando la pantalla principal necesita cargar, refrescar o derivar el estado visible de la Library.
-
-
-
-## Tests del read-model de review
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Infrastructure.Tests/Review/OpenFloorPlanReviewSessionIntegrationTests.cs` — Misión: Test de integración que verifica que el primer Open Review después de extracción no reviente por reutilizar una transacción SQLite ya commiteada. Importancia: sin este archivo el bug del primer Open Review después de extraer podía reaparecer sin alarma automática. Use case: cuando alguien vuelve a tocar transacciones SQLite, apertura de drafts o el read-model de review.
-
-- `tests/FloorplanFit.Infrastructure.Tests/Review/FloorPlanReviewSessionReaderIntegrationTests.cs` — Misión: Verifica que el read-model de review hidrate candidates, curated walls y geometría. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando la Review necesita abrir, leer, mostrar o validar su estado actual.
-
-
-
-## Soporte común de tests
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Infrastructure.Tests/TestSupport/RepositoryPaths.cs` — Misión: Centraliza paths del repo/fixtures para los tests de Infrastructure. Importancia: sin este archivo una regresión en este comportamiento podría pasar desapercibida hasta bastante tarde. Use case: cuando la app persiste estado real en SQLite o rehidrata vistas desde la base local.
-
-
-
-## Proyecto de tests de Infrastructure
-
-
-
-Estos archivos son evidencia automatizada de que la capa correspondiente hace lo que promete.
-
-
-
-- `tests/FloorplanFit.Infrastructure.Tests/FloorplanFit.Infrastructure.Tests.csproj` — Misión: Proyecto de tests de integración/unidad de Infrastructure. Importancia: sin este archivo no se podría compilar, restaurar ni referenciar correctamente este proyecto dentro de la solución. Use case: cuando la solución necesita restaurar dependencias, compilar este proyecto o usarlo como referencia desde otra capa.
-
-- `tests/FloorplanFit.Infrastructure.Tests/GlobalUsings.cs` — Misión: Importaciones globales compartidas por los tests de Infrastructure. Importancia: sin este archivo habría más ruido y repetición en imports compartidos, sobre todo en tests. Use case: cuando esa suite necesita imports compartidos para que los tests sean más legibles y menos repetitivos.
-
-
-
-## Verificación de cobertura
-
-
-
-- Conteo total cubierto: **209**
-
-- Base f?sica actual: **202 archivos versionados presentes**
-
-- Diferencia contra la versión inicial del mapa: **8 archivos nuevos incorporados desde la última cobertura completa**
-
-- Método de verificación: `git ls-files` + contraste manual de faltantes contra esta versión del mapa.
-
-- Criterio de completitud: cada path relevante presente hoy en el working tree aparece exactamente una vez en este documento.
-
-
-
-## Qué NO cubre este mapa
-
-
-
-- `bin/`, `obj/`, `.vs/`, caches de herramientas y otros artefactos generados.
-
-- Directorios no versionados como residuos operativos locales.
-
-- Estado runtime efímero del workspace `src/FloorplanFit.Desktop/bin/.../workspace/` porque cambia ejecución a ejecución.
-
-
-
-## Cómo usar este documento
-
-
-
-1. Si querés entender **producto**, arrancá por `MVP-UX.md` y `TECH-STACK-ARCHITECTURE-DATAFLOW.md`.
-
-2. Si querés entender **flujo Loop 1**, seguí: Desktop Library -> Import handler -> Extract handler -> Review session reader -> Review UI.
-
-3. Si querés entender **persistencia**, recorré `SqliteSchemaInitializer` y luego cada repo/read-model de `src/FloorplanFit.Infrastructure/Persistence/`.
-
-4. Si querés entender **evidencia**, terminá en `tests/` por capa.
+- Para saber donde tocar algo, busca su familia y segui el pipeline.
+- Para agregar dimensiones, no las metas como labels sueltas: deben tener lifecycle completo.
+- Para reglas especificas de Pointe Homes, primero revisa `DxfExtractionProfile` antes de hardcodear en un extractor.

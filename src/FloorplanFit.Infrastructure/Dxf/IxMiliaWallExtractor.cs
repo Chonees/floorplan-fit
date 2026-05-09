@@ -1,11 +1,30 @@
 using FloorplanFit.Application.Abstractions;
 using IxMilia.Dxf;
 using IxMilia.Dxf.Entities;
+using System.Globalization;
 
 namespace FloorplanFit.Infrastructure.Dxf;
 
 public sealed class IxMiliaWallExtractor : IWallExtractor
 {
+    private const double AxisAlignmentTolerance = 0.01d;
+    private const double MinimumWallFaceLength = 12d;
+    private const double MinimumWallFaceOverlap = 18d;
+    private const double NominalFourInchWallSpacing = 4d;
+    private const double NominalSixInchWallSpacing = 6d;
+    private const double WallSpacingTolerance = 0.35d;
+    private readonly DxfExtractionProfile profile;
+
+    public IxMiliaWallExtractor()
+        : this(DxfExtractionProfile.PointeHomes)
+    {
+    }
+
+    public IxMiliaWallExtractor(DxfExtractionProfile profile)
+    {
+        this.profile = profile ?? throw new ArgumentNullException(nameof(profile));
+    }
+
     public Task<IReadOnlyList<DetectedWallCandidate>> ExtractAsync(string managedFilePath, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -24,7 +43,7 @@ public sealed class IxMiliaWallExtractor : IWallExtractor
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!IsWallLayer(line.Layer))
+            if (!profile.IsWallCandidateLayer(line.Layer))
             {
                 continue;
             }
@@ -43,7 +62,7 @@ public sealed class IxMiliaWallExtractor : IWallExtractor
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!IsWallLayer(polyline.Layer))
+            if (!profile.IsWallCandidateLayer(polyline.Layer))
             {
                 continue;
             }
@@ -52,7 +71,7 @@ public sealed class IxMiliaWallExtractor : IWallExtractor
             AddPolylineSegments(candidates, polyline, polylineIndex);
         }
 
-        return Task.FromResult<IReadOnlyList<DetectedWallCandidate>>(candidates);
+        return Task.FromResult<IReadOnlyList<DetectedWallCandidate>>(ApplyThicknessInferences(candidates));
     }
 
     private static void AddPolylineSegments(List<DetectedWallCandidate> candidates, DxfLwPolyline polyline, int polylineIndex)
@@ -95,10 +114,157 @@ public sealed class IxMiliaWallExtractor : IWallExtractor
         return new GeometryPoint((decimal)x, (decimal)y);
     }
 
-    private static bool IsWallLayer(string? layerName)
+    private IReadOnlyList<DetectedWallCandidate> ApplyThicknessInferences(IReadOnlyList<DetectedWallCandidate> candidates)
     {
-        return !string.IsNullOrWhiteSpace(layerName)
-            && layerName.Contains("WALL", StringComparison.OrdinalIgnoreCase);
+        var wallFaces = candidates
+            .Select((candidate, index) => TryCreateWallFace(candidate, index))
+            .Where(face => face is not null)
+            .Select(face => face!.Value)
+            .ToArray();
+
+        if (wallFaces.Length == 0)
+        {
+            return candidates;
+        }
+
+        var bestInferencesByCandidate = new Dictionary<int, WallThicknessInference>();
+
+        for (var firstIndex = 0; firstIndex < wallFaces.Length; firstIndex++)
+        {
+            var first = wallFaces[firstIndex];
+
+            for (var secondIndex = firstIndex + 1; secondIndex < wallFaces.Length; secondIndex++)
+            {
+                var second = wallFaces[secondIndex];
+                if (first.Orientation != second.Orientation)
+                {
+                    continue;
+                }
+
+                var spacing = Math.Abs(first.Position - second.Position);
+                var nominalSpacing = ClassifyNominalWallSpacing(spacing);
+                if (nominalSpacing is null)
+                {
+                    continue;
+                }
+
+                var overlap = CalculateOverlap(first.Start, first.End, second.Start, second.End);
+                if (overlap < MinimumWallFaceOverlap)
+                {
+                    continue;
+                }
+
+                var score = CalculateInferenceScore(overlap, spacing, nominalSpacing.Value);
+                var inference = new WallThicknessInference(
+                    InchesToMillimeters(nominalSpacing.Value),
+                    nominalSpacing.Value,
+                    spacing,
+                    overlap,
+                    score);
+
+                RecordBestInference(bestInferencesByCandidate, first.CandidateIndex, inference);
+                RecordBestInference(bestInferencesByCandidate, second.CandidateIndex, inference);
+            }
+        }
+
+        return candidates
+            .Select((candidate, index) => bestInferencesByCandidate.TryGetValue(index, out var inference)
+                ? candidate with
+                {
+                    ThicknessMm = inference.ThicknessMm,
+                    DetectionNotes = AppendThicknessInferenceNote(candidate.DetectionNotes, inference)
+                }
+                : candidate)
+            .ToArray();
+    }
+
+    private WallFace? TryCreateWallFace(DetectedWallCandidate candidate, int candidateIndex)
+    {
+        if (!profile.IsPhysicalWallLayer(candidate.SourceLayer) || candidate.Points.Count < 2)
+        {
+            return null;
+        }
+
+        var start = candidate.Points[0];
+        var end = candidate.Points[1];
+        var startX = (double)start.X;
+        var startY = (double)start.Y;
+        var endX = (double)end.X;
+        var endY = (double)end.Y;
+
+        if (Math.Abs(startX - endX) <= AxisAlignmentTolerance)
+        {
+            var faceStart = Math.Min(startY, endY);
+            var faceEnd = Math.Max(startY, endY);
+            var length = faceEnd - faceStart;
+            return length >= MinimumWallFaceLength
+                ? new WallFace(candidateIndex, WallFaceOrientation.Vertical, (startX + endX) / 2d, faceStart, faceEnd)
+                : null;
+        }
+
+        if (Math.Abs(startY - endY) <= AxisAlignmentTolerance)
+        {
+            var faceStart = Math.Min(startX, endX);
+            var faceEnd = Math.Max(startX, endX);
+            var length = faceEnd - faceStart;
+            return length >= MinimumWallFaceLength
+                ? new WallFace(candidateIndex, WallFaceOrientation.Horizontal, (startY + endY) / 2d, faceStart, faceEnd)
+                : null;
+        }
+
+        return null;
+    }
+
+    private static double? ClassifyNominalWallSpacing(double spacing)
+    {
+        if (Math.Abs(spacing - NominalFourInchWallSpacing) <= WallSpacingTolerance)
+        {
+            return NominalFourInchWallSpacing;
+        }
+
+        if (Math.Abs(spacing - NominalSixInchWallSpacing) <= WallSpacingTolerance)
+        {
+            return NominalSixInchWallSpacing;
+        }
+
+        return null;
+    }
+
+    private static double CalculateOverlap(double firstStart, double firstEnd, double secondStart, double secondEnd)
+    {
+        return Math.Max(0d, Math.Min(firstEnd, secondEnd) - Math.Max(firstStart, secondStart));
+    }
+
+    private static double CalculateInferenceScore(double overlap, double measuredSpacing, double nominalSpacing)
+    {
+        return overlap - (Math.Abs(measuredSpacing - nominalSpacing) * 10d);
+    }
+
+    private static decimal InchesToMillimeters(double inches)
+    {
+        return Math.Round((decimal)inches * 25.4m, 1, MidpointRounding.AwayFromZero);
+    }
+
+    private static void RecordBestInference(Dictionary<int, WallThicknessInference> inferences, int candidateIndex, WallThicknessInference inference)
+    {
+        if (!inferences.TryGetValue(candidateIndex, out var current) || inference.Score > current.Score)
+        {
+            inferences[candidateIndex] = inference;
+        }
+    }
+
+    private static string AppendThicknessInferenceNote(string? detectionNotes, WallThicknessInference inference)
+    {
+        var note = string.Format(
+            CultureInfo.InvariantCulture,
+            "Inferred {0:0.#}\" wall thickness from parallel wall faces ({1:0.##}\" measured spacing, {2:0.##}\" overlap).",
+            inference.NominalSpacingInches,
+            inference.MeasuredSpacingInches,
+            inference.OverlapInches);
+
+        return string.IsNullOrWhiteSpace(detectionNotes)
+            ? note
+            : $"{detectionNotes} {note}";
     }
 
     private static string BuildSourceEntityRef(string entityType, int entityIndex, int? segmentIndex = null)
@@ -109,4 +275,24 @@ public sealed class IxMiliaWallExtractor : IWallExtractor
             ? $"{entityType}:{stablePart}"
             : $"{entityType}:{stablePart}:{segmentIndex.Value}";
     }
+
+    private enum WallFaceOrientation
+    {
+        Horizontal,
+        Vertical
+    }
+
+    private readonly record struct WallFace(
+        int CandidateIndex,
+        WallFaceOrientation Orientation,
+        double Position,
+        double Start,
+        double End);
+
+    private readonly record struct WallThicknessInference(
+        decimal ThicknessMm,
+        double NominalSpacingInches,
+        double MeasuredSpacingInches,
+        double OverlapInches,
+        double Score);
 }

@@ -1,5 +1,12 @@
 # Review Preview Layout and Selection Design
 
+
+> [!NOTE] HISTORICAL / UI-SUPERSEDED ? 2026-05-09
+> This design documents a real layout/selection fix, but references to curated-wall side lists belong to the old review model.
+>
+> Current preview direction is CAD-faithful: `FloorPlanPreviewControl` acts as an interaction shell and rendering is split into focused preview layers for room labels, openings, fixed components, protected details, pinch markers, workspace background, and compression handles.
+
+
 ## Goal
 
 Hacer que la review UI de Loop 1 permita identificar visualmente, sin ambigüedad, qué línea se está curando y que las listas laterales escalen con scroll real en vez de alturas rígidas.

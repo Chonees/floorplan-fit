@@ -18,6 +18,14 @@ public sealed class GetFloorPlanReviewSessionHandlerTests
             ActiveVersionNumber: 2,
             ActivePublishedCurationId: null,
             GeometryPaths: [],
+            RoomLabels:
+            [
+                new RoomLabelDto(Guid.NewGuid(), "TEXT:1", "ROOM LBLS", "KITCHEN", 125m, 784m, 0.95m, null, 1)
+            ],
+            OpeningCandidates: [],
+            OpeningLabels: [],
+            FixedPlanComponents: [],
+            ProtectedDetailAssemblies: [],
             WallCandidates:
             [
                 new WallCandidateDto(
@@ -31,7 +39,8 @@ public sealed class GetFloorPlanReviewSessionHandlerTests
                     Guid.NewGuid(),
                     1)
             ],
-            CuratedWalls: []);
+            PinchGroups: [],
+            PinchMarkers: []);
         var reader = new FakeFloorPlanReviewSessionReader(expected);
         var handler = new GetFloorPlanReviewSessionHandler(reader);
 
@@ -39,6 +48,7 @@ public sealed class GetFloorPlanReviewSessionHandlerTests
 
         Assert.Same(expected, session);
         Assert.Equal(templateId, reader.LastTemplateId);
+        Assert.Equal("KITCHEN", session!.RoomLabels.Single().Text);
     }
 
     private sealed class FakeFloorPlanReviewSessionReader : IFloorPlanReviewSessionReader

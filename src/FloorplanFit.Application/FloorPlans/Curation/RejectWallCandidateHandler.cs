@@ -5,16 +5,16 @@ namespace FloorplanFit.Application.FloorPlans.Curation;
 public sealed class RejectWallCandidateHandler
 {
     private readonly IExtractedWallCandidateRepository extractedWallCandidateRepository;
-    private readonly ICuratedWallRepository curatedWallRepository;
+    private readonly IPinchMarkerRepository pinchMarkerRepository;
     private readonly IUnitOfWork unitOfWork;
 
     public RejectWallCandidateHandler(
         IExtractedWallCandidateRepository extractedWallCandidateRepository,
-        ICuratedWallRepository curatedWallRepository,
+        IPinchMarkerRepository pinchMarkerRepository,
         IUnitOfWork unitOfWork)
     {
         this.extractedWallCandidateRepository = extractedWallCandidateRepository;
-        this.curatedWallRepository = curatedWallRepository;
+        this.pinchMarkerRepository = pinchMarkerRepository;
         this.unitOfWork = unitOfWork;
     }
 
@@ -25,7 +25,7 @@ public sealed class RejectWallCandidateHandler
         candidate.Reject();
 
         await extractedWallCandidateRepository.UpdateAsync(candidate, cancellationToken);
-        await curatedWallRepository.RemoveBySourceCandidateAsync(curationId, candidate.Id, cancellationToken);
+        await pinchMarkerRepository.RemoveBySourceCandidateAsync(curationId, candidate.Id, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }

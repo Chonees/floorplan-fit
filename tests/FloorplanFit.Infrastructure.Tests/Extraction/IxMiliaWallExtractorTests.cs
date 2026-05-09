@@ -24,4 +24,23 @@ public sealed class IxMiliaWallExtractorTests
         Assert.Contains(candidates, item => item.SourceEntityRef.StartsWith("LINE:", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(candidates, item => item.SourceEntityRef.StartsWith("LWPOLYLINE:", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public async Task ExtractAsync_infers_four_and_six_inch_wall_thickness_from_parallel_wall_faces()
+    {
+        var solutionRoot = RepositoryPaths.FindSolutionRoot();
+        var sourcePath = Path.Combine(solutionRoot, "PLANS", "originalFloorPlans", "SEMINOLE2000.dxf");
+        var extractor = new IxMiliaWallExtractor();
+
+        var candidates = await extractor.ExtractAsync(sourcePath, CancellationToken.None);
+
+        var fourInchCandidates = candidates.Where(item => item.ThicknessMm == 101.6m).ToArray();
+        var sixInchCandidates = candidates.Where(item => item.ThicknessMm == 152.4m).ToArray();
+
+        Assert.NotEmpty(fourInchCandidates);
+        Assert.NotEmpty(sixInchCandidates);
+        Assert.All(
+            fourInchCandidates.Concat(sixInchCandidates),
+            item => Assert.Contains("parallel wall faces", item.DetectionNotes, StringComparison.OrdinalIgnoreCase));
+    }
 }

@@ -1,5 +1,18 @@
 # Loop 1 Curated Walls and Spaces Design
 
+
+> [!WARNING] SUPERSEDED ? 2026-05-09
+> This design is historical. It describes the previous `CuratedWall` / wall-metadata curation model and must not be used as current architecture.
+>
+> Current truth lives in:
+> - `MVP-UX.md`
+> - `TECH-STACK-ARCHITECTURE-DATAFLOW.md`
+> - `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md`
+> - `obsidian-vault/Current State.md`
+>
+> Active direction: CAD-faithful curation, separated CAD artifact families, named pinch groups/markers, and future fit over authorized shrink zones.
+
+
 **Goal:** Close Loop 1 with a reusable canonical curation model that turns an imported floor plan DXF into exact curated walls, minimal curated spaces, user-defined constraints, and a publishable active version ready for future site-plan adaptation.
 
 ## Relationship to previous designs

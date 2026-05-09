@@ -5,20 +5,20 @@ namespace FloorplanFit.Application.FloorPlans.Curation;
 public sealed class PublishFloorPlanCurationHandler
 {
     private readonly IFloorPlanCurationRepository floorPlanCurationRepository;
-    private readonly ICuratedWallRepository curatedWallRepository;
+    private readonly IPinchMarkerRepository pinchMarkerRepository;
     private readonly IFloorPlanTemplateRepository floorPlanTemplateRepository;
     private readonly IUnitOfWork unitOfWork;
     private readonly IClock clock;
 
     public PublishFloorPlanCurationHandler(
         IFloorPlanCurationRepository floorPlanCurationRepository,
-        ICuratedWallRepository curatedWallRepository,
+        IPinchMarkerRepository pinchMarkerRepository,
         IFloorPlanTemplateRepository floorPlanTemplateRepository,
         IUnitOfWork unitOfWork,
         IClock clock)
     {
         this.floorPlanCurationRepository = floorPlanCurationRepository;
-        this.curatedWallRepository = curatedWallRepository;
+        this.pinchMarkerRepository = pinchMarkerRepository;
         this.floorPlanTemplateRepository = floorPlanTemplateRepository;
         this.unitOfWork = unitOfWork;
         this.clock = clock;
@@ -36,11 +36,11 @@ public sealed class PublishFloorPlanCurationHandler
 
         var curation = await floorPlanCurationRepository.GetDraftAsync(template.CurrentVersionId.Value, cancellationToken)
             ?? throw new InvalidOperationException("Draft curation was not found.");
-        var walls = await curatedWallRepository.ListByCurationAsync(curationId, cancellationToken);
+        var pinchMarkers = await pinchMarkerRepository.ListByCurationAsync(curationId, cancellationToken);
 
-        if (walls.Count == 0 || walls.Any(item => string.IsNullOrWhiteSpace(item.StableWallId)))
+        if (pinchMarkers.Count == 0)
         {
-            throw new InvalidOperationException("A curation must have at least one fully identified curated wall before publish.");
+            throw new InvalidOperationException("A curation must contain at least one pinch marker before publish.");
         }
 
         curation.Publish(clock.UtcNow);

@@ -8,5 +8,11 @@ public sealed record FloorPlanReviewSessionDto(
     int ActiveVersionNumber,
     Guid? ActivePublishedCurationId,
     IReadOnlyList<GeometryPathDto> GeometryPaths,
+    IReadOnlyList<RoomLabelDto> RoomLabels,
+    IReadOnlyList<OpeningCandidateDto> OpeningCandidates,
+    IReadOnlyList<OpeningLabelDto> OpeningLabels,
+    IReadOnlyList<FixedPlanComponentDto> FixedPlanComponents,
+    IReadOnlyList<ProtectedDetailAssemblyDto> ProtectedDetailAssemblies,
     IReadOnlyList<WallCandidateDto> WallCandidates,
-    IReadOnlyList<CuratedWallDto> CuratedWalls);
+    IReadOnlyList<PinchGroupDto> PinchGroups,
+    IReadOnlyList<PinchMarkerDto> PinchMarkers);

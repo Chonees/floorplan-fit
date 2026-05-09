@@ -29,15 +29,36 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
         var wallCandidates = extractionRunId is null
             ? []
             : GetWallCandidates(extractionRunId.Value);
+        var roomLabels = extractionRunId is null
+            ? []
+            : GetRoomLabels(extractionRunId.Value);
+        var openingCandidates = extractionRunId is null
+            ? []
+            : GetOpeningCandidates(extractionRunId.Value);
+        var openingLabels = extractionRunId is null
+            ? []
+            : GetOpeningLabels(extractionRunId.Value);
+        var fixedPlanComponents = extractionRunId is null
+            ? []
+            : GetFixedPlanComponents(extractionRunId.Value);
+        var protectedDetailAssemblies = extractionRunId is null
+            ? []
+            : GetProtectedDetailAssemblies(extractionRunId.Value);
 
         var curationId = GetDraftCurationId(summary.CurrentVersionId) ?? summary.ActivePublishedCurationId;
-        var curatedWalls = curationId is null
+        var pinchGroups = curationId is null
             ? []
-            : GetCuratedWalls(curationId.Value);
+            : GetPinchGroups(curationId.Value);
+        var pinchMarkers = curationId is null
+            ? []
+            : GetPinchMarkers(curationId.Value);
 
         var geometryPathIds = wallCandidates
             .Select(item => item.GeometryPathId)
-            .Concat(curatedWalls.Select(item => item.GeometryPathId))
+            .Concat(openingCandidates.Select(item => item.GeometryPathId))
+            .Concat(fixedPlanComponents.SelectMany(item => item.GeometryPathIds).Select(item => (Guid?)item))
+            .Concat(protectedDetailAssemblies.SelectMany(item => item.GeometryPathIds).Select(item => (Guid?)item))
+            .Concat(pinchMarkers.Select(item => (Guid?)item.GeometryPathId))
             .Where(item => item.HasValue)
             .Select(item => item!.Value)
             .Distinct()
@@ -53,8 +74,14 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             summary.ActiveVersionNumber,
             summary.ActivePublishedCurationId,
             geometryPaths,
+            roomLabels,
+            openingCandidates,
+            openingLabels,
+            fixedPlanComponents,
+            protectedDetailAssemblies,
             wallCandidates,
-            curatedWalls));
+            pinchGroups,
+            pinchMarkers));
     }
 
     private TemplateSummary? GetTemplateSummary(Guid templateId)
@@ -179,50 +206,372 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
         return items;
     }
 
-    private IReadOnlyList<CuratedWallDto> GetCuratedWalls(Guid floorPlanCurationId)
+    private IReadOnlyList<RoomLabelDto> GetRoomLabels(Guid extractionRunId)
     {
         using var command = CreateCommand(
             """
             SELECT
                 id,
-                stable_wall_id,
-                source_candidate_id,
-                wall_role,
-                mobility_level,
-                protection_level,
-                thickness_mm,
-                assembly_code,
-                height_mm,
-                is_exterior,
-                is_structural_hint,
-                geometry_path_id,
+                source_entity_ref,
+                source_layer,
+                text,
+                x,
+                y,
+                confidence,
+                detection_notes,
                 sort_order,
-                notes
-            FROM curated_walls
-            WHERE floorplan_curation_id = $floorplan_curation_id
-            ORDER BY sort_order ASC, stable_wall_id ASC
+                source_entity_kind,
+                text_height,
+                rotation_degrees,
+                text_style_name,
+                horizontal_alignment,
+                vertical_alignment,
+                attachment_point,
+                color_argb
+            FROM extracted_room_labels
+            WHERE wall_extraction_run_id = $wall_extraction_run_id
+            ORDER BY sort_order ASC, id ASC
             """);
-        command.Parameters.AddWithValue("$floorplan_curation_id", floorPlanCurationId.ToString());
+        command.Parameters.AddWithValue("$wall_extraction_run_id", extractionRunId.ToString());
 
-        var items = new List<CuratedWallDto>();
+        var items = new List<RoomLabelDto>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            items.Add(new CuratedWallDto(
+            items.Add(new RoomLabelDto(
                 Guid.Parse(reader.GetString(0)),
                 reader.GetString(1),
-                reader.IsDBNull(2) ? null : Guid.Parse(reader.GetString(2)),
-                ((WallRole)reader.GetInt32(3)).ToString(),
-                ((WallMobilityLevel)reader.GetInt32(4)).ToString(),
-                ((WallProtectionLevel)reader.GetInt32(5)).ToString(),
-                reader.IsDBNull(6) ? null : decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
+                reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                reader.GetString(3),
+                decimal.Parse(reader.GetString(4), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(5), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
                 reader.IsDBNull(7) ? null : reader.GetString(7),
-                reader.IsDBNull(8) ? null : decimal.Parse(reader.GetString(8), CultureInfo.InvariantCulture),
-                reader.GetInt32(9) == 1,
-                reader.GetInt32(10) == 1,
-                reader.IsDBNull(11) ? null : Guid.Parse(reader.GetString(11)),
-                reader.GetInt32(12),
-                reader.IsDBNull(13) ? null : reader.GetString(13)));
+                reader.GetInt32(8),
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                reader.IsDBNull(10) ? null : decimal.Parse(reader.GetString(10), CultureInfo.InvariantCulture),
+                reader.IsDBNull(11) ? 0m : decimal.Parse(reader.GetString(11), CultureInfo.InvariantCulture),
+                reader.IsDBNull(12) ? null : reader.GetString(12),
+                reader.IsDBNull(13) ? null : reader.GetString(13),
+                reader.IsDBNull(14) ? null : reader.GetString(14),
+                reader.IsDBNull(15) ? null : reader.GetString(15),
+                reader.IsDBNull(16) ? null : reader.GetString(16)));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<OpeningCandidateDto> GetOpeningCandidates(Guid extractionRunId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT
+                id,
+                source_entity_ref,
+                source_layer,
+                kind,
+                source_entity_kind,
+                geometry_path_id,
+                confidence,
+                detection_notes,
+                sort_order
+            FROM extracted_opening_candidates
+            WHERE wall_extraction_run_id = $wall_extraction_run_id
+            ORDER BY sort_order ASC, id ASC
+            """);
+        command.Parameters.AddWithValue("$wall_extraction_run_id", extractionRunId.ToString());
+
+        var items = new List<OpeningCandidateDto>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            items.Add(new OpeningCandidateDto(
+                Guid.Parse(reader.GetString(0)),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                reader.GetString(3),
+                reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                reader.IsDBNull(5) ? null : Guid.Parse(reader.GetString(5)),
+                decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.GetInt32(8)));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<OpeningLabelDto> GetOpeningLabels(Guid extractionRunId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT
+                id,
+                source_entity_ref,
+                source_layer,
+                kind,
+                text,
+                x,
+                y,
+                confidence,
+                detection_notes,
+                sort_order,
+                source_entity_kind,
+                text_height,
+                rotation_degrees,
+                text_style_name,
+                horizontal_alignment,
+                vertical_alignment,
+                attachment_point,
+                color_argb
+            FROM extracted_opening_labels
+            WHERE wall_extraction_run_id = $wall_extraction_run_id
+            ORDER BY sort_order ASC, id ASC
+            """);
+        command.Parameters.AddWithValue("$wall_extraction_run_id", extractionRunId.ToString());
+
+        var items = new List<OpeningLabelDto>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            items.Add(new OpeningLabelDto(
+                Guid.Parse(reader.GetString(0)),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                decimal.Parse(reader.GetString(5), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(7), CultureInfo.InvariantCulture),
+                reader.IsDBNull(8) ? null : reader.GetString(8),
+                reader.GetInt32(9),
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                reader.IsDBNull(11) ? null : decimal.Parse(reader.GetString(11), CultureInfo.InvariantCulture),
+                reader.IsDBNull(12) ? 0m : decimal.Parse(reader.GetString(12), CultureInfo.InvariantCulture),
+                reader.IsDBNull(13) ? null : reader.GetString(13),
+                reader.IsDBNull(14) ? null : reader.GetString(14),
+                reader.IsDBNull(15) ? null : reader.GetString(15),
+                reader.IsDBNull(16) ? null : reader.GetString(16),
+                reader.IsDBNull(17) ? null : reader.GetString(17)));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<FixedPlanComponentDto> GetFixedPlanComponents(Guid extractionRunId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT
+                id,
+                source_entity_ref,
+                source_layer,
+                kind,
+                source_entity_kind,
+                source_block_name,
+                confidence,
+                detection_notes,
+                sort_order,
+                color_argb
+            FROM extracted_fixed_plan_components
+            WHERE wall_extraction_run_id = $wall_extraction_run_id
+            ORDER BY sort_order ASC, id ASC
+            """);
+        command.Parameters.AddWithValue("$wall_extraction_run_id", extractionRunId.ToString());
+
+        var rows = new List<FixedPlanComponentRow>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                rows.Add(new FixedPlanComponentRow(
+                    Guid.Parse(reader.GetString(0)),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                    reader.GetString(3),
+                    reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5),
+                    decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
+                    reader.IsDBNull(7) ? null : reader.GetString(7),
+                    reader.GetInt32(8),
+                    reader.IsDBNull(9) ? null : reader.GetString(9)));
+            }
+        }
+
+        return rows
+            .Select(row => new FixedPlanComponentDto(
+                row.Id,
+                row.SourceEntityRef,
+                row.SourceLayer,
+                row.Kind,
+                row.SourceEntityKind,
+                row.SourceBlockName,
+                GetFixedPlanComponentGeometryPathIds(row.Id),
+                row.Confidence,
+                row.DetectionNotes,
+                row.SortOrder,
+                row.ColorArgb))
+            .ToArray();
+    }
+
+    private IReadOnlyList<Guid> GetFixedPlanComponentGeometryPathIds(Guid componentId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT geometry_path_id
+            FROM extracted_fixed_plan_component_paths
+            WHERE fixed_plan_component_id = $fixed_plan_component_id
+            ORDER BY sort_order ASC, geometry_path_id ASC
+            """);
+        command.Parameters.AddWithValue("$fixed_plan_component_id", componentId.ToString());
+
+        var items = new List<Guid>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            items.Add(Guid.Parse(reader.GetString(0)));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<ProtectedDetailAssemblyDto> GetProtectedDetailAssemblies(Guid extractionRunId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT
+                id,
+                source_entity_ref,
+                source_layer,
+                kind,
+                source_entity_kind,
+                confidence,
+                detection_notes,
+                sort_order,
+                color_argb
+            FROM extracted_protected_detail_assemblies
+            WHERE wall_extraction_run_id = $wall_extraction_run_id
+            ORDER BY sort_order ASC, id ASC
+            """);
+        command.Parameters.AddWithValue("$wall_extraction_run_id", extractionRunId.ToString());
+
+        var rows = new List<ProtectedDetailAssemblyRow>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                rows.Add(new ProtectedDetailAssemblyRow(
+                    Guid.Parse(reader.GetString(0)),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                    reader.GetString(3),
+                    reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                    decimal.Parse(reader.GetString(5), CultureInfo.InvariantCulture),
+                    reader.IsDBNull(6) ? null : reader.GetString(6),
+                    reader.GetInt32(7),
+                    reader.IsDBNull(8) ? null : reader.GetString(8)));
+            }
+        }
+
+        return rows
+            .Select(row => new ProtectedDetailAssemblyDto(
+                row.Id,
+                row.SourceEntityRef,
+                row.SourceLayer,
+                row.Kind,
+                row.SourceEntityKind,
+                GetProtectedDetailAssemblyGeometryPathIds(row.Id),
+                row.Confidence,
+                row.DetectionNotes,
+                row.SortOrder,
+                row.ColorArgb))
+            .ToArray();
+    }
+
+    private IReadOnlyList<Guid> GetProtectedDetailAssemblyGeometryPathIds(Guid assemblyId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT geometry_path_id
+            FROM extracted_protected_detail_assembly_paths
+            WHERE protected_detail_assembly_id = $protected_detail_assembly_id
+            ORDER BY sort_order ASC, geometry_path_id ASC
+            """);
+        command.Parameters.AddWithValue("$protected_detail_assembly_id", assemblyId.ToString());
+
+        var items = new List<Guid>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            items.Add(Guid.Parse(reader.GetString(0)));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<PinchGroupDto> GetPinchGroups(Guid floorPlanCurationId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT
+                id,
+                name,
+                axis_tag,
+                sort_order
+            FROM pinch_groups
+            WHERE floorplan_curation_id = $floorplan_curation_id
+            ORDER BY sort_order ASC, id ASC
+            """);
+        command.Parameters.AddWithValue("$floorplan_curation_id", floorPlanCurationId.ToString());
+
+        var items = new List<PinchGroupDto>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            items.Add(new PinchGroupDto(
+                Guid.Parse(reader.GetString(0)),
+                reader.GetString(1),
+                ((PinchAxisTag)reader.GetInt32(2)).ToString(),
+                reader.GetInt32(3)));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<PinchMarkerDto> GetPinchMarkers(Guid floorPlanCurationId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT
+                markers.id,
+                markers.pinch_group_id,
+                groups.name,
+                markers.source_candidate_id,
+                markers.geometry_path_id,
+                groups.axis_tag,
+                markers.position_ratio,
+                markers.max_trim_mm,
+                markers.sort_order
+            FROM pinch_markers AS markers
+            INNER JOIN pinch_groups AS groups ON groups.id = markers.pinch_group_id
+            WHERE markers.floorplan_curation_id = $floorplan_curation_id
+            ORDER BY groups.sort_order ASC, markers.sort_order ASC, markers.id ASC
+            """);
+        command.Parameters.AddWithValue("$floorplan_curation_id", floorPlanCurationId.ToString());
+
+        var items = new List<PinchMarkerDto>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            items.Add(new PinchMarkerDto(
+                Guid.Parse(reader.GetString(0)),
+                Guid.Parse(reader.GetString(1)),
+                reader.GetString(2),
+                Guid.Parse(reader.GetString(3)),
+                Guid.Parse(reader.GetString(4)),
+                ((PinchAxisTag)reader.GetInt32(5)).ToString(),
+                decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(7), CultureInfo.InvariantCulture),
+                reader.GetInt32(8)));
         }
 
         return items;
@@ -305,4 +654,27 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
         int ActiveVersionNumber,
         Guid? ActivePublishedCurationId,
         string Status);
+
+    private sealed record FixedPlanComponentRow(
+        Guid Id,
+        string SourceEntityRef,
+        string SourceLayer,
+        string Kind,
+        string SourceEntityKind,
+        string? SourceBlockName,
+        decimal Confidence,
+        string? DetectionNotes,
+        int SortOrder,
+        string? ColorArgb);
+
+    private sealed record ProtectedDetailAssemblyRow(
+        Guid Id,
+        string SourceEntityRef,
+        string SourceLayer,
+        string Kind,
+        string SourceEntityKind,
+        decimal Confidence,
+        string? DetectionNotes,
+        int SortOrder,
+        string? ColorArgb);
 }

@@ -6,7 +6,7 @@ repo: https://github.com/Chonees/floorplan-fit
 
 status: active
 
-updated: 2026-05-03
+updated: 2026-05-09
 
 ---
 
@@ -60,13 +60,45 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - El repo ya no est? en estado "solo docs": existe el slice ejecutable de import + Library sobre `SANTA-BARBARA.dxf`.
 
-- Loop 1 todav?a no est? cerrado, pero ya tiene implementado su n?cleo sem?ntico, lifecycle principal, read-model base de review y review UI m?nima.
+- Loop 1 todav?a no est? cerrado, pero la rama experimental actual ya reorient? la review/curation a un flujo **pinch-native minimalista** para preparar el fit posterior contra site plan.
+
+- Norte de producto actualizado el 2026-05-07: Loop 1 debe convertirse en una superficie de curado **CAD-faithful** para admins. El objetivo no es solo detectar paredes, sino publicar en la libreria una version visual/estructuralmente confiable del floor plan que luego pueda adaptarse contra site plans con pinches, manteniendo dimensiones, labels, openings, componentes fijos, hatches/anotaciones y paredes alineadas de forma auditable.
+
+- `MVP-UX.md` fue actualizado el **2026-05-09** para dejar de describir el flujo viejo accept-first/curated-walls y pasar a la verdad UX actual: Loop 1 como **CAD-faithful curation** con artifacts separados y **pinch groups/markers**; Loop 2 como adaptacion por site plan usando solo zonas autorizadas y decisiones auditables.
+
+- `TECH-STACK-ARCHITECTURE-DATAFLOW.md` fue actualizado el **2026-05-09** para reemplazar las referencias viejas a `walls-only`, `CuratedWalls`, overlay contra curated walls y `Load curated walls`; la fuente tecnica ahora describe extraction por familias CAD, curation persistida con pinches, artifacts protegidos y un fit engine deterministico que consume una curation publicada con zonas autorizadas.
+
+- Docs historicos bajo `docs/superpowers/` fueron marcados el **2026-05-09** como `SUPERSEDED`, `PARTIALLY SUPERSEDED` o `HISTORICAL / UI-SUPERSEDED` cuando todavia describian el flujo viejo `CuratedWall`, auto-staged curated walls, axis-tag-only pinches sin grupos, o UI con curated-wall side lists. No deben usarse como fuente actual frente a `MVP-UX.md`, `TECH-STACK-ARCHITECTURE-DATAFLOW.md`, el mapa completo y este Current State.
+
+- Auditoria de branch del **2026-05-09**: el ultimo commit versionado sigue en **2026-05-04** (`908cdc2` despues de `c2c1b30`), pero la verdad activa de la branch va mas adelante en el working tree y en la documentacion canonica. Durante la auditoria habia **138 archivos staged**, **38 unstaged** y **21 untracked**; por eso `git log` solo no alcanza para saber por donde va el proyecto.
+
+- Decision de dimensiones: las dimensiones futuras no son labels decorativos. Deben modelarse como artifacts CAD-faithful con lineas de dimension, extension lines, ticks/arrows, texto, rotacion, layer/style/color, anchors en coordenadas reales, valor original DXF y valor recalculable. Durante previews/adaptaciones por pinches, las dimensiones deben actualizarse en tiempo real desde la geometria transformada para auditar cuanto cambio el patio, una habitacion, el ancho total, etc.
 
 - Loop 2 todav?a no tiene implementaci?n real de envelope, fit engine ni proposals.
 
 - Los DXF de `PLANS/originalFloorPlans/` son la fuente primaria de verdad para Loop 1.
 
 - `PLANS/catalog/` queda como referencia legacy/comparativa, no como fuente can?nica del dominio.
+
+- Desde 2026-05-06, la evidencia DXF para 2x4 / 2x6 no es color por entidad: en `SEMINOLE2000.dxf` y `SANTA-BARBARA.dxf`, las entidades de `WALLS` son `BYLAYER`; la señal fuerte es la distancia geométrica entre caras paralelas, con clusters claros cerca de `4"` y `6"`.
+
+- Desde 2026-05-06, `IxMiliaWallExtractor` ya infiere hints de espesor desde geometría: pares paralelos solapados cerca de `4"` guardan `ThicknessMm = 101.6`, pares cerca de `6"` guardan `ThicknessMm = 152.4`; `ELECTRICAL WALLS` queda fuera de esta inferencia.
+
+- Gotcha vigente: las extracciones viejas no se backfillean. Si una review muestra todo `Thickness unknown` o no muestra room labels, probablemente esta leyendo un `wall_extraction_run` anterior al cambio; hay que re-ejecutar `Extract Walls` y reabrir Review.
+
+- Desde 2026-05-07, los nombres de habitaciones se extraen como **room label candidates** separados de las walls: `IxMiliaRoomLabelExtractor` lee entidades `TEXT` / `MTEXT` de `ROOM LBLS`, filtra etiquetas genericas como `FLOOR PLAN` / `WALL LEGEND`, persiste `ExtractedRoomLabel` y la review los muestra en el panel `Rooms`.
+
+- Desde 2026-05-07, los room labels se renderizan en modo DXF-like sobre el canvas: el extractor preserva `TextHeight`, `RotationDegrees`, `TextStyleName`, alineacion, attachment y color; `FloorPlanPreviewControl` proyecta `RoomLabelDto.X/Y`, dibuja texto crudo sin badge artificial y usa baseline/alignment metrics para ubicar el texto respecto del insertion point DXF.
+
+- Desde 2026-05-07, puertas y ventanas se extraen como **opening candidates** separados de las walls: `IxMiliaOpeningExtractor` lee geometria de `DOORS`, `WIN` y `WINS`, y lee labels exactos de modelo/tamano desde `DOORTEXT` y `WINDWS LBLS` (`2668`, `24"DR.`, `27" R.O.`, `3050 S.H.`, `(3) 3050 FXD. HDR. @ 6'-8"`, etc.). El extractor ya filtra notas no-opening que comparten layer `DOORTEXT` (`STAND`, `TUB`, `WTR`, `SAFETY GLASS`, etc.). La review UI permite eliminar opening geometry o opening labels falsos positivos para que no vuelvan a persistir ni renderizar en esa extraccion.
+
+- Desde 2026-05-07, la opening geometry tambien se puede seleccionar directamente desde el preview canvas, igual que las walls. El hit-test incluye openings, les da prioridad visual sobre walls cuando se superponen, selecciona `SelectedOpeningCandidate`, resalta la apertura elegida en naranja/rojo y deja listo el boton `Remove Selected Opening` para eliminar falsos positivos desde el objeto visual.
+
+- Desde 2026-05-07, los bloques/componentes fijos del plano se extraen como **fixed plan components** separados de walls y openings: `IxMiliaFixedPlanComponentExtractor` lee geometria de `FIXTURES`, `CABS`, `CABS-FLOORPLAN` e inserts relevantes (`TOILET1`, `STOVE`, `SINK`, `DISHWASHER`, `TUB`, `WASH_DRY`, etc.), resuelve/preserva su color original DXF en `ColorArgb`, los persiste y la Review permite verlos, seleccionarlos desde el canvas y eliminar falsos positivos.
+
+- Desde 2026-05-07, las geometrías de detalle húmedo/protegido se extraen como **protected detail assemblies** separados de walls, openings y fixed components: `IxMiliaProtectedDetailAssemblyExtractor` lee layers protegidos del profile (`MISC`, `HATCH`) como `WetAreaDetail`, mantiene `L1` excluido para evitar ruido masivo, persiste sus geometry paths, los muestra en Review y permite seleccionarlos/remover falsos positivos con `Remove Selected Detail`.
+
+- Limitacion tecnica vigente: como el schema runtime actual de `geometry_segments` solo persiste segmentos lineales, los arcos de puertas del DXF se aplanan a polilineas para preview. Visualmente conserva la geometria de swing, pero una preservacion CAD 100% nativa de arcos requiere extender `geometry_segments` con `segment_type`, centro/radio/clockwise.
 
 
 
@@ -78,9 +110,15 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Balance aprobado: **core sem?ntico + canvas m?nimo real**; no editor CAD rico todav?a.
 
-- Ajuste de alcance aprobado: Loop 1 debe cerrar con **walls exactas + curated spaces m?nimos + constraints b?sicas por ambiente**.
+- Ajuste experimental vigente en esta branch: para ense?arle al fit **d?nde puede recortar**, el dato can?nico de curado pas? a ser el **pinch marker estrat?gico** por eje `Width` / `Height`.
 
 - La **creaci?n de paredes nuevas** pertenece primero a **Loop 2** como propuesta de adaptaci?n, con promoci?n opcional de vuelta a Loop 1 si el usuario la quiere canonizar.
+
+- Regla arquitectonica nueva: cada familia DXF que entre al curado debe tener lifecycle completo y separado: extractor -> detected model -> domain persistence -> Review DTO -> preview layer -> selection -> curation correction/removal -> publishable library truth. No se debe convertir en un mega-extractor opaco.
+
+- Decision de pipeline del 2026-05-07: el sistema debe apuntar a **N floorplans de Pointe Homes**, no a un solo plano. El pipeline actual ya es generico en storage/review/publish por template, y las convenciones debiles de layers/bloques vistas en los DXF actuales ahora viven centralizadas en `DxfExtractionProfile.PointeHomes` en vez de quedar escondidas dentro de cada extractor.
+
+- Contexto de curado activo confirmado por el usuario el 2026-05-07: el floorplan que estamos usando como caso semilla actual es **SEMINOLE2000**. Las reglas debiles observadas en este plano no deben quedar escondidas dentro de extractores genericos; deben separarse en un perfil explicito para que luego podamos soportar N floorplans de Pointe Homes.
 
 
 
@@ -90,19 +128,43 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - `FloorPlanTemplate` ya separa `CurrentVersionId` de `ActivePublishedCurationId`.
 
-- Domain ya tiene `FloorPlanCuration`, `ExtractedWallCandidate`, `CuratedWall`, `CuratedSpace`, groups/joins y constraints base.
+- Domain del flujo de review ahora usa como verdad activa:
 
-- Application ya tiene handlers para:
+  - `FloorPlanCuration`
+
+  - `ExtractedWallCandidate`
+
+  - `ExtractedOpeningCandidate`
+
+  - `ExtractedOpeningLabel`
+
+  - `ExtractedFixedPlanComponent`
+
+  - `ExtractedProtectedDetailAssembly`
+
+  - `PinchAxisTag`
+
+  - `PinchGroup`
+
+  - `PinchMarker`
+
+- Application del flujo pinch-native ahora tiene handlers para:
 
   - `ExtractWallCandidates`
 
   - `StartOrResumeCuration`
 
-  - `AcceptWallCandidate`
-
   - `RejectWallCandidate`
 
-  - `UpdateCuratedWallMetadata`
+  - `AddPinchMarker`
+
+  - `AddPinchGroup`
+
+  - `RemovePinchMarker`
+
+  - `RemoveFixedPlanComponent`
+
+  - `RemoveProtectedDetailAssembly`
 
   - `PublishFloorPlanCuration`
 
@@ -120,7 +182,23 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
   - `floorplan_curations`
 
-  - `curated_walls`
+  - `pinch_markers`
+
+  - `pinch_groups`
+
+  - `extracted_room_labels` para guardar room label candidates por `wall_extraction_run`
+
+  - `extracted_opening_candidates` y `extracted_opening_labels` para guardar puertas/ventanas detectadas y sus labels exactos por `wall_extraction_run`; los falsos positivos pueden removerse desde Review y se borran de SQLite junto con su geometry path si corresponde
+
+  - `extracted_fixed_plan_components` y `extracted_fixed_plan_component_paths` para guardar componentes fijos/protegidos del plano y sus `geometry_paths`; los falsos positivos pueden removerse desde Review y se borran junto con sus geometry paths
+
+  - `extracted_protected_detail_assemblies` y `extracted_protected_detail_assembly_paths` para guardar detalles CAD protegidos como wet-area assemblies sin promoverlos a walls; los falsos positivos pueden removerse desde Review y se borran junto con sus geometry paths
+
+  - `SqliteSchemaInitializer` ya auto-migra `pinch_markers` legacy (`pinch_group_id` + `curated_wall_id`) hacia el shape pinch-native agrupado (`pinch_group_id` + `source_candidate_id`) para que los workspaces viejos no rompan `Open Review`
+
+  - desde 2026-05-06, `SqliteSchemaInitializer` migra el shape axis-tagged anterior (`source_candidate_id` + `axis_tag`) a grupos persistidos, creando grupos default `Width` / `Height` por curation cuando hace falta
+
+  - desde 2026-05-06, la migraci?n axis-tagged elige un solo grupo destino por `curation + axis` cuando ya existen varios grupos del mismo eje, evitando duplicar inserts de `pinch_markers.id`
 
   - `geometry_paths` + `geometry_segments` para las geometr?as de walls detectadas
 
@@ -128,35 +206,141 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
   - `IxMiliaWallExtractor` real filtrando capas wall-like
 
+  - `DxfExtractionProfile.PointeHomes` centraliza convenciones actuales de layers/bloques/labels para `SEMINOLE2000` y otros planes Pointe con convenciones similares
+
+  - `IxMiliaWallExtractor` ahora enriquece los candidates con `ThicknessMm` inferido desde caras paralelas para hints `2x4` / `2x6`
+
+  - `IxMiliaRoomLabelExtractor` real leyendo room labels desde la capa `ROOM LBLS` y excluyendo textos no espaciales
+
+  - `IxMiliaOpeningExtractor` real leyendo geometria de puertas/ventanas desde `DOORS`, `WIN` y `WINS`, y labels exactos desde `DOORTEXT` / `WINDWS LBLS`
+
+  - `IxMiliaFixedPlanComponentExtractor` real leyendo componentes fijos desde `FIXTURES`, `CABS`, `CABS-FLOORPLAN` e inserts de bloques relevantes, transformando coordenadas de bloque a coordenadas de modelo
+
+  - `IxMiliaProtectedDetailAssemblyExtractor` real leyendo detail assemblies desde las convenciones protegidas del profile (`MISC`, `HATCH`) y manteniendo `L1` fuera para evitar ruido masivo en SEMINOLE2000
+
   - `SqliteFloorPlanLibraryReader` derivando `Imported`, `Extracted`, `Curated Draft` y `Published`
 
-  - `SqliteFloorPlanReviewSessionReader` para cargar template summary, candidates, curated walls y geometr?a
+  - `SqliteFloorPlanReviewSessionReader` para cargar template summary, candidates, pinch markers, room labels, opening candidates, opening labels, fixed plan components, protected detail assemblies y geometria
 
   - `SqliteFloorPlanExtractionSourceReader` para resolver la versi?n actual y el DXF gestionado que usa la extracci?n
 
-- Desktop ya tiene review UI m?nima:
+- Desktop ya tiene review UI pinch-native m?nima:
 
   - `LibraryViewModel` con `SelectedItem`, `Extract Walls` y `Open Review`
 
   - import que auto-extrae walls despu?s de guardar el DXF
 
-  - `ReviewFloorPlanWindow` con lista de candidates, preview geom?trico centrado sobre fondo blanco, label de selecci?n activa, click-to-select sobre el plano y panel inspector con scroll real
+  - `ReviewFloorPlanWindow` con tres zonas simples:
 
-  - `FloorPlanReviewViewModel` con acciones de `accept`, `reject`, `save metadata` y `publish`, m?s feedback expl?cito de qu? candidate o curated wall se est? previewing
+    - `Lines`
 
-  - `FloorPlanPreviewControl` recentra la geometr?a con padding consistente, repinta en tiempo real cuando cambia la selecci?n o la colecci?n observada y permite seleccionar paths por click directo sobre el preview
+    - `Preview`
 
-- Decisi?n vigente: en draft, **rechazar** un candidate elimina desde repositorio la `CuratedWall` derivada de ese source candidate. Soft-delete/deactivation queda diferido.
+    - `Pinch Tools`
+
+    - `Rooms` dentro del panel lateral, mostrando labels detectados como candidatos semanticos livianos
+
+    - `Openings` dentro del panel lateral, mostrando conteos Door/Window y labels exactos detectados desde el DXF
+
+    - `Fixed Elements` dentro del panel lateral, mostrando toilets, fixtures, appliances, cabinets y blocks detectados desde DXF, con accion `Remove Selected Component`
+
+    - `Protected Details` dentro del panel lateral, mostrando wet-area/detail assemblies detectados desde DXF, con accion `Remove Selected Detail`
+
+    - overlay DXF-like de room labels sobre el canvas, proyectados desde `X`/`Y` y renderizados con altura/rotacion/alineacion del DXF
+
+    - overlay de opening geometry y opening labels sobre el canvas para ver puertas/ventanas y sus modelos/tamanos sin badges artificiales; todos los labels del preview se fuerzan a negro para mantener legibilidad sobre el workspace claro; el panel `Openings` permite seleccionar y remover falsos positivos de geometry o label
+
+    - seleccion directa de opening geometry desde el preview canvas: click sobre una puerta/ventana selecciona el `OpeningCandidateDto`, actualiza el panel lateral, resalta la geometria y permite removerla con `Remove Selected Opening`
+
+    - overlay de fixed plan components sobre el canvas: click sobre un toilet/fixture/cabinet/appliance selecciona el `FixedPlanComponentDto`, usa el color original DXF cuando esta disponible, resalta su geometry path y permite removerlo con `Remove Selected Component`
+
+    - overlay de protected detail assemblies sobre el canvas: click sobre un detalle wet-area/protegido selecciona el `ProtectedDetailAssemblyDto`, usa el color original DXF cuando esta disponible, resalta su geometry path y permite removerlo con `Remove Selected Detail`
+
+  - la lista `Lines` muestra un `AssemblyHint` como `Likely 2x4 wall (4")`, `Likely 2x6 wall (6")` o `Thickness unknown`
+
+  - `FloorPlanReviewViewModel` ahora solo maneja:
+
+    - selecci?n de candidate
+
+    - creaci?n y selecci?n de pinch groups con nombre
+
+    - eje `Width` / `Height`
+
+    - add pinch
+
+    - remove pinch
+
+    - reject line
+
+    - publish
+
+  - desde 2026-05-06, el flujo de pinches queda organizado por **pinch groups**: cada grupo tiene nombre y eje (`Width` / `Height`), cada marker pertenece a un grupo, y el preview de compresi?n usa solo el grupo seleccionado para evitar que un ajuste de Patio toque todos los pinches del mismo eje
+
+  - `FloorPlanPreviewControl` ahora:
+
+    - desde 2026-05-07, empezo a convertirse en shell de composicion/interaccion: la logica de overlays CAD-faithful se empezo a mover a `Controls/Preview/*` para que cada familia visual tenga un archivo con un proposito claro antes de sumar dimensiones
+
+    - dibuja room labels como texto crudo sobre el plano usando `X`/`Y`, `TextHeight`, `RotationDegrees`, alignment, baseline y color preservados desde el DXF
+
+    - dibuja opening labels como texto crudo sobre el plano usando `X`/`Y`, `TextHeight`, `RotationDegrees`, alignment y baseline preservados desde el DXF; el color visual se fuerza a negro para legibilidad
+
+    - dibuja fixed plan components como overlay separado, los excluye del render base de walls para poder colorearlos/seleccionarlos, respeta `FixedPlanComponentDto.ColorArgb` cuando existe, y les da prioridad de hit-test por encima de openings y walls
+
+    - dibuja protected detail assemblies como overlay separado, los excluye del render base de walls, respeta `ProtectedDetailAssemblyDto.ColorArgb` cuando existe, y les da prioridad de hit-test por encima de fixed components, openings y walls
+
+    - delega hit-test ordering/path classification en `PreviewArtifactGeometryIndex`
+
+    - delega render de openings en `OpeningPreviewLayerRenderer`
+
+    - delega render de fixed components en `FixedPlanComponentPreviewLayerRenderer`
+
+    - delega render de protected detail assemblies en `ProtectedDetailPreviewLayerRenderer`
+
+    - delega render/proyeccion de room/opening labels en `CadTextPreviewLayerRenderer`
+
+    - delega el fondo punteado tipo workspace en `PreviewWorkspaceRenderer`
+
+    - delega los handles de compresion en `CompressionHandlePreviewLayerRenderer`
+
+    - delega render/estilo de pinch markers y filtrado por grupo activo en `PinchMarkerPreviewLayerRenderer`
+
+    - hace hit-testing con `PositionRatio`
+
+    - dibuja pinch markers
+
+    - muestra handles visibles para `Width` o `Height`
+
+    - permite preview runtime-only de compresi?n al arrastrar desde el borde correspondiente
+
+    - desde 2026-05-05, los handles visibles del preview son tambi?n la fuente real del hit-test de drag; esto corrige la ambig?edad del preview `Height` y deja cobertura de tests para top/bottom handles y compresi?n vertical
+
+    - desde 2026-05-05, al seleccionar un pinch marker el eje activo del preview se sincroniza con el `AxisTag` del pinch, y el viewport de render reserva un rect interno para que la geometr?a quede contenida dentro del ?rea ?til entre handles
+
+    - desde 2026-05-07, el preview del floor plan permite zoom con la rueda del mouse y pan con click sostenido de la rueda / middle button. El zoom se aplica sobre el viewport auto-fit como transform de usuario, queda centrado en la posicion del cursor, respeta un clamp `0.35x`-`6x`, mantiene hit-test/pinch placement coherente con el zoom/pan y dibuja un fondo punteado tipo workspace.
+
+  - `ReviewFloorPlanWindow` ahora abre maximizada por defecto; se dej? de depender del tama?o r?gido `1450x920` porque eso hac?a desbordar la review en pantallas o escalas m?s chicas
+
+  - desde 2026-05-05, el panel `Preview` y `FloorPlanPreviewControl` tienen clipping expl?cito para impedir que el canvas del floor plan pinte fuera del contenedor principal del preview
+
+  - desde 2026-05-05, `FloorPlanPreviewControl` normaliza `Bounds` de Avalonia a coordenadas locales antes de renderizar, hit-testear y calcular handles; esto evita el espacio en blanco superior y el recorte inferior cuando el control vive debajo de filas de encabezado
+
+- Decisiones vigentes del branch:
+
+  - `CuratedWall` sali? del flujo activo de review/curation
+
+  - `PinchGroup` vuelve a ser parte activa del flujo: cada pinch pertenece a un grupo nombrado y el eje vive en el grupo para que el fit futuro recorte solo zonas específicas
+
+  - publicar ahora exige **al menos un pinch marker**
+
+  - rechazar un candidate limpia los pinch markers asociados a ese candidate dentro del draft
 
 - Verificaci?n actual:
 
-  - `dotnet test tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj --filter FullyQualifiedName~FloorPlans.Curation` -> **8/8**
+  - `dotnet test .\tests\FloorplanFit.Application.Tests\FloorplanFit.Application.Tests.csproj --artifacts-path .\.artifacts-test\application-protected-detail` -> **24/24** (2026-05-07, despues de sumar protected detail assemblies)
 
-  - `dotnet test tests/FloorplanFit.Application.Tests/FloorplanFit.Application.Tests.csproj` -> **16/16**
+  - `dotnet test .\tests\FloorplanFit.Infrastructure.Tests\FloorplanFit.Infrastructure.Tests.csproj --artifacts-path .\.artifacts-test\infrastructure-protected-detail` -> **40/40** (2026-05-07, despues de sumar protected detail assemblies)
 
-  - `dotnet test tests/FloorplanFit.Infrastructure.Tests/FloorplanFit.Infrastructure.Tests.csproj` -> **17/17**
-
-  - `dotnet test tests/FloorplanFit.Desktop.Tests/FloorplanFit.Desktop.Tests.csproj` -> **12/12**
+  - `dotnet test .\tests\FloorplanFit.Desktop.Tests\FloorplanFit.Desktop.Tests.csproj --artifacts-path .\.artifacts-test\desktop-protected-detail` -> **54/54** (2026-05-07, despues de sumar panel/overlay/seleccion de protected details)
 
 
 
@@ -177,17 +361,17 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Durante implementaci?n, la verificaci?n activa queda limitada a `dotnet test`.
 
-- El mapa exhaustivo `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` fue revalidado el **2026-05-04** despu?s del cleanup documental; hoy cubre **209 archivos relevantes del working tree** (**202 versionados presentes + 7 nuevos del working tree**) y mantiene en cada entrada **misi?n + importancia + use case**.
+- El mapa exhaustivo `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` fue revalidado el **2026-05-09** contra el working tree real de la branch; hoy cubre **323 archivos relevantes presentes** (**302 versionados presentes + 21 nuevos no versionados todavia**) y documenta la arquitectura activa **CAD-faithful curation + pinch-native shrink zones** con entrada por archivo en formato **mision + importancia + use case**.
 
 - Revalidacion secuencial hecha el **2026-05-02**: Application **16/16**, Infrastructure **17/17**, Desktop **4/4**.
 
-- Revalidaci?n puntual hecha el **2026-05-03** sobre la review UI Desktop: preview geometry + layout + selecci?n interactiva -> **12/12** tests Desktop.
+- Revalidaci?n fuerte hecha el **2026-05-04** sobre la rama `feat/loop1-pinch-curation-preview`: Application **16/16**, Infrastructure **17/17**, Desktop **11/11** despu?s de la limpieza pinch-native extrema.
 
 - `scripts/dev-desktop.bat` usa `dotnet watch run`, as? que hoy NO cuenta como path v?lido de verificaci?n durante coding.
 
-- Gotcha operativo: no correr `dotnet test` en paralelo para distintos proyectos dentro del mismo repo; aparecen locks `CS2012` en `obj/bin`.
+- Gotcha operativo: no correr `dotnet test` en paralelo compartiendo `obj/bin`; aparecen locks `CS2012`. Si hace falta paralelizar, usar `--artifacts-path` separado por proyecto.
 
-- Gotcha operativo: si qued? abierta una instancia de `FloorplanFit.Desktop`, puede bloquear `bin/Debug` y romper tests que compilan el proyecto Desktop.
+- Gotcha operativo: si `dotnet watch` deja `FloorplanFit.Desktop.exe` abierto, los tests Desktop pueden fallar por locks en `bin/Debug`. Para verificar sin cerrar la app, usar `dotnet test ... --artifacts-path .\.artifacts-test\<scope>` y despues borrar `.artifacts-test`; esa ruta sigue estando debajo del repo, asi que los tests que buscan `FloorplanFit.sln` subiendo directorios funcionan.
 
 - Drift confirmado: `docs/explicacion del proyecto/2026-04-29 - checklist manual del slice 1 ejecutable.md` ya quedo historico en el punto donde dice que la Library no hidrata desde SQLite al iniciar; el codigo actual si lo hace via `MainWindow_OnOpened -> LibraryViewModel.LoadAsync -> GetFloorPlanLibraryHandler -> SqliteFloorPlanLibraryReader`.
 
@@ -196,14 +380,23 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 ## Immediate Next Steps
 
 
+1. Crear el **curation correction backbone** antes de seguir agregando muchas familias DXF: estado/overrides para remover, ocultar, mover, renombrar o reclasificar artifacts sin confundir source extraction con verdad curada.
 
-1. Hacer una pasada manual de runtime de la review UI cuando el usuario quiera validar interacci?n visual real.
+2. Continuar el refactor gradual de `FloorPlanPreviewControl`: ya se extrajeron indexing/renderers para openings, fixed components, CAD text labels, pinch markers, workspace background y compression handles; falta preparar la capa de dimensiones y/o el backbone de correcciones curadas.
 
-2. Bajar `CuratedSpaces` m?nimos + constraints por ambiente para completar la parte espacial que todav?a falta en Loop 1.
+3. Traer dimensiones como familia DXF propia despues del backbone: dimension lines, extension lines, ticks/arrows, text, anchors reales, original displayed value, computed value, orientation/measurement, visual fidelity, and later dynamic update during pinch previews/adaptations.
 
-3. Mejorar la review UI con operaciones m?s ricas si hiciera falta (merge/split, filtros, zoom), pero eso ya queda despu?s del cierre can?nico.
+4. Hacer una pasada manual de runtime de la review UI pinch-native para validar sensaci?n real de add/remove pinch y handles de preview.
 
-4. Mantener la verificaci?n secuencial con `dotnet test` mientras siga vigente la regla `never build after changes`.
+5. Definir c?mo el futuro fit engine de Loop 2 va a consumir `PinchMarker` para recortar el m?nimo indispensable.
+
+6. Hacer una pasada manual de runtime despues de re-ejecutar `Extract Walls` para validar que `Rooms` muestre los labels de `ROOM LBLS`, que `Openings` muestre Door/Window labels de `DOORTEXT` / `WINDWS LBLS`, que `Fixed Elements` muestre toilets/fixtures/cabinets/appliances/blocks, que los overlays aparezcan sobre el canvas sin badges artificiales, y que `Remove Selected Opening` / `Remove Selected Label` / `Remove Selected Component` eliminen falsos positivos persistidos.
+
+7. Decidir mas adelante si conviene inferir boundaries de habitaciones o sumar overrides manuales de room labels; por ahora son labels candidatos, no poligonos de rooms.
+
+8. Decidir mas adelante si conviene volver a sumar una capa semantica richer arriba de pinches o si este modelo minimalista alcanza.
+
+9. Mantener la verificacion secuencial con `dotnet test` mientras siga vigente la regla `never build after changes`.
 
 
 
@@ -223,8 +416,58 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - [[Implementation/2026-04-30 - Mapa completo de arquitectura y archivos del repo]]
 
+- [[Implementation/2026-05-08 - Architecture map refreshed for CAD-faithful curation]]
+
+- [[Implementation/2026-05-09 - MVP UX refreshed for CAD-faithful pinch curation]]
+
+- [[Implementation/2026-05-09 - Tech stack architecture dataflow refreshed for CAD artifacts and pinch fit]]
+
+- [[Implementation/2026-05-09 - Branch progress audit from commits and guide docs]]
+
 - [[Bugs/2026-05-02 - Open Review crashes right after extraction because committed SQLite transaction is reused]]
 
 - [[Implementation/2026-05-02 - Fixed first-open review transaction crash]]
 
 - [[Implementation/2026-05-03 - Review preview layout and highlight fix]]
+
+- [[Implementation/2026-05-04 - Pinch native cleanup and minimal review UI]]
+
+- [[Bugs/2026-05-05 - Preview control used parent bounds for local rendering]]
+
+- [[Implementation/2026-05-06 - Pinch groups persisted for named shrink zones]]
+
+- [[Implementation/2026-05-06 - Geometry-based wall thickness inference]]
+
+- [[Implementation/2026-05-07 - Room label candidates extracted into review]]
+
+- [[Inbox/2026-05-07 - Room labels are persisted but not drawn on preview canvas]] (superseded by canvas overlay)
+
+- [[Implementation/2026-05-07 - Room label overlay rendered on preview canvas]]
+
+- [[Implementation/2026-05-07 - DXF-like room label rendering]]
+
+- [[Implementation/2026-05-07 - Room label baseline alignment fix]]
+
+- [[Implementation/2026-05-07 - Preview wheel zoom and dotted workspace]]
+
+- [[Implementation/2026-05-07 - Door and window opening candidates extracted into review]]
+
+- [[Bugs/2026-05-07 - Opening labels rendered white and included non-opening notes]]
+
+- [[Implementation/2026-05-07 - Removable opening false positives in review]]
+
+- [[Implementation/2026-05-07 - Preview-selectable openings for false positive removal]]
+
+- [[Implementation/2026-05-07 - Fixed plan components extracted into review]]
+
+- [[Implementation/2026-05-07 - Preview layer refactor for CAD-faithful curation]]
+
+- [[Decisions/2026-05-07 - CAD-faithful curation is the library publishing contract]]
+
+- [[Decisions/2026-05-07 - Extraction pipeline targets Pointe floorplans with profile-backed conventions]]
+
+- [[Implementation/2026-05-07 - Pointe Homes CAD extraction profile]]
+
+- [[Implementation/2026-05-07 - Protected detail assemblies for wet-area curation]]
+
+- [[Bugs/2026-05-06 - Axis-tagged pinch migration duplicated markers when groups shared an axis]]

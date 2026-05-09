@@ -3,6 +3,7 @@ using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Desktop.Composition;
 using FloorplanFit.Desktop.ViewModels;
+using FloorplanFit.Infrastructure.Dxf;
 using FloorplanFit.Infrastructure.Persistence;
 using FloorplanFit.Infrastructure.Runtime;
 using Microsoft.Data.Sqlite;
@@ -34,10 +35,14 @@ public sealed class DesktopServiceRegistrationTests
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<OpenFloorPlanReviewSessionHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<GetFloorPlanReviewSessionHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<StartOrResumeCurationHandler>());
-            Assert.NotNull(scope.ServiceProvider.GetRequiredService<AcceptWallCandidateHandler>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<AddPinchGroupHandler>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<AddPinchMarkerHandler>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemovePinchMarkerHandler>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemoveProtectedDetailAssemblyHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RejectWallCandidateHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<PublishFloorPlanCurationHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<ExtractWallCandidatesHandler>());
+            Assert.Same(DxfExtractionProfile.PointeHomes, scope.ServiceProvider.GetRequiredService<DxfExtractionProfile>());
         }
         finally
         {

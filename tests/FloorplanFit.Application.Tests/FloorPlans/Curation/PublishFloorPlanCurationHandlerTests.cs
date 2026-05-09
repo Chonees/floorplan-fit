@@ -7,7 +7,7 @@ namespace FloorplanFit.Application.Tests.FloorPlans.Curation;
 public sealed class PublishFloorPlanCurationHandlerTests
 {
     [Fact]
-    public async Task HandleAsync_sets_the_active_published_curation_on_the_template()
+    public async Task HandleAsync_sets_the_active_published_curation_on_the_template_when_at_least_one_pinch_marker_exists()
     {
         var template = new FloorPlanTemplate(Guid.NewGuid(), "santa-barbara", "SANTA-BARBARA", isActive: true);
         var versionId = Guid.NewGuid();
@@ -25,33 +25,24 @@ public sealed class PublishFloorPlanCurationHandlerTests
 
         var templateRepository = new InMemoryFloorPlanTemplateRepository(template);
         var curationRepository = new InMemoryFloorPlanCurationRepository(curation);
-        var wallRepository = new InMemoryCuratedWallRepository(
+        var markerRepository = new InMemoryPinchMarkerRepository(
         [
-            new CuratedWall(
+            new PinchMarker(
                 Guid.NewGuid(),
                 curation.Id,
-                "W-001",
-                sourceCandidateId: Guid.NewGuid(),
-                sourceEntityRef: "LINE:12",
-                geometryPathId: Guid.NewGuid(),
-                WallRole.Partition,
-                WallMobilityLevel.Flexible,
-                WallProtectionLevel.None,
-                thicknessMm: 101.6m,
-                assemblyCode: "2x4",
-                heightMm: null,
-                isExterior: false,
-                isStructuralHint: false,
-                wallGroupId: null,
-                sortOrder: 1,
-                notes: null)
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                0.4m,
+                120m,
+                1)
         ]);
         var unitOfWork = new FakeUnitOfWork();
         var publishedAtUtc = new DateTime(2026, 4, 30, 21, 0, 0, DateTimeKind.Utc);
 
         var handler = new PublishFloorPlanCurationHandler(
             curationRepository,
-            wallRepository,
+            markerRepository,
             templateRepository,
             unitOfWork,
             new FakeClock(publishedAtUtc));
@@ -64,6 +55,36 @@ public sealed class PublishFloorPlanCurationHandlerTests
         Assert.True(unitOfWork.SaveChangesCalled);
         Assert.True(templateRepository.UpdateCalled);
         Assert.True(curationRepository.UpdateCalled);
+    }
+
+    [Fact]
+    public async Task HandleAsync_throws_when_no_pinch_markers_exist_for_the_curation()
+    {
+        var template = new FloorPlanTemplate(Guid.NewGuid(), "santa-barbara", "SANTA-BARBARA", isActive: true);
+        var versionId = Guid.NewGuid();
+        template.SetCurrentVersion(versionId);
+
+        var curation = new FloorPlanCuration(
+            Guid.NewGuid(),
+            versionId,
+            curationVersion: 1,
+            FloorPlanCurationStatus.Draft,
+            basedOnCurationId: null,
+            notes: null,
+            createdAtUtc: new DateTime(2026, 4, 30, 20, 0, 0, DateTimeKind.Utc),
+            publishedAtUtc: null);
+
+        var handler = new PublishFloorPlanCurationHandler(
+            new InMemoryFloorPlanCurationRepository(curation),
+            new InMemoryPinchMarkerRepository([]),
+            new InMemoryFloorPlanTemplateRepository(template),
+            new FakeUnitOfWork(),
+            new FakeClock(new DateTime(2026, 4, 30, 21, 0, 0, DateTimeKind.Utc)));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            handler.HandleAsync(template.Id, curation.Id, CancellationToken.None));
+
+        Assert.Equal("A curation must contain at least one pinch marker before publish.", exception.Message);
     }
 
     private sealed class InMemoryFloorPlanTemplateRepository : IFloorPlanTemplateRepository
@@ -137,36 +158,36 @@ public sealed class PublishFloorPlanCurationHandlerTests
         }
     }
 
-    private sealed class InMemoryCuratedWallRepository : ICuratedWallRepository
+    private sealed class InMemoryPinchMarkerRepository : IPinchMarkerRepository
     {
-        private readonly IReadOnlyList<CuratedWall> items;
+        private readonly IReadOnlyList<PinchMarker> items;
 
-        public InMemoryCuratedWallRepository(IReadOnlyList<CuratedWall> items)
+        public InMemoryPinchMarkerRepository(IReadOnlyList<PinchMarker> items)
         {
             this.items = items;
         }
 
-        public Task AddAsync(CuratedWall wall, CancellationToken cancellationToken)
+        public Task AddAsync(PinchMarker marker, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();
         }
 
-        public Task<CuratedWall?> GetByIdAsync(Guid curatedWallId, CancellationToken cancellationToken)
+        public Task<PinchMarker?> GetByIdAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();
         }
 
-        public Task<IReadOnlyList<CuratedWall>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken)
+        public Task<IReadOnlyList<PinchMarker>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken)
         {
-            return Task.FromResult<IReadOnlyList<CuratedWall>>(items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
+            return Task.FromResult<IReadOnlyList<PinchMarker>>(items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
+        }
+
+        public Task RemoveAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
         }
 
         public Task RemoveBySourceCandidateAsync(Guid curationId, Guid sourceCandidateId, CancellationToken cancellationToken)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task UpdateAsync(CuratedWall wall, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();
         }
@@ -193,5 +214,3 @@ public sealed class PublishFloorPlanCurationHandlerTests
         public DateTime UtcNow { get; }
     }
 }
-
-

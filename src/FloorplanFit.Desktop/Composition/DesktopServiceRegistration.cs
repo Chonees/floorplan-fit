@@ -21,7 +21,12 @@ public static class DesktopServiceRegistration
         services.AddSingleton(new AppWorkspace(workspaceRoot));
         services.AddSingleton<IManagedFileStorage, ManagedFileStorage>();
         services.AddSingleton<IDxfGateway, IxMiliaDxfGateway>();
+        services.AddSingleton(DxfExtractionProfile.PointeHomes);
         services.AddSingleton<IWallExtractor, IxMiliaWallExtractor>();
+        services.AddSingleton<IRoomLabelExtractor, IxMiliaRoomLabelExtractor>();
+        services.AddSingleton<IOpeningExtractor, IxMiliaOpeningExtractor>();
+        services.AddSingleton<IFixedPlanComponentExtractor, IxMiliaFixedPlanComponentExtractor>();
+        services.AddSingleton<IProtectedDetailAssemblyExtractor, IxMiliaProtectedDetailAssemblyExtractor>();
         services.AddSingleton<IFileHashService, Sha256FileHashService>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<ImportFloorPlanResultFactory>();
@@ -38,8 +43,14 @@ public static class DesktopServiceRegistration
         services.AddScoped<IFloorPlanVersionRepository, SqliteFloorPlanVersionRepository>();
         services.AddScoped<IWallExtractionRunRepository, SqliteWallExtractionRunRepository>();
         services.AddScoped<IExtractedWallCandidateRepository, SqliteExtractedWallCandidateRepository>();
+        services.AddScoped<IExtractedRoomLabelRepository, SqliteExtractedRoomLabelRepository>();
+        services.AddScoped<IExtractedOpeningCandidateRepository, SqliteExtractedOpeningCandidateRepository>();
+        services.AddScoped<IExtractedOpeningLabelRepository, SqliteExtractedOpeningLabelRepository>();
+        services.AddScoped<IExtractedFixedPlanComponentRepository, SqliteExtractedFixedPlanComponentRepository>();
+        services.AddScoped<IExtractedProtectedDetailAssemblyRepository, SqliteExtractedProtectedDetailAssemblyRepository>();
         services.AddScoped<IFloorPlanCurationRepository, SqliteFloorPlanCurationRepository>();
-        services.AddScoped<ICuratedWallRepository, SqliteCuratedWallRepository>();
+        services.AddScoped<IPinchGroupRepository, SqlitePinchGroupRepository>();
+        services.AddScoped<IPinchMarkerRepository, SqlitePinchMarkerRepository>();
         services.AddScoped<IFloorPlanLibraryReader, SqliteFloorPlanLibraryReader>();
         services.AddScoped<IFloorPlanExtractionSourceReader, SqliteFloorPlanExtractionSourceReader>();
         services.AddScoped<IFloorPlanReviewSessionReader, SqliteFloorPlanReviewSessionReader>();
@@ -50,9 +61,14 @@ public static class DesktopServiceRegistration
         services.AddScoped<GetFloorPlanReviewSessionHandler>();
         services.AddScoped<OpenFloorPlanReviewSessionHandler>();
         services.AddScoped<StartOrResumeCurationHandler>();
-        services.AddScoped<AcceptWallCandidateHandler>();
+        services.AddScoped<AddPinchGroupHandler>();
+        services.AddScoped<AddPinchMarkerHandler>();
+        services.AddScoped<RemovePinchMarkerHandler>();
+        services.AddScoped<RemoveOpeningCandidateHandler>();
+        services.AddScoped<RemoveOpeningLabelHandler>();
+        services.AddScoped<RemoveFixedPlanComponentHandler>();
+        services.AddScoped<RemoveProtectedDetailAssemblyHandler>();
         services.AddScoped<RejectWallCandidateHandler>();
-        services.AddScoped<UpdateCuratedWallMetadataHandler>();
         services.AddScoped<PublishFloorPlanCurationHandler>();
 
         services.AddSingleton<LibraryViewModel>();

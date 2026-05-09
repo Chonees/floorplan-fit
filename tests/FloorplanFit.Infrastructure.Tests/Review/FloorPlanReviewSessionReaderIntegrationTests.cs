@@ -15,7 +15,7 @@ namespace FloorplanFit.Infrastructure.Tests.Review;
 public sealed class FloorPlanReviewSessionReaderIntegrationTests
 {
     [Fact]
-    public async Task GetByTemplateAsync_returns_candidates_curated_walls_and_geometry_for_the_current_floor_plan()
+    public async Task GetByTemplateAsync_returns_candidates_pinch_markers_and_geometry_for_the_current_floor_plan()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-review-reader-{Guid.NewGuid():N}");
         var solutionRoot = RepositoryPaths.FindSolutionRoot();
@@ -40,19 +40,40 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
             Assert.Equal(import.Item.TemplateId, reviewSession.TemplateId);
             Assert.Equal("Curated Draft", reviewSession.Status);
             Assert.NotEmpty(reviewSession.WallCandidates);
-            Assert.Single(reviewSession.CuratedWalls);
+            Assert.NotEmpty(reviewSession.RoomLabels);
+            Assert.NotEmpty(reviewSession.OpeningCandidates);
+            Assert.NotEmpty(reviewSession.OpeningLabels);
+            Assert.NotEmpty(reviewSession.FixedPlanComponents);
+            Assert.NotEmpty(reviewSession.ProtectedDetailAssemblies);
+            Assert.Single(reviewSession.PinchGroups);
+            Assert.Single(reviewSession.PinchMarkers);
             Assert.NotEmpty(reviewSession.GeometryPaths);
 
             var candidate = reviewSession.WallCandidates.Single();
             Assert.Equal("WALLS", candidate.SourceLayer);
             Assert.NotNull(candidate.GeometryPathId);
 
-            var curatedWall = reviewSession.CuratedWalls.Single();
-            Assert.Equal(candidate.CandidateId, curatedWall.SourceCandidateId);
-            Assert.Equal("W-001", curatedWall.StableWallId);
+            var pinchMarker = reviewSession.PinchMarkers.Single();
+            Assert.Equal("Patio", pinchMarker.PinchGroupName);
+            Assert.Equal(reviewSession.PinchGroups.Single().PinchGroupId, pinchMarker.PinchGroupId);
+            Assert.Equal(candidate.CandidateId, pinchMarker.SourceCandidateId);
+            Assert.Equal(nameof(PinchAxisTag.Width), pinchMarker.AxisTag);
+            Assert.Equal(candidate.GeometryPathId, pinchMarker.GeometryPathId);
 
             var path = Assert.Single(reviewSession.GeometryPaths, item => item.Id == candidate.GeometryPathId);
             Assert.Single(path.Segments);
+            Assert.Equal("KITCHEN", reviewSession.RoomLabels.Single().Text);
+            Assert.Equal("Door", reviewSession.OpeningCandidates.Single().Kind);
+            Assert.Equal("2668", reviewSession.OpeningLabels.Single().Text);
+            Assert.Equal("Toilet", reviewSession.FixedPlanComponents.Single().Kind);
+            Assert.Equal("#FF7F7F7F", reviewSession.FixedPlanComponents.Single().ColorArgb);
+            Assert.Contains(reviewSession.FixedPlanComponents.Single().GeometryPathIds, pathId =>
+                reviewSession.GeometryPaths.Any(path => path.Id == pathId));
+            Assert.Equal("WetAreaDetail", reviewSession.ProtectedDetailAssemblies.Single().Kind);
+            Assert.Equal("MISC", reviewSession.ProtectedDetailAssemblies.Single().SourceLayer);
+            Assert.Contains(reviewSession.ProtectedDetailAssemblies.Single().GeometryPathIds, pathId =>
+                reviewSession.GeometryPaths.Any(path => path.Id == pathId));
+            Assert.Contains(reviewSession.GeometryPaths, item => item.Id == reviewSession.OpeningCandidates.Single().GeometryPathId);
         }
         finally
         {
@@ -131,6 +152,130 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
             ],
             CancellationToken.None);
 
+        var persistedCandidate = await new SqliteExtractedWallCandidateRepository(session).GetByIdAsync(candidate.Id, CancellationToken.None)
+            ?? throw new InvalidOperationException("Expected persisted candidate.");
+
+        await new SqliteExtractedRoomLabelRepository(session).AddRangeAsync(
+            [
+                new ExtractedRoomLabel(
+                    Guid.NewGuid(),
+                    extractionRun.Id,
+                    "TEXT:1",
+                    "ROOM LBLS",
+                    "KITCHEN",
+                    125m,
+                    784m,
+                    0.95m,
+                    "Detected from ROOM LBLS text entity.",
+                    1)
+            ],
+            CancellationToken.None);
+
+        await new SqliteExtractedOpeningCandidateRepository(session).AddRangeAsync(
+            [
+                new ExtractedOpeningCandidate(
+                    Guid.NewGuid(),
+                    extractionRun.Id,
+                    "LINE:1",
+                    "DOORS",
+                    "Door",
+                    "LINE",
+                    Guid.Empty,
+                    0.95m,
+                    "Detected from DOORS line entity.",
+                    1)
+            ],
+            [
+                new DetectedOpeningCandidate(
+                    "LINE:1",
+                    "DOORS",
+                    "Door",
+                    "LINE",
+                    [new GeometryPoint(40m, 0m), new GeometryPoint(76m, 0m)],
+                    0.95m,
+                    "Detected from DOORS line entity.")
+            ],
+            CancellationToken.None);
+
+        await new SqliteExtractedOpeningLabelRepository(session).AddRangeAsync(
+            [
+                new ExtractedOpeningLabel(
+                    Guid.NewGuid(),
+                    extractionRun.Id,
+                    "TEXT:1",
+                    "DOORTEXT",
+                    "Door",
+                    "2668",
+                    50m,
+                    20m,
+                    0.95m,
+                    "Detected from DOORTEXT text entity.",
+                    1)
+            ],
+            CancellationToken.None);
+
+        await new SqliteExtractedFixedPlanComponentRepository(session).AddRangeAsync(
+            [
+                new ExtractedFixedPlanComponent(
+                    Guid.NewGuid(),
+                    extractionRun.Id,
+                    "INSERT:1",
+                    "FIXTURES",
+                    "Toilet",
+                    "INSERT",
+                    "TOILET1",
+                    0.95m,
+                    "Detected from TOILET1 block insert.",
+                    1,
+                    "#FF7F7F7F")
+            ],
+            [
+                new DetectedFixedPlanComponent(
+                    "INSERT:1",
+                    "FIXTURES",
+                    "Toilet",
+                    "INSERT",
+                    "TOILET1",
+                    [
+                        [new GeometryPoint(1400m, 668m), new GeometryPoint(1412m, 668m)],
+                        [new GeometryPoint(1400m, 672m), new GeometryPoint(1412m, 672m)]
+                    ],
+                    0.95m,
+                    "Detected from TOILET1 block insert.",
+                    "#FF7F7F7F")
+            ],
+            CancellationToken.None);
+
+        await new SqliteExtractedProtectedDetailAssemblyRepository(session).AddRangeAsync(
+            [
+                new ExtractedProtectedDetailAssembly(
+                    Guid.NewGuid(),
+                    extractionRun.Id,
+                    "DETAIL:MISC:1",
+                    "MISC",
+                    "WetAreaDetail",
+                    "DETAIL-GROUP",
+                    0.90m,
+                    "Detected from MISC protected detail geometry.",
+                    1,
+                    "#FF00FF00")
+            ],
+            [
+                new DetectedProtectedDetailAssembly(
+                    "DETAIL:MISC:1",
+                    "MISC",
+                    "WetAreaDetail",
+                    "DETAIL-GROUP",
+                    [
+                        [new GeometryPoint(416m, 585m), new GeometryPoint(468m, 585m)],
+                        [new GeometryPoint(468m, 606m), new GeometryPoint(472m, 606m)]
+                    ],
+                    0.90m,
+                    "Detected from MISC protected detail geometry.",
+                    "#FF00FF00")
+            ],
+            CancellationToken.None);
+
         var draft = new FloorPlanCuration(
             Guid.NewGuid(),
             versionId,
@@ -143,25 +288,21 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
 
         await new SqliteFloorPlanCurationRepository(session).AddAsync(draft, CancellationToken.None);
 
-        await new SqliteCuratedWallRepository(session).AddAsync(
-            new CuratedWall(
+        var pinchGroupId = Guid.NewGuid();
+        await new SqlitePinchGroupRepository(session).AddAsync(
+            new PinchGroup(pinchGroupId, draft.Id, "Patio", PinchAxisTag.Width, 1),
+            CancellationToken.None);
+
+        await new SqlitePinchMarkerRepository(session).AddAsync(
+            new PinchMarker(
                 Guid.NewGuid(),
                 draft.Id,
-                "W-001",
-                candidate.Id,
-                candidate.SourceEntityRef,
-                null,
-                WallRole.Partition,
-                WallMobilityLevel.Flexible,
-                WallProtectionLevel.None,
-                101.6m,
-                "2x4",
-                null,
-                false,
-                false,
-                null,
-                1,
-                null),
+                pinchGroupId,
+                persistedCandidate.Id,
+                persistedCandidate.GeometryPathId ?? Guid.Empty,
+                0.5m,
+                120m,
+                1),
             CancellationToken.None);
 
         await session.CommitAsync(CancellationToken.None);

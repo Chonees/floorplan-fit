@@ -5,42 +5,40 @@
         xmlns:controls="using:FloorplanFit.Desktop.Controls"
         x:Class="FloorplanFit.Desktop.ReviewFloorPlanWindow"
         x:DataType="viewModels:FloorPlanReviewViewModel"
-        Width="1400"
-        Height="900"
+        RequestedThemeVariant="Light"
+        Width="1280"
+        Height="800"
+        WindowState="Maximized"
         Title="Floor Plan Review">
-  <Grid RowDefinitions="Auto,Auto,*" Margin="20">
-    <StackPanel Orientation="Horizontal" Spacing="12">
-      <TextBlock FontSize="24" FontWeight="Bold" Text="{Binding Name}" />
-      <TextBlock VerticalAlignment="Center" Text="{Binding Code}" />
-      <TextBlock VerticalAlignment="Center" Text="{Binding Status}" />
-      <TextBlock VerticalAlignment="Center" Text="{Binding StatusMessage}" />
-    </StackPanel>
+  <Grid RowDefinitions="Auto,*" Margin="20">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+      <StackPanel Spacing="4">
+        <TextBlock FontSize="28" FontWeight="Bold" Text="{Binding Name}" />
+        <TextBlock Foreground="DimGray" Text="{Binding Code, StringFormat='Template: {0}'}" />
+        <TextBlock Foreground="DimGray" Text="{Binding StatusMessage}" />
+      </StackPanel>
 
-    <StackPanel Grid.Row="1"
-                Orientation="Horizontal"
-                Spacing="8"
-                Margin="0,16,0,16">
-      <Button Content="Accept Candidate"
-              Click="AcceptButton_OnClick" />
-      <Button Content="Reject Candidate"
-              Click="RejectButton_OnClick" />
-      <Button Content="Save Metadata"
-              Click="SaveMetadataButton_OnClick" />
-      <Button Content="Publish Curation"
+      <Button Grid.Column="1"
+              VerticalAlignment="Center"
+              Padding="16,10"
+              Content="Publish Curation"
               Click="PublishButton_OnClick" />
-    </StackPanel>
+    </Grid>
 
-    <Grid Grid.Row="2" ColumnDefinitions="340,*,360" ColumnSpacing="16">
-      <Border Padding="12"
+    <Grid Grid.Row="1" ColumnDefinitions="320,*,340" ColumnSpacing="16" Margin="0,16,0,0">
+      <Border Padding="14"
               BorderBrush="LightGray"
               BorderThickness="1"
               CornerRadius="6">
-        <Grid RowDefinitions="Auto,*"
+        <Grid RowDefinitions="Auto,Auto,*,Auto"
               RowSpacing="12">
           <TextBlock FontSize="18"
                      FontWeight="SemiBold"
-                     Text="Wall Candidates" />
-          <ListBox Grid.Row="1"
+                     Text="Lines" />
+          <TextBlock Grid.Row="1"
+                     Foreground="DimGray"
+                     Text="Reject only the lines that should never be considered." />
+          <ListBox Grid.Row="2"
                    MinHeight="0"
                    ItemsSource="{Binding WallCandidates}"
                    SelectedItem="{Binding SelectedCandidate}">
@@ -54,12 +52,19 @@
                   <StackPanel>
                     <TextBlock FontWeight="SemiBold" Text="{Binding SourceEntityRef}" />
                     <TextBlock Text="{Binding SourceLayer}" />
+                    <TextBlock Foreground="#256D4D"
+                               Text="{Binding AssemblyHint}"
+                               ToolTip.Tip="{Binding DetectionNotes}" />
                     <TextBlock Text="{Binding Status}" />
                   </StackPanel>
                 </Border>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
+          <Button Grid.Row="3"
+                  HorizontalAlignment="Left"
+                  Content="Reject Selected Line"
+                  Click="RejectButton_OnClick" />
         </Grid>
       </Border>
 
@@ -68,9 +73,11 @@
               Background="White"
               BorderBrush="LightGray"
               BorderThickness="1"
-              CornerRadius="6">
-        <Grid RowDefinitions="Auto,Auto,*"
-              RowSpacing="8">
+              CornerRadius="6"
+              ClipToBounds="True">
+        <Grid RowDefinitions="Auto,Auto,Auto,*"
+              RowSpacing="12"
+              ClipToBounds="True">
           <TextBlock FontSize="18"
                      Foreground="Black"
                      FontWeight="SemiBold"
@@ -78,106 +85,323 @@
           <TextBlock Grid.Row="1"
                      Foreground="DimGray"
                      Text="{Binding PreviewSelectionLabel}" />
-          <controls:FloorPlanPreviewControl Grid.Row="2"
+          <Border Grid.Row="2"
+                  Padding="12"
+                  Background="#F8F8F8"
+                  BorderBrush="LightGray"
+                  BorderThickness="1"
+                  CornerRadius="6">
+            <TextBlock Text="{Binding InteractionHint}" TextWrapping="Wrap" />
+          </Border>
+          <controls:FloorPlanPreviewControl Grid.Row="3"
                                             MinHeight="0"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Stretch"
+                                            ClipToBounds="True"
                                             GeometryPathClicked="PreviewControl_OnGeometryPathClicked"
                                             GeometryPaths="{Binding GeometryPaths}"
-                                            HighlightGeometryPathId="{Binding HighlightGeometryPathId}" />
+                                            HighlightGeometryPathId="{Binding HighlightGeometryPathId}"
+                                            PinchMarkers="{Binding PinchMarkers}"
+                                            RoomLabels="{Binding RoomLabels}"
+                                            OpeningCandidates="{Binding OpeningCandidates}"
+                                            OpeningLabels="{Binding OpeningLabels}"
+                                            FixedPlanComponents="{Binding FixedPlanComponents}"
+                                            ProtectedDetailAssemblies="{Binding ProtectedDetailAssemblies}"
+                                            PreviewPinchGroupId="{Binding SelectedPinchGroupId}"
+                                            PreviewAxisTag="{Binding SelectedPinchAxis}"
+                                            IsPinchPlacementArmed="{Binding IsPinchPlacementArmed}" />
         </Grid>
       </Border>
 
       <Border Grid.Column="2"
-              Padding="12"
+              Padding="14"
               BorderBrush="LightGray"
               BorderThickness="1"
               CornerRadius="6">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,*"
-              RowSpacing="12">
-          <TextBlock FontSize="18"
-                     FontWeight="SemiBold"
-                     Text="Inspector" />
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="12">
+            <TextBlock FontSize="18"
+                       FontWeight="SemiBold"
+                       Text="Pinch Tools" />
+            <TextBlock Foreground="DimGray"
+                       Text="Add only strategic pinch points that may absorb width or height during fit."
+                       TextWrapping="Wrap" />
 
-          <StackPanel Grid.Row="1"
-                      Spacing="4">
-            <TextBlock FontWeight="SemiBold" Text="Candidate" />
-            <TextBlock Text="{Binding SelectedCandidate.SourceEntityRef}" />
-            <TextBlock Text="{Binding SelectedCandidate.SourceLayer}" />
-            <TextBlock Text="{Binding SelectedCandidate.Status}" />
+            <Border Padding="12"
+                    Background="#F8F8F8"
+                    BorderBrush="LightGray"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold" Text="Rooms" />
+                <TextBlock Foreground="DimGray"
+                           Text="Room labels detected from the DXF. These are labels only, not room boundaries yet."
+                           TextWrapping="Wrap" />
+                <ListBox MinHeight="100"
+                         MaxHeight="180"
+                         ItemsSource="{Binding RoomLabels}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:RoomLabelDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="LightGray"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Text}" />
+                          <TextBlock Foreground="DimGray" Text="{Binding SourceLayer}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="#F8F8F8"
+                    BorderBrush="LightGray"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold" Text="Openings" />
+                <TextBlock Foreground="DimGray"
+                           Text="Doors and windows detected exactly from DXF opening layers, with model/size labels."
+                           TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <TextBlock Text="{Binding DoorOpeningCount, StringFormat='Doors: {0}'}" />
+                  <TextBlock Text="{Binding WindowOpeningCount, StringFormat='Windows: {0}'}" />
+                </StackPanel>
+                <TextBlock FontWeight="SemiBold" Text="Opening geometry" />
+                <ListBox MinHeight="100"
+                         MaxHeight="180"
+                         ItemsSource="{Binding OpeningCandidates}"
+                         SelectedItem="{Binding SelectedOpeningCandidate}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:OpeningCandidateDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="LightGray"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding SourceEntityRef}" />
+                          <TextBlock Foreground="DimGray" Text="{Binding Kind}" />
+                          <TextBlock Foreground="DimGray" Text="{Binding SourceLayer}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <Button HorizontalAlignment="Left"
+                        Content="Remove Selected Opening"
+                        Click="RemoveOpeningCandidateButton_OnClick" />
+                <TextBlock FontWeight="SemiBold" Text="Opening labels" />
+                <ListBox MinHeight="100"
+                         MaxHeight="180"
+                         ItemsSource="{Binding OpeningLabels}"
+                         SelectedItem="{Binding SelectedOpeningLabel}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:OpeningLabelDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="LightGray"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Text}" />
+                          <TextBlock Foreground="DimGray" Text="{Binding Kind}" />
+                          <TextBlock Foreground="DimGray" Text="{Binding SourceLayer}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <Button HorizontalAlignment="Left"
+                        Content="Remove Selected Label"
+                        Click="RemoveOpeningLabelButton_OnClick" />
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="#F8F8F8"
+                    BorderBrush="LightGray"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold" Text="Fixed Elements" />
+                <TextBlock Foreground="DimGray"
+                           Text="Toilets, fixtures, appliances, and cabinets extracted from DXF blocks/layers. Remove false positives before publishing curation."
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding FixedPlanComponentCount, StringFormat='Detected: {0}'}" />
+                <ListBox MinHeight="120"
+                         MaxHeight="220"
+                         ItemsSource="{Binding FixedPlanComponents}"
+                         SelectedItem="{Binding SelectedFixedPlanComponent}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:FixedPlanComponentDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="LightGray"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Kind}" />
+                          <TextBlock Foreground="DimGray" Text="{Binding SourceEntityRef}" />
+                          <TextBlock Foreground="DimGray" Text="{Binding SourceBlockName}" />
+                          <TextBlock Foreground="DimGray" Text="{Binding SourceLayer}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <Button HorizontalAlignment="Left"
+                        Content="Remove Selected Component"
+                        Click="RemoveFixedPlanComponentButton_OnClick" />
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="#F8F8F8"
+                    BorderBrush="LightGray"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold" Text="Protected Details" />
+                <TextBlock Foreground="DimGray"
+                           Text="Wet-area and CAD detail assemblies that should persist for fit protection without becoming structural walls."
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding ProtectedDetailAssemblyCount, StringFormat='Detected: {0}'}" />
+                <ListBox MinHeight="100"
+                         MaxHeight="180"
+                         ItemsSource="{Binding ProtectedDetailAssemblies}"
+                         SelectedItem="{Binding SelectedProtectedDetailAssembly}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:ProtectedDetailAssemblyDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="LightGray"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Kind}" />
+                          <TextBlock Foreground="DimGray" Text="{Binding SourceEntityRef}" />
+                          <TextBlock Foreground="DimGray" Text="{Binding SourceLayer}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <Button HorizontalAlignment="Left"
+                        Content="Remove Selected Detail"
+                        Click="RemoveProtectedDetailAssemblyButton_OnClick" />
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="#F8F8F8"
+                    BorderBrush="LightGray"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold" Text="Pinch Groups" />
+                <TextBlock Foreground="DimGray"
+                           Text="Create named shrink zones like Patio, Main Width, or Kitchen Height."
+                           TextWrapping="Wrap" />
+                <TextBlock Text="Group name" />
+                <TextBox Text="{Binding NewPinchGroupName}" />
+                <TextBlock Text="Group axis" />
+                <ComboBox ItemsSource="{Binding PinchAxisOptions}"
+                          SelectedItem="{Binding SelectedPinchAxis}" />
+                <Button HorizontalAlignment="Left"
+                        Content="Create Group"
+                        Click="AddPinchGroupButton_OnClick" />
+                <ListBox MinHeight="120"
+                         ItemsSource="{Binding PinchGroups}"
+                         SelectedItem="{Binding SelectedPinchGroup}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:PinchGroupDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="LightGray"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                          <TextBlock Text="{Binding AxisTag}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="#F8F8F8"
+                    BorderBrush="LightGray"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold" Text="Add Pinch" />
+                <TextBlock Text="Max trim (mm)" />
+                <TextBox Text="{Binding NewPinchMaxTrimMm}" />
+                <Button Content="{Binding AddPinchButtonLabel}"
+                        Click="AddPinchButton_OnClick" />
+                <TextBlock Foreground="DimGray"
+                           Text="{Binding InteractionHint}"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="#F8F8F8"
+                    BorderBrush="LightGray"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold" Text="Preview Handles" />
+                <TextBlock Foreground="DimGray"
+                           Text="Drag the visible green handles directly on the canvas. Width uses left/right. Height uses top/bottom."
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="#F8F8F8"
+                    BorderBrush="LightGray"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold" Text="Placed Pinches" />
+                <ListBox MinHeight="180"
+                         ItemsSource="{Binding PinchMarkers}"
+                         SelectedItem="{Binding SelectedPinchMarker}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:PinchMarkerDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="LightGray"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding PinchGroupName}" />
+                          <TextBlock FontWeight="SemiBold" Text="{Binding AxisTag}" />
+                          <TextBlock Text="{Binding MaxTrimMm, StringFormat='Max trim: {0} mm'}" />
+                          <TextBlock Text="{Binding PositionRatio, StringFormat='Line ratio: {0:F2}'}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <Button HorizontalAlignment="Left"
+                        Content="Remove Pinch"
+                        Click="RemovePinchButton_OnClick" />
+              </StackPanel>
+            </Border>
           </StackPanel>
-
-          <TextBlock Grid.Row="2"
-                     Text="Stable Wall Id" />
-          <TextBox Grid.Row="3"
-                   Text="{Binding PendingStableWallId}" />
-
-          <Grid Grid.Row="4"
-                RowDefinitions="Auto,*"
-                RowSpacing="8"
-                MinHeight="0">
-            <TextBlock FontWeight="SemiBold" Text="Curated Walls" />
-            <ListBox Grid.Row="1"
-                     MinHeight="0"
-                     ItemsSource="{Binding CuratedWalls}"
-                     SelectedItem="{Binding SelectedCuratedWall}">
-              <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="contracts:CuratedWallDto">
-                  <Border Padding="8"
-                          Margin="0,0,0,8"
-                          BorderBrush="LightGray"
-                          BorderThickness="1"
-                          CornerRadius="4">
-                    <StackPanel>
-                      <TextBlock FontWeight="SemiBold" Text="{Binding StableWallId}" />
-                      <TextBlock Text="{Binding WallRole}" />
-                      <TextBlock Text="{Binding MobilityLevel}" />
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-          </Grid>
-
-          <Separator Grid.Row="5" />
-
-          <ScrollViewer Grid.Row="6"
-                        MinHeight="0"
-                        HorizontalScrollBarVisibility="Disabled"
-                        VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="12">
-              <TextBlock Text="Role" />
-              <ComboBox ItemsSource="{Binding WallRoleOptions}"
-                        SelectedItem="{Binding EditableWallRole}" />
-
-              <TextBlock Text="Mobility" />
-              <ComboBox ItemsSource="{Binding MobilityOptions}"
-                        SelectedItem="{Binding EditableMobilityLevel}" />
-
-              <TextBlock Text="Protection" />
-              <ComboBox ItemsSource="{Binding ProtectionOptions}"
-                        SelectedItem="{Binding EditableProtectionLevel}" />
-
-              <TextBlock Text="Thickness (mm)" />
-              <TextBox Text="{Binding EditableThicknessMm}" />
-
-              <TextBlock Text="Assembly" />
-              <TextBox Text="{Binding EditableAssemblyCode}" />
-
-              <TextBlock Text="Height (mm)" />
-              <TextBox Text="{Binding EditableHeightMm}" />
-
-              <CheckBox Content="Exterior"
-                        IsChecked="{Binding EditableIsExterior}" />
-
-              <CheckBox Content="Structural Hint"
-                        IsChecked="{Binding EditableIsStructuralHint}" />
-
-              <TextBlock Text="Notes" />
-              <TextBox AcceptsReturn="True"
-                       Height="120"
-                       Text="{Binding EditableNotes}" />
-            </StackPanel>
-          </ScrollViewer>
-        </Grid>
+        </ScrollViewer>
       </Border>
     </Grid>
   </Grid>

@@ -90,8 +90,17 @@ public sealed class OpenFloorPlanReviewSessionIntegrationTests
 
         var handler = new ExtractWallCandidatesHandler(
             new IxMiliaWallExtractor(),
+            new IxMiliaRoomLabelExtractor(),
+            new IxMiliaOpeningExtractor(),
+            new IxMiliaFixedPlanComponentExtractor(),
+            new IxMiliaProtectedDetailAssemblyExtractor(),
             new SqliteWallExtractionRunRepository(session),
             new SqliteExtractedWallCandidateRepository(session),
+            new SqliteExtractedRoomLabelRepository(session),
+            new SqliteExtractedOpeningCandidateRepository(session),
+            new SqliteExtractedOpeningLabelRepository(session),
+            new SqliteExtractedFixedPlanComponentRepository(session),
+            new SqliteExtractedProtectedDetailAssemblyRepository(session),
             new SqliteUnitOfWork(session),
             new FixedClock(now));
 

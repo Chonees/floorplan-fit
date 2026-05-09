@@ -22,6 +22,9 @@ public sealed class LibraryViewModelTests
         var unitOfWork = new FakeUnitOfWork();
         var runRepository = new InMemoryWallExtractionRunRepository();
         var candidateRepository = new InMemoryExtractedWallCandidateRepository();
+        var roomLabelRepository = new InMemoryExtractedRoomLabelRepository();
+        var fixedPlanComponentRepository = new InMemoryExtractedFixedPlanComponentRepository();
+        var protectedDetailRepository = new InMemoryExtractedProtectedDetailAssemblyRepository();
 
         var services = new ServiceCollection();
         services.AddSingleton<IFloorPlanExtractionSourceReader>(new FakeFloorPlanExtractionSourceReader(extractionSource));
@@ -35,8 +38,38 @@ public sealed class LibraryViewModelTests
                 0.95m,
                 null)
         ]));
+        services.AddSingleton<IRoomLabelExtractor>(new FakeRoomLabelExtractor(
+        [
+            new DetectedRoomLabel(
+                "TEXT:1",
+                "ROOM LBLS",
+                "KITCHEN",
+                10m,
+                20m,
+                0.95m,
+                null)
+        ]));
+        services.AddSingleton<IOpeningExtractor>(new FakeOpeningExtractor(new DetectedOpeningExtraction([], [])));
+        services.AddSingleton<IFixedPlanComponentExtractor>(new FakeFixedPlanComponentExtractor(
+        [
+            new DetectedFixedPlanComponent(
+                "INSERT:1",
+                "FIXTURES",
+                "Toilet",
+                "INSERT",
+                "TOILET1",
+                [[new GeometryPoint(40m, 10m), new GeometryPoint(76m, 10m)]],
+                0.95m,
+                null)
+        ]));
+        services.AddSingleton<IProtectedDetailAssemblyExtractor>(new FakeProtectedDetailAssemblyExtractor([]));
         services.AddSingleton<IWallExtractionRunRepository>(runRepository);
         services.AddSingleton<IExtractedWallCandidateRepository>(candidateRepository);
+        services.AddSingleton<IExtractedRoomLabelRepository>(roomLabelRepository);
+        services.AddSingleton<IExtractedOpeningCandidateRepository>(new InMemoryExtractedOpeningCandidateRepository());
+        services.AddSingleton<IExtractedOpeningLabelRepository>(new InMemoryExtractedOpeningLabelRepository());
+        services.AddSingleton<IExtractedFixedPlanComponentRepository>(fixedPlanComponentRepository);
+        services.AddSingleton<IExtractedProtectedDetailAssemblyRepository>(protectedDetailRepository);
         services.AddSingleton<IUnitOfWork>(unitOfWork);
         services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 4, 30, 19, 30, 0, DateTimeKind.Utc)));
         services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader(
@@ -71,8 +104,70 @@ public sealed class LibraryViewModelTests
         Assert.True(unitOfWork.SaveChangesCalled);
         Assert.Single(runRepository.Items);
         Assert.Single(candidateRepository.Items);
+        Assert.Single(roomLabelRepository.Items);
+        Assert.Single(fixedPlanComponentRepository.Items);
         Assert.Single(viewModel.Items);
         Assert.Equal("Extracted", viewModel.Items[0].Status);
+    }
+
+    private sealed class FakeRoomLabelExtractor : IRoomLabelExtractor
+    {
+        private readonly IReadOnlyList<DetectedRoomLabel> items;
+
+        public FakeRoomLabelExtractor(IReadOnlyList<DetectedRoomLabel> items)
+        {
+            this.items = items;
+        }
+
+        public Task<IReadOnlyList<DetectedRoomLabel>> ExtractAsync(string managedFilePath, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(items);
+        }
+    }
+
+    private sealed class FakeOpeningExtractor : IOpeningExtractor
+    {
+        private readonly DetectedOpeningExtraction extraction;
+
+        public FakeOpeningExtractor(DetectedOpeningExtraction extraction)
+        {
+            this.extraction = extraction;
+        }
+
+        public Task<DetectedOpeningExtraction> ExtractAsync(string managedFilePath, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(extraction);
+        }
+    }
+
+    private sealed class FakeFixedPlanComponentExtractor : IFixedPlanComponentExtractor
+    {
+        private readonly IReadOnlyList<DetectedFixedPlanComponent> items;
+
+        public FakeFixedPlanComponentExtractor(IReadOnlyList<DetectedFixedPlanComponent> items)
+        {
+            this.items = items;
+        }
+
+        public Task<IReadOnlyList<DetectedFixedPlanComponent>> ExtractAsync(string managedFilePath, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(items);
+        }
+    }
+
+    private sealed class FakeProtectedDetailAssemblyExtractor : IProtectedDetailAssemblyExtractor
+    {
+        private readonly IReadOnlyList<DetectedProtectedDetailAssembly> items;
+
+        public FakeProtectedDetailAssemblyExtractor(IReadOnlyList<DetectedProtectedDetailAssembly> items)
+        {
+            this.items = items;
+        }
+
+        public Task<IReadOnlyList<DetectedProtectedDetailAssembly>> ExtractAsync(string managedFilePath, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(items);
+        }
     }
 
     [Fact]
@@ -98,6 +193,12 @@ public sealed class LibraryViewModelTests
                 null,
                 [],
                 [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
                 [])));
         services.AddTransient<StartOrResumeCurationHandler>();
         services.AddTransient<OpenFloorPlanReviewSessionHandler>();
@@ -121,6 +222,114 @@ public sealed class LibraryViewModelTests
         Assert.NotNull(reviewViewModel);
         Assert.Equal("santa-barbara", reviewViewModel.Code);
         Assert.Equal("SANTA-BARBARA", reviewViewModel.Name);
+    }
+
+    private sealed class InMemoryExtractedRoomLabelRepository : IExtractedRoomLabelRepository
+    {
+        public List<ExtractedRoomLabel> Items { get; } = [];
+
+        public Task AddRangeAsync(IReadOnlyList<ExtractedRoomLabel> labels, CancellationToken cancellationToken)
+        {
+            Items.AddRange(labels);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ExtractedRoomLabel>> ListByExtractionRunAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<ExtractedRoomLabel>>(
+                Items.Where(item => item.WallExtractionRunId == wallExtractionRunId).ToArray());
+        }
+    }
+
+    private sealed class InMemoryExtractedOpeningCandidateRepository : IExtractedOpeningCandidateRepository
+    {
+        public Task AddRangeAsync(
+            IReadOnlyList<ExtractedOpeningCandidate> domainCandidates,
+            IReadOnlyList<DetectedOpeningCandidate> detectedCandidates,
+            CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ExtractedOpeningCandidate>> ListByExtractionRunAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<ExtractedOpeningCandidate>>([]);
+        }
+
+        public Task RemoveAsync(Guid openingCandidateId, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryExtractedOpeningLabelRepository : IExtractedOpeningLabelRepository
+    {
+        public Task AddRangeAsync(IReadOnlyList<ExtractedOpeningLabel> labels, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ExtractedOpeningLabel>> ListByExtractionRunAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<ExtractedOpeningLabel>>([]);
+        }
+
+        public Task RemoveAsync(Guid openingLabelId, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryExtractedFixedPlanComponentRepository : IExtractedFixedPlanComponentRepository
+    {
+        public List<ExtractedFixedPlanComponent> Items { get; } = [];
+
+        public Task AddRangeAsync(
+            IReadOnlyList<ExtractedFixedPlanComponent> domainComponents,
+            IReadOnlyList<DetectedFixedPlanComponent> detectedComponents,
+            CancellationToken cancellationToken)
+        {
+            Items.AddRange(domainComponents);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ExtractedFixedPlanComponent>> ListByExtractionRunAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<ExtractedFixedPlanComponent>>(
+                Items.Where(item => item.WallExtractionRunId == wallExtractionRunId).ToArray());
+        }
+
+        public Task RemoveAsync(Guid fixedPlanComponentId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == fixedPlanComponentId);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryExtractedProtectedDetailAssemblyRepository : IExtractedProtectedDetailAssemblyRepository
+    {
+        public List<ExtractedProtectedDetailAssembly> Items { get; } = [];
+
+        public Task AddRangeAsync(
+            IReadOnlyList<ExtractedProtectedDetailAssembly> domainAssemblies,
+            IReadOnlyList<DetectedProtectedDetailAssembly> detectedAssemblies,
+            CancellationToken cancellationToken)
+        {
+            Items.AddRange(domainAssemblies);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ExtractedProtectedDetailAssembly>> ListByExtractionRunAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<ExtractedProtectedDetailAssembly>>(
+                Items.Where(item => item.WallExtractionRunId == wallExtractionRunId).ToArray());
+        }
+
+        public Task RemoveAsync(Guid protectedDetailAssemblyId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == protectedDetailAssemblyId);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeFloorPlanExtractionSourceReader : IFloorPlanExtractionSourceReader
