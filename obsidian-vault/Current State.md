@@ -6,7 +6,7 @@ repo: https://github.com/Chonees/floorplan-fit
 
 status: active
 
-updated: 2026-05-09
+updated: 2026-05-10
 
 ---
 
@@ -72,6 +72,11 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Auditoria de branch del **2026-05-09**: el ultimo commit versionado sigue en **2026-05-04** (`908cdc2` despues de `c2c1b30`), pero la verdad activa de la branch va mas adelante en el working tree y en la documentacion canonica. Durante la auditoria habia **138 archivos staged**, **38 unstaged** y **21 untracked**; por eso `git log` solo no alcanza para saber por donde va el proyecto.
 
+- Desde 2026-05-09, las wall candidates siguen un flujo **subtractive/accepted-by-default**: la extracción persiste candidates nuevas como `Accepted`, Review muestra solo candidates no rechazadas, y `Reject Selected Line` marca falsos positivos como `Rejected` y limpia sus pinch markers asociados. Lo rechazado queda como auditoría, no como input activo del futuro fit.
+- Desde 2026-05-09, la Library es **version-aware**: re-importar el mismo floorplan queda agrupado bajo el template padre (`SEMINOLE2000`, `SANTA-BARBARA`, etc.) y cada `FloorPlanVersion` aparece como fila hija con acciones propias de Open y Delete.
+
+- Ajuste UX del 2026-05-09: la Library principal ahora expone `Delete Selected Version` en la toolbar, muestra `Selected: <template> v<n>` y usa filas versionadas con `Select`, `Open` y `Delete`; la pantalla principal deja de usar `ListBox` para evitar el azul default de seleccion de Avalonia. El chrome Desktop se fuerza a fondo negro/letras blancas y los overlays generados no usan colores azules/verdes por defecto.
+
 - Decision de dimensiones: las dimensiones futuras no son labels decorativos. Deben modelarse como artifacts CAD-faithful con lineas de dimension, extension lines, ticks/arrows, texto, rotacion, layer/style/color, anchors en coordenadas reales, valor original DXF y valor recalculable. Durante previews/adaptaciones por pinches, las dimensiones deben actualizarse en tiempo real desde la geometria transformada para auditar cuanto cambio el patio, una habitacion, el ancho total, etc.
 
 - Loop 2 todav?a no tiene implementaci?n real de envelope, fit engine ni proposals.
@@ -100,6 +105,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Limitacion tecnica vigente: como el schema runtime actual de `geometry_segments` solo persiste segmentos lineales, los arcos de puertas del DXF se aplanan a polilineas para preview. Visualmente conserva la geometria de swing, pero una preservacion CAD 100% nativa de arcos requiere extender `geometry_segments` con `segment_type`, centro/radio/clockwise.
 
+- Implementacion cerrada el 2026-05-10 para Review: la ventana ya quedo reorganizada como **Plan Elements | Preview | Selected Item + Pinch Tools**, todas las familias curables viven juntas en el panel izquierdo y la accion visible quedo unificada como **Exclude from Curation**. Internamente, walls siguen usando rechazo auditable y room labels ya tienen via real de exclusion persistida.
+
 
 
 ## Loop 1 Truth
@@ -127,6 +134,10 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 - `FloorPlanTemplate` ya separa `CurrentVersionId` de `ActivePublishedCurationId`.
+
+- `FloorPlanLibraryItemDto` ahora representa el template padre con `Versions`, `CurrentVersionId`, `CurrentVersionNumber` y estado derivado desde la version actual; `FloorPlanLibraryVersionDto` representa cada import/version individual.
+
+- `RemoveFloorPlanVersionHandler` elimina una version seleccionada y `SqliteFloorPlanVersionRepository.RemoveAsync` limpia curations, pinch groups/markers, extraction runs, candidates, labels, fixed/protected artifacts, geometry paths/segments e imported document relacionados, promoviendo la ultima version restante cuando se elimina la current.
 
 - Domain del flujo de review ahora usa como verdad activa:
 
@@ -166,6 +177,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
   - `RemoveProtectedDetailAssembly`
 
+  - `RemoveRoomLabel`
+
   - `PublishFloorPlanCuration`
 
   - `GetFloorPlanReviewSession`
@@ -186,7 +199,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
   - `pinch_groups`
 
-  - `extracted_room_labels` para guardar room label candidates por `wall_extraction_run`
+  - `extracted_room_labels` para guardar room label candidates por `wall_extraction_run`; desde 2026-05-10 los falsos positivos tambien pueden excluirse desde Review y se borran de SQLite
 
   - `extracted_opening_candidates` y `extracted_opening_labels` para guardar puertas/ventanas detectadas y sus labels exactos por `wall_extraction_run`; los falsos positivos pueden removerse desde Review y se borran de SQLite junto con su geometry path si corresponde
 
@@ -224,45 +237,39 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
   - `SqliteFloorPlanExtractionSourceReader` para resolver la versi?n actual y el DXF gestionado que usa la extracci?n
 
-- Desktop ya tiene review UI pinch-native m?nima:
+- Desktop ya tiene review UI CAD-faithful unificada:
 
-  - `LibraryViewModel` con `SelectedItem`, `Extract Walls` y `Open Review`
+  - `LibraryViewModel` con `SelectedItem`, `SelectedVersion`, import/extract/open review por version y borrado por version
 
-  - import que auto-extrae walls despu?s de guardar el DXF
+  - import que auto-extrae walls despues de guardar el DXF
 
-  - `ReviewFloorPlanWindow` con tres zonas simples:
+  - `ReviewFloorPlanWindow` ahora organiza Loop 1 como **Plan Elements | Preview | Selected Item + Pinch Tools**:
 
-    - `Lines`
+    - `Plan Elements` concentra `Lines`, `Rooms`, `Openings`, `Opening Labels`, `Fixed Elements` y `Protected Details`
 
-    - `Preview`
+    - `Selected Item` resume cualquier artifact seleccionado desde lista o canvas
 
-    - `Pinch Tools`
+    - la accion visible para toda la curacion es `Exclude from Curation`
 
-    - `Rooms` dentro del panel lateral, mostrando labels detectados como candidatos semanticos livianos
-
-    - `Openings` dentro del panel lateral, mostrando conteos Door/Window y labels exactos detectados desde el DXF
-
-    - `Fixed Elements` dentro del panel lateral, mostrando toilets, fixtures, appliances, cabinets y blocks detectados desde DXF, con accion `Remove Selected Component`
-
-    - `Protected Details` dentro del panel lateral, mostrando wet-area/detail assemblies detectados desde DXF, con accion `Remove Selected Detail`
+    - `Pinch Tools` queda aislado en el panel derecho para no mezclar curado de artifacts con setup de shrink zones
 
     - overlay DXF-like de room labels sobre el canvas, proyectados desde `X`/`Y` y renderizados con altura/rotacion/alineacion del DXF
 
-    - overlay de opening geometry y opening labels sobre el canvas para ver puertas/ventanas y sus modelos/tamanos sin badges artificiales; todos los labels del preview se fuerzan a negro para mantener legibilidad sobre el workspace claro; el panel `Openings` permite seleccionar y remover falsos positivos de geometry o label
+    - overlay de opening geometry y opening labels sobre el canvas para ver puertas/ventanas y sus modelos/tamanos sin badges artificiales; todos los labels del preview se fuerzan a negro para mantener legibilidad sobre el workspace claro
 
-    - seleccion directa de opening geometry desde el preview canvas: click sobre una puerta/ventana selecciona el `OpeningCandidateDto`, actualiza el panel lateral, resalta la geometria y permite removerla con `Remove Selected Opening`
-
-    - overlay de fixed plan components sobre el canvas: click sobre un toilet/fixture/cabinet/appliance selecciona el `FixedPlanComponentDto`, usa el color original DXF cuando esta disponible, resalta su geometry path y permite removerlo con `Remove Selected Component`
-
-    - overlay de protected detail assemblies sobre el canvas: click sobre un detalle wet-area/protegido selecciona el `ProtectedDetailAssemblyDto`, usa el color original DXF cuando esta disponible, resalta su geometry path y permite removerlo con `Remove Selected Detail`
+    - seleccion directa de opening geometry, room labels, fixed plan components y protected detail assemblies desde el preview canvas o desde lista
 
   - la lista `Lines` muestra un `AssemblyHint` como `Likely 2x4 wall (4")`, `Likely 2x6 wall (6")` o `Thickness unknown`
 
-  - `FloorPlanReviewViewModel` ahora solo maneja:
+  - `FloorPlanReviewViewModel` ahora maneja:
 
-    - selecci?n de candidate
+    - seleccion unificada de candidate, room label, opening, opening label, fixed element y protected detail
 
-    - creaci?n y selecci?n de pinch groups con nombre
+    - resumen contextual del `Selected Item`
+
+    - accion unificada `Exclude from Curation`
+
+    - creacion y seleccion de pinch groups con nombre
 
     - eje `Width` / `Height`
 
@@ -270,7 +277,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
     - remove pinch
 
-    - reject line
+    - reject line / remove artifact segun el tipo seleccionado
 
     - publish
 
@@ -388,9 +395,11 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 4. Hacer una pasada manual de runtime de la review UI pinch-native para validar sensaci?n real de add/remove pinch y handles de preview.
 
+4.a. Hacer una pasada manual de runtime de la Library version-aware: importar el mismo DXF varias veces, confirmar que aparece un solo template padre con versiones hijas, abrir una version vieja y borrar una version individual sin romper la version current restante.
+
 5. Definir c?mo el futuro fit engine de Loop 2 va a consumir `PinchMarker` para recortar el m?nimo indispensable.
 
-6. Hacer una pasada manual de runtime despues de re-ejecutar `Extract Walls` para validar que `Rooms` muestre los labels de `ROOM LBLS`, que `Openings` muestre Door/Window labels de `DOORTEXT` / `WINDWS LBLS`, que `Fixed Elements` muestre toilets/fixtures/cabinets/appliances/blocks, que los overlays aparezcan sobre el canvas sin badges artificiales, y que `Remove Selected Opening` / `Remove Selected Label` / `Remove Selected Component` eliminen falsos positivos persistidos.
+6. Hacer una pasada manual de runtime despues de re-ejecutar `Extract Walls` para validar que `Rooms` muestre los labels de `ROOM LBLS`, que `Openings` muestre Door/Window labels de `DOORTEXT` / `WINDWS LBLS`, que `Fixed Elements` muestre toilets/fixtures/cabinets/appliances/blocks, que los overlays aparezcan sobre el canvas sin badges artificiales, y que `Exclude from Curation` elimine/rechace correctamente falsos positivos persistidos en lines, room labels, openings, opening labels, fixed elements y protected details.
 
 7. Decidir mas adelante si conviene inferir boundaries de habitaciones o sumar overrides manuales de room labels; por ahora son labels candidatos, no poligonos de rooms.
 
@@ -423,6 +432,10 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-09 - Tech stack architecture dataflow refreshed for CAD artifacts and pinch fit]]
 
 - [[Implementation/2026-05-09 - Branch progress audit from commits and guide docs]]
+
+- [[Implementation/2026-05-09 - Subtractive wall candidate curation]]
+- [[Implementation/2026-05-10 - Unified plan elements review UI and room label exclusion]]
+- [[Implementation/2026-05-09 - Versioned floorplan library with per-version delete]]
 
 - [[Bugs/2026-05-02 - Open Review crashes right after extraction because committed SQLite transaction is reused]]
 

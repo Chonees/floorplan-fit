@@ -13,11 +13,18 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 {
     private readonly IServiceScopeFactory scopeFactory;
     private readonly Guid templateId;
+    private readonly Guid? floorPlanVersionId;
 
     public FloorPlanReviewViewModel(IServiceScopeFactory scopeFactory, Guid templateId)
+        : this(scopeFactory, templateId, floorPlanVersionId: null)
+    {
+    }
+
+    public FloorPlanReviewViewModel(IServiceScopeFactory scopeFactory, Guid templateId, Guid? floorPlanVersionId)
     {
         this.scopeFactory = scopeFactory;
         this.templateId = templateId;
+        this.floorPlanVersionId = floorPlanVersionId;
     }
 
     public ObservableCollection<WallCandidateDto> WallCandidates { get; } = [];
@@ -63,6 +70,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     [ObservableProperty]
     private WallCandidateDto? selectedCandidate;
+
+    [ObservableProperty]
+    private RoomLabelDto? selectedRoomLabel;
 
     [ObservableProperty]
     private PinchMarkerDto? selectedPinchMarker;
@@ -114,33 +124,158 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     public int ProtectedDetailAssemblyCount => ProtectedDetailAssemblies.Count;
 
-    public string InteractionHint
+    public int RoomLabelCount => RoomLabels.Count;
+
+    public int OpeningLabelCount => OpeningLabels.Count;
+
+    public string LinesSectionTitle => $"Lines ({WallCandidates.Count})";
+
+    public string RoomsSectionTitle => $"Rooms ({RoomLabelCount})";
+
+    public string OpeningsSectionTitle => $"Openings ({OpeningCandidates.Count})";
+
+    public string OpeningLabelsSectionTitle => $"Opening Labels ({OpeningLabelCount})";
+
+    public string FixedElementsSectionTitle => $"Fixed Elements ({FixedPlanComponentCount})";
+
+    public string ProtectedDetailsSectionTitle => $"Protected Details ({ProtectedDetailAssemblyCount})";
+
+    public string ExcludeSelectedArtifactLabel => "Exclude from Curation";
+
+    public bool HasSelectedArtifact =>
+        SelectedCandidate is not null ||
+        SelectedRoomLabel is not null ||
+        SelectedOpeningCandidate is not null ||
+        SelectedOpeningLabel is not null ||
+        SelectedFixedPlanComponent is not null ||
+        SelectedProtectedDetailAssembly is not null;
+
+    public string SelectedArtifactTypeLabel =>
+        SelectedCandidate is not null ? "Line" :
+        SelectedRoomLabel is not null ? "Room Label" :
+        SelectedOpeningCandidate is not null ? "Opening" :
+        SelectedOpeningLabel is not null ? "Opening Label" :
+        SelectedFixedPlanComponent is not null ? "Fixed Element" :
+        SelectedProtectedDetailAssembly is not null ? "Protected Detail" :
+        "No artifact selected";
+
+    public string SelectedArtifactTitle =>
+        SelectedCandidate?.SourceEntityRef ??
+        SelectedRoomLabel?.Text ??
+        SelectedOpeningCandidate?.SourceEntityRef ??
+        SelectedOpeningLabel?.Text ??
+        SelectedFixedPlanComponent?.SourceEntityRef ??
+        SelectedProtectedDetailAssembly?.SourceEntityRef ??
+        "Select any artifact from Plan Elements or the preview.";
+
+    public string SelectedArtifactSubtitle
     {
         get
         {
+            if (SelectedCandidate is not null)
+            {
+                return $"Layer: {SelectedCandidate.SourceLayer} • {SelectedCandidate.AssemblyHint}";
+            }
+
+            if (SelectedRoomLabel is not null)
+            {
+                return $"Layer: {SelectedRoomLabel.SourceLayer} • Ref: {SelectedRoomLabel.SourceEntityRef}";
+            }
+
             if (SelectedOpeningCandidate is not null)
             {
-                return $"Selected opening {SelectedOpeningCandidate.SourceEntityRef}. Press 'Remove Selected Opening' if this is a false positive.";
+                return $"Layer: {SelectedOpeningCandidate.SourceLayer} • {SelectedOpeningCandidate.Kind}";
             }
 
             if (SelectedOpeningLabel is not null)
             {
-                return $"Selected opening label {SelectedOpeningLabel.Text}. Press 'Remove Selected Label' if this label should not persist.";
+                return $"Layer: {SelectedOpeningLabel.SourceLayer} • {SelectedOpeningLabel.Kind}";
             }
 
             if (SelectedFixedPlanComponent is not null)
             {
-                return $"Selected {SelectedFixedPlanComponent.Kind} component {SelectedFixedPlanComponent.SourceEntityRef}. Press 'Remove Selected Component' if this is a false positive.";
+                return $"Layer: {SelectedFixedPlanComponent.SourceLayer} • {SelectedFixedPlanComponent.Kind}";
             }
 
             if (SelectedProtectedDetailAssembly is not null)
             {
-                return $"Selected protected detail {SelectedProtectedDetailAssembly.SourceEntityRef}. Press 'Remove Selected Detail' if this should not persist.";
+                return $"Layer: {SelectedProtectedDetailAssembly.SourceLayer} • {SelectedProtectedDetailAssembly.Kind}";
+            }
+
+            return "Everything is included by default. Exclude only false positives before publishing.";
+        }
+    }
+
+    public string SelectedArtifactDetails
+    {
+        get
+        {
+            if (SelectedCandidate is not null)
+            {
+                return $"Confidence: {SelectedCandidate.Confidence:P0}";
+            }
+
+            if (SelectedRoomLabel is not null)
+            {
+                return $"Confidence: {SelectedRoomLabel.Confidence:P0}";
+            }
+
+            if (SelectedOpeningCandidate is not null)
+            {
+                return $"Confidence: {SelectedOpeningCandidate.Confidence:P0}";
+            }
+
+            if (SelectedOpeningLabel is not null)
+            {
+                return $"Confidence: {SelectedOpeningLabel.Confidence:P0}";
+            }
+
+            if (SelectedFixedPlanComponent is not null)
+            {
+                return $"Confidence: {SelectedFixedPlanComponent.Confidence:P0}";
+            }
+
+            if (SelectedProtectedDetailAssembly is not null)
+            {
+                return $"Confidence: {SelectedProtectedDetailAssembly.Confidence:P0}";
+            }
+
+            return string.Empty;
+        }
+    }
+
+    public string InteractionHint
+    {
+        get
+        {
+            if (SelectedRoomLabel is not null)
+            {
+                return $"Selected room label {SelectedRoomLabel.Text}. Press '{ExcludeSelectedArtifactLabel}' if this label should not persist.";
+            }
+
+            if (SelectedOpeningCandidate is not null)
+            {
+                return $"Selected opening {SelectedOpeningCandidate.SourceEntityRef}. Press '{ExcludeSelectedArtifactLabel}' if this is a false positive.";
+            }
+
+            if (SelectedOpeningLabel is not null)
+            {
+                return $"Selected opening label {SelectedOpeningLabel.Text}. Press '{ExcludeSelectedArtifactLabel}' if this label should not persist.";
+            }
+
+            if (SelectedFixedPlanComponent is not null)
+            {
+                return $"Selected {SelectedFixedPlanComponent.Kind} component {SelectedFixedPlanComponent.SourceEntityRef}. Press '{ExcludeSelectedArtifactLabel}' if this is a false positive.";
+            }
+
+            if (SelectedProtectedDetailAssembly is not null)
+            {
+                return $"Selected protected detail {SelectedProtectedDetailAssembly.SourceEntityRef}. Press '{ExcludeSelectedArtifactLabel}' if this should not persist.";
             }
 
             if (SelectedPinchGroup is null)
             {
-                return "Create or select a pinch group before placing pinches. Groups tell the fit engine which area may shrink together.";
+                return "Select an artifact to inspect it, or create/select a pinch group before placing pinches. Groups tell the fit engine which area may shrink together.";
             }
 
             if (SelectedCandidate is null)
@@ -153,7 +288,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
                 return $"Click on the preview to place a {SelectedPinchGroup.Name} pinch on {SelectedCandidate.SourceEntityRef}.";
             }
 
-            return $"Selected {SelectedCandidate.SourceEntityRef}. Group: {SelectedPinchGroup.Name}. Press '{AddPinchButtonLabel}' or preview this group with the green {GetHandleHint()} handle.";
+            return $"Selected {SelectedCandidate.SourceEntityRef}. Group: {SelectedPinchGroup.Name}. Press '{AddPinchButtonLabel}' to place a pinch, drag the green {GetHandleHint()} handle to preview, or use '{ExcludeSelectedArtifactLabel}' if this line is a false positive.";
         }
     }
 
@@ -163,7 +298,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<OpenFloorPlanReviewSessionHandler>();
-        var response = await handler.HandleAsync(templateId, cancellationToken);
+        var response = floorPlanVersionId is null
+            ? await handler.HandleAsync(templateId, cancellationToken)
+            : await handler.HandleAsync(templateId, floorPlanVersionId.Value, cancellationToken);
 
         DraftCurationId = response.DraftCurationId;
         ApplySession(response.Session, preferredCandidateId: null, preferredPinchMarkerId: null);
@@ -172,21 +309,22 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     public async Task RejectSelectedCandidateAsync(CancellationToken cancellationToken)
     {
-        if (SelectedCandidate is null || DraftCurationId == Guid.Empty || !string.Equals(SelectedCandidate.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+        var rejected = SelectedCandidate;
+        if (rejected is null || DraftCurationId == Guid.Empty || string.Equals(rejected.Status, "Rejected", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        StatusMessage = $"Rejecting {SelectedCandidate.SourceEntityRef}...";
+        StatusMessage = $"Rejecting {rejected.SourceEntityRef}...";
 
         using (var scope = scopeFactory.CreateScope())
         {
             var handler = scope.ServiceProvider.GetRequiredService<RejectWallCandidateHandler>();
-            await handler.HandleAsync(DraftCurationId, SelectedCandidate.CandidateId, cancellationToken);
+            await handler.HandleAsync(DraftCurationId, rejected.CandidateId, cancellationToken);
         }
 
         await RefreshSessionAsync(null, null, SelectedPinchGroup?.PinchGroupId, cancellationToken);
-        StatusMessage = $"Rejected {SelectedCandidate.SourceEntityRef}";
+        StatusMessage = $"Rejected {rejected.SourceEntityRef}";
     }
 
     public async Task PublishAsync(CancellationToken cancellationToken)
@@ -316,6 +454,27 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         StatusMessage = "Removed pinch";
     }
 
+    public async Task RemoveSelectedRoomLabelAsync(CancellationToken cancellationToken)
+    {
+        if (SelectedRoomLabel is null)
+        {
+            return;
+        }
+
+        var removed = SelectedRoomLabel;
+        StatusMessage = $"Excluding room label {removed.Text}...";
+
+        using (var scope = scopeFactory.CreateScope())
+        {
+            var handler = scope.ServiceProvider.GetRequiredService<RemoveRoomLabelHandler>();
+            await handler.HandleAsync(removed.RoomLabelId, cancellationToken);
+        }
+
+        await RefreshSessionAsync(SelectedCandidate?.CandidateId, SelectedPinchMarker?.PinchMarkerId, SelectedPinchGroup?.PinchGroupId, cancellationToken);
+        SelectedRoomLabel = null;
+        StatusMessage = $"Excluded room label {removed.Text}";
+    }
+
     public async Task RemoveSelectedOpeningCandidateAsync(CancellationToken cancellationToken)
     {
         if (SelectedOpeningCandidate is null)
@@ -400,6 +559,44 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         StatusMessage = $"Removed protected detail {removed.SourceEntityRef}";
     }
 
+    public async Task ExcludeSelectedArtifactAsync(CancellationToken cancellationToken)
+    {
+        if (SelectedCandidate is not null)
+        {
+            await RejectSelectedCandidateAsync(cancellationToken);
+            return;
+        }
+
+        if (SelectedRoomLabel is not null)
+        {
+            await RemoveSelectedRoomLabelAsync(cancellationToken);
+            return;
+        }
+
+        if (SelectedOpeningCandidate is not null)
+        {
+            await RemoveSelectedOpeningCandidateAsync(cancellationToken);
+            return;
+        }
+
+        if (SelectedOpeningLabel is not null)
+        {
+            await RemoveSelectedOpeningLabelAsync(cancellationToken);
+            return;
+        }
+
+        if (SelectedFixedPlanComponent is not null)
+        {
+            await RemoveSelectedFixedPlanComponentAsync(cancellationToken);
+            return;
+        }
+
+        if (SelectedProtectedDetailAssembly is not null)
+        {
+            await RemoveSelectedProtectedDetailAssemblyAsync(cancellationToken);
+        }
+    }
+
     public bool SelectPreviewPath(Guid geometryPathId)
     {
         var protectedDetail = ProtectedDetailAssemblies.FirstOrDefault(item => item.GeometryPathIds.Contains(geometryPathId));
@@ -453,10 +650,30 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         HighlightGeometryPathId = value.GeometryPathId;
         PreviewSelectionLabel = $"Previewing candidate: {value.SourceEntityRef}";
+        SelectedRoomLabel = null;
         SelectedOpeningCandidate = null;
         SelectedOpeningLabel = null;
         SelectedFixedPlanComponent = null;
         SelectedProtectedDetailAssembly = null;
+    }
+
+    partial void OnSelectedRoomLabelChanged(RoomLabelDto? value)
+    {
+        if (value is null)
+        {
+            NotifyUxStateChanged();
+            return;
+        }
+
+        SelectedCandidate = null;
+        SelectedPinchMarker = null;
+        SelectedOpeningCandidate = null;
+        SelectedOpeningLabel = null;
+        SelectedFixedPlanComponent = null;
+        SelectedProtectedDetailAssembly = null;
+        HighlightGeometryPathId = null;
+        PreviewSelectionLabel = $"Previewing room label: {value.Text}";
+        NotifyUxStateChanged();
     }
 
     partial void OnSelectedPinchMarkerChanged(PinchMarkerDto? value)
@@ -494,6 +711,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         SelectedCandidate = null;
+        SelectedRoomLabel = null;
         SelectedPinchMarker = null;
         SelectedOpeningLabel = null;
         SelectedFixedPlanComponent = null;
@@ -512,6 +730,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         SelectedCandidate = null;
+        SelectedRoomLabel = null;
         SelectedPinchMarker = null;
         SelectedOpeningCandidate = null;
         SelectedFixedPlanComponent = null;
@@ -530,6 +749,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         SelectedCandidate = null;
+        SelectedRoomLabel = null;
         SelectedPinchMarker = null;
         SelectedOpeningCandidate = null;
         SelectedOpeningLabel = null;
@@ -548,6 +768,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         SelectedCandidate = null;
+        SelectedRoomLabel = null;
         SelectedPinchMarker = null;
         SelectedOpeningCandidate = null;
         SelectedOpeningLabel = null;
@@ -582,8 +803,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<GetFloorPlanReviewSessionHandler>();
-        var session = await handler.HandleAsync(templateId, cancellationToken)
-            ?? throw new InvalidOperationException("Floor plan review session was not found.");
+        FloorPlanReviewSessionDto? session = floorPlanVersionId is null
+            ? await handler.HandleAsync(templateId, cancellationToken)
+            : await handler.HandleAsync(templateId, floorPlanVersionId.Value, cancellationToken);
+
+        if (session is null)
+        {
+            throw new InvalidOperationException("Floor plan review session was not found.");
+        }
 
         DraftCurationId = string.Equals(session.Status, "Published", StringComparison.OrdinalIgnoreCase)
             ? Guid.Empty
@@ -618,6 +845,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(WindowOpeningCount));
         OnPropertyChanged(nameof(FixedPlanComponentCount));
         OnPropertyChanged(nameof(ProtectedDetailAssemblyCount));
+        OnPropertyChanged(nameof(RoomLabelCount));
+        OnPropertyChanged(nameof(OpeningLabelCount));
+        OnPropertyChanged(nameof(LinesSectionTitle));
+        OnPropertyChanged(nameof(RoomsSectionTitle));
+        OnPropertyChanged(nameof(OpeningsSectionTitle));
+        OnPropertyChanged(nameof(OpeningLabelsSectionTitle));
+        OnPropertyChanged(nameof(FixedElementsSectionTitle));
+        OnPropertyChanged(nameof(ProtectedDetailsSectionTitle));
 
         SelectedCandidate = preferredCandidateId is null
             ? WallCandidates.FirstOrDefault()
@@ -649,6 +884,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(AddPinchButtonLabel));
         OnPropertyChanged(nameof(SelectedPinchGroupId));
         OnPropertyChanged(nameof(InteractionHint));
+        OnPropertyChanged(nameof(HasSelectedArtifact));
+        OnPropertyChanged(nameof(SelectedArtifactTypeLabel));
+        OnPropertyChanged(nameof(SelectedArtifactTitle));
+        OnPropertyChanged(nameof(SelectedArtifactSubtitle));
+        OnPropertyChanged(nameof(SelectedArtifactDetails));
+        OnPropertyChanged(nameof(ExcludeSelectedArtifactLabel));
     }
 
     private string GetHandleHint()

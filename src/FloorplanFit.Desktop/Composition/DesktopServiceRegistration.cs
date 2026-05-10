@@ -58,12 +58,14 @@ public static class DesktopServiceRegistration
         services.AddScoped<ImportFloorPlanHandler>();
         services.AddScoped<ExtractWallCandidatesHandler>();
         services.AddScoped<GetFloorPlanLibraryHandler>();
+        services.AddScoped<RemoveFloorPlanVersionHandler>();
         services.AddScoped<GetFloorPlanReviewSessionHandler>();
         services.AddScoped<OpenFloorPlanReviewSessionHandler>();
         services.AddScoped<StartOrResumeCurationHandler>();
         services.AddScoped<AddPinchGroupHandler>();
         services.AddScoped<AddPinchMarkerHandler>();
         services.AddScoped<RemovePinchMarkerHandler>();
+        services.AddScoped<RemoveRoomLabelHandler>();
         services.AddScoped<RemoveOpeningCandidateHandler>();
         services.AddScoped<RemoveOpeningLabelHandler>();
         services.AddScoped<RemoveFixedPlanComponentHandler>();

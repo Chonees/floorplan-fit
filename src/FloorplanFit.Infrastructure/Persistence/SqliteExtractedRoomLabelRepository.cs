@@ -145,6 +145,21 @@ public sealed class SqliteExtractedRoomLabelRepository : IExtractedRoomLabelRepo
         return Task.FromResult<IReadOnlyList<ExtractedRoomLabel>>(labels);
     }
 
+    public Task RemoveAsync(Guid roomLabelId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            DELETE FROM extracted_room_labels
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", roomLabelId.ToString());
+        command.ExecuteNonQuery();
+
+        return Task.CompletedTask;
+    }
+
     private SqliteCommand CreateCommand(string sql)
     {
         var command = session.Connection.CreateCommand();

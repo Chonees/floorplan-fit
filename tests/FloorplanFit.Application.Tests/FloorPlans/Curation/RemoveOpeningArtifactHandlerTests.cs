@@ -102,6 +102,30 @@ public sealed class RemoveOpeningArtifactHandlerTests
         Assert.True(unitOfWork.SaveChangesCalled);
     }
 
+    [Fact]
+    public async Task RemoveRoomLabelHandler_removes_room_label_and_saves_changes()
+    {
+        var label = new ExtractedRoomLabel(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "TEXT:1",
+            "ROOM LBLS",
+            "KITCHEN",
+            125m,
+            784m,
+            0.95m,
+            null,
+            1);
+        var repository = new InMemoryRoomLabelRepository([label]);
+        var unitOfWork = new FakeUnitOfWork();
+        var handler = new RemoveRoomLabelHandler(repository, unitOfWork);
+
+        await handler.HandleAsync(label.Id, CancellationToken.None);
+
+        Assert.Empty(repository.Items);
+        Assert.True(unitOfWork.SaveChangesCalled);
+    }
+
     private sealed class InMemoryOpeningCandidateRepository : IExtractedOpeningCandidateRepository
     {
         public InMemoryOpeningCandidateRepository(IReadOnlyList<ExtractedOpeningCandidate> seed)
@@ -189,6 +213,28 @@ public sealed class RemoveOpeningArtifactHandlerTests
         public Task RemoveAsync(Guid openingLabelId, CancellationToken cancellationToken)
         {
             Items.RemoveAll(item => item.Id == openingLabelId);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryRoomLabelRepository : IExtractedRoomLabelRepository
+    {
+        public InMemoryRoomLabelRepository(IReadOnlyList<ExtractedRoomLabel> seed)
+        {
+            Items = [.. seed];
+        }
+
+        public List<ExtractedRoomLabel> Items { get; }
+
+        public Task AddRangeAsync(IReadOnlyList<ExtractedRoomLabel> labels, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ExtractedRoomLabel>> ListByExtractionRunAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<ExtractedRoomLabel>>(Items.Where(item => item.WallExtractionRunId == wallExtractionRunId).ToArray());
+
+        public Task RemoveAsync(Guid roomLabelId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == roomLabelId);
             return Task.CompletedTask;
         }
     }

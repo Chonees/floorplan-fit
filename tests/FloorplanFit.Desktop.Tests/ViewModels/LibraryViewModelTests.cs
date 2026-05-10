@@ -13,6 +13,27 @@ namespace FloorplanFit.Desktop.Tests.ViewModels;
 
 public sealed class LibraryViewModelTests
 {
+    private static FloorPlanLibraryItemDto CreateLibraryItem(Guid templateId, Guid versionId, string status)
+    {
+        return new FloorPlanLibraryItemDto(
+            templateId,
+            "santa-barbara",
+            "SANTA-BARBARA",
+            VersionCount: 1,
+            CurrentVersionId: versionId,
+            CurrentVersionNumber: 1,
+            Versions:
+            [
+                new FloorPlanLibraryVersionDto(
+                    versionId,
+                    VersionNumber: 1,
+                    status,
+                    new DateTime(2026, 4, 30, 18, 0, 0, DateTimeKind.Utc),
+                    "inch",
+                    IsCurrent: true)
+            ]);
+    }
+
     [Fact]
     public async Task ExtractSelectedAsync_uses_the_current_version_source_and_refreshes_the_library()
     {
@@ -74,14 +95,7 @@ public sealed class LibraryViewModelTests
         services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 4, 30, 19, 30, 0, DateTimeKind.Utc)));
         services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader(
         [
-            new FloorPlanLibraryItemDto(
-                templateId,
-                "santa-barbara",
-                "SANTA-BARBARA",
-                "Extracted",
-                1,
-                new DateTime(2026, 4, 30, 18, 0, 0, DateTimeKind.Utc),
-                "inch")
+            CreateLibraryItem(templateId, versionId, "Extracted")
         ]));
         services.AddTransient<ExtractWallCandidatesHandler>();
         services.AddTransient<GetFloorPlanLibraryHandler>();
@@ -89,14 +103,7 @@ public sealed class LibraryViewModelTests
         using var provider = services.BuildServiceProvider();
         var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
         {
-            SelectedItem = new FloorPlanLibraryItemDto(
-                templateId,
-                "santa-barbara",
-                "SANTA-BARBARA",
-                "Imported",
-                1,
-                new DateTime(2026, 4, 30, 18, 0, 0, DateTimeKind.Utc),
-                "inch")
+            SelectedItem = CreateLibraryItem(templateId, versionId, "Imported")
         };
 
         await viewModel.ExtractSelectedAsync(CancellationToken.None);
@@ -180,6 +187,14 @@ public sealed class LibraryViewModelTests
 
         var services = new ServiceCollection();
         services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanVersionRepository>(new InMemoryFloorPlanVersionRepository(
+            new FloorPlanVersion(
+                versionId,
+                templateId,
+                Guid.NewGuid(),
+                "fingerprint",
+                1,
+                new DateTime(2026, 4, 30, 17, 0, 0, DateTimeKind.Utc))));
         services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
         services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
         services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 4, 30, 20, 0, 0, DateTimeKind.Utc)));
@@ -207,14 +222,7 @@ public sealed class LibraryViewModelTests
         using var provider = services.BuildServiceProvider();
         var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
         {
-            SelectedItem = new FloorPlanLibraryItemDto(
-                templateId,
-                "santa-barbara",
-                "SANTA-BARBARA",
-                "Extracted",
-                1,
-                new DateTime(2026, 4, 30, 18, 0, 0, DateTimeKind.Utc),
-                "inch")
+            SelectedItem = CreateLibraryItem(templateId, versionId, "Extracted")
         };
 
         var reviewViewModel = await viewModel.OpenSelectedReviewAsync(CancellationToken.None);
@@ -222,6 +230,54 @@ public sealed class LibraryViewModelTests
         Assert.NotNull(reviewViewModel);
         Assert.Equal("santa-barbara", reviewViewModel.Code);
         Assert.Equal("SANTA-BARBARA", reviewViewModel.Name);
+    }
+
+    [Fact]
+    public async Task DeleteSelectedVersionAsync_removes_the_selected_version_and_refreshes_the_library()
+    {
+        var templateId = Guid.NewGuid();
+        var versionOneId = Guid.NewGuid();
+        var versionTwoId = Guid.NewGuid();
+        var versionRepository = new InMemoryFloorPlanVersionRepository(
+            new FloorPlanVersion(
+                versionOneId,
+                templateId,
+                Guid.NewGuid(),
+                "fingerprint-one",
+                1,
+                new DateTime(2026, 5, 9, 12, 0, 0, DateTimeKind.Utc)),
+            new FloorPlanVersion(
+                versionTwoId,
+                templateId,
+                Guid.NewGuid(),
+                "fingerprint-two",
+                2,
+                new DateTime(2026, 5, 9, 13, 0, 0, DateTimeKind.Utc)));
+        var unitOfWork = new FakeUnitOfWork();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanVersionRepository>(versionRepository);
+        services.AddSingleton<IUnitOfWork>(unitOfWork);
+        services.AddSingleton<IFloorPlanLibraryReader>(
+            new RepositoryBackedFloorPlanLibraryReader(templateId, versionRepository));
+        services.AddTransient<RemoveFloorPlanVersionHandler>();
+        services.AddTransient<GetFloorPlanLibraryHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>());
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        Assert.Equal("Selected: santa-barbara v2", viewModel.SelectedVersionLabel);
+
+        await viewModel.DeleteSelectedVersionAsync(CancellationToken.None);
+
+        Assert.All(versionRepository.Items, item => Assert.NotEqual(versionTwoId, item.Id));
+        Assert.True(unitOfWork.SaveChangesCalled);
+        var remainingItem = Assert.Single(viewModel.Items);
+        var remainingVersion = Assert.Single(remainingItem.Versions);
+        Assert.Equal(versionOneId, remainingVersion.VersionId);
+        Assert.Equal("Selected: santa-barbara v1", viewModel.SelectedVersionLabel);
+        Assert.Equal("Deleted v2", viewModel.StatusMessage);
     }
 
     private sealed class InMemoryExtractedRoomLabelRepository : IExtractedRoomLabelRepository
@@ -238,6 +294,12 @@ public sealed class LibraryViewModelTests
         {
             return Task.FromResult<IReadOnlyList<ExtractedRoomLabel>>(
                 Items.Where(item => item.WallExtractionRunId == wallExtractionRunId).ToArray());
+        }
+
+        public Task RemoveAsync(Guid roomLabelId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == roomLabelId);
+            return Task.CompletedTask;
         }
     }
 
@@ -345,6 +407,12 @@ public sealed class LibraryViewModelTests
         {
             return Task.FromResult<FloorPlanExtractionSource?>(source);
         }
+
+        public Task<FloorPlanExtractionSource?> GetByVersionAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<FloorPlanExtractionSource?>(
+                source.FloorPlanVersionId == floorPlanVersionId ? source : null);
+        }
     }
 
     private sealed class FakeWallExtractor : IWallExtractor
@@ -422,6 +490,14 @@ public sealed class LibraryViewModelTests
         {
             return Task.FromResult<FloorPlanReviewSessionDto?>(session);
         }
+
+        public Task<FloorPlanReviewSessionDto?> GetByVersionAsync(
+            Guid templateId,
+            Guid floorPlanVersionId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<FloorPlanReviewSessionDto?>(session);
+        }
     }
 
     private sealed class InMemoryFloorPlanTemplateRepository : IFloorPlanTemplateRepository
@@ -455,9 +531,98 @@ public sealed class LibraryViewModelTests
         }
     }
 
+    private sealed class InMemoryFloorPlanVersionRepository : IFloorPlanVersionRepository
+    {
+        public InMemoryFloorPlanVersionRepository(params FloorPlanVersion[] items)
+        {
+            Items = items.ToList();
+        }
+
+        public List<FloorPlanVersion> Items { get; }
+
+        public Task<FloorPlanVersion?> GetByIdAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Items.SingleOrDefault(item => item.Id == floorPlanVersionId));
+        }
+
+        public Task<int> GetNextVersionNumberAsync(Guid floorPlanTemplateId, CancellationToken cancellationToken)
+        {
+            var nextVersion = Items
+                .Where(item => item.FloorPlanTemplateId == floorPlanTemplateId)
+                .Select(item => item.VersionNumber)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+
+            return Task.FromResult(nextVersion);
+        }
+
+        public Task AddAsync(FloorPlanVersion version, CancellationToken cancellationToken)
+        {
+            Items.Add(version);
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == floorPlanVersionId);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RepositoryBackedFloorPlanLibraryReader : IFloorPlanLibraryReader
+    {
+        private readonly Guid templateId;
+        private readonly InMemoryFloorPlanVersionRepository versionRepository;
+
+        public RepositoryBackedFloorPlanLibraryReader(
+            Guid templateId,
+            InMemoryFloorPlanVersionRepository versionRepository)
+        {
+            this.templateId = templateId;
+            this.versionRepository = versionRepository;
+        }
+
+        public Task<IReadOnlyList<FloorPlanLibraryItemDto>> ListAsync(CancellationToken cancellationToken)
+        {
+            var versions = versionRepository.Items
+                .Where(item => item.FloorPlanTemplateId == templateId)
+                .OrderByDescending(item => item.VersionNumber)
+                .Select((item, index) => new FloorPlanLibraryVersionDto(
+                    item.Id,
+                    item.VersionNumber,
+                    "Imported",
+                    item.CreatedAtUtc,
+                    "inch",
+                    IsCurrent: index == 0))
+                .ToArray();
+
+            if (versions.Length == 0)
+            {
+                return Task.FromResult<IReadOnlyList<FloorPlanLibraryItemDto>>([]);
+            }
+
+            return Task.FromResult<IReadOnlyList<FloorPlanLibraryItemDto>>(
+            [
+                new FloorPlanLibraryItemDto(
+                    templateId,
+                    "santa-barbara",
+                    "SANTA-BARBARA",
+                    versions.Length,
+                    versions[0].VersionId,
+                    versions[0].VersionNumber,
+                    versions)
+            ]);
+        }
+    }
+
     private sealed class InMemoryFloorPlanCurationRepository : IFloorPlanCurationRepository
     {
         private readonly List<FloorPlanCuration> items = [];
+
+        public Task<FloorPlanCuration?> GetByIdAsync(Guid curationId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(items.SingleOrDefault(item => item.Id == curationId));
+        }
 
         public Task<FloorPlanCuration?> GetDraftAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
         {

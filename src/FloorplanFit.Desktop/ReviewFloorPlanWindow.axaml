@@ -5,17 +5,17 @@
         xmlns:controls="using:FloorplanFit.Desktop.Controls"
         x:Class="FloorplanFit.Desktop.ReviewFloorPlanWindow"
         x:DataType="viewModels:FloorPlanReviewViewModel"
-        RequestedThemeVariant="Light"
+        RequestedThemeVariant="Dark"
         Width="1280"
         Height="800"
         WindowState="Maximized"
         Title="Floor Plan Review">
-  <Grid RowDefinitions="Auto,*" Margin="20">
+  <Grid RowDefinitions="Auto,*" Margin="20" Background="Black">
     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
       <StackPanel Spacing="4">
         <TextBlock FontSize="28" FontWeight="Bold" Text="{Binding Name}" />
-        <TextBlock Foreground="DimGray" Text="{Binding Code, StringFormat='Template: {0}'}" />
-        <TextBlock Foreground="DimGray" Text="{Binding StatusMessage}" />
+        <TextBlock Foreground="White" Text="{Binding Code, StringFormat='Template: {0}'}" />
+        <TextBlock Foreground="White" Text="{Binding StatusMessage}" />
       </StackPanel>
 
       <Button Grid.Column="1"
@@ -25,53 +25,230 @@
               Click="PublishButton_OnClick" />
     </Grid>
 
-    <Grid Grid.Row="1" ColumnDefinitions="320,*,340" ColumnSpacing="16" Margin="0,16,0,0">
+    <Grid Grid.Row="1" ColumnDefinitions="360,*,320" ColumnSpacing="16" Margin="0,16,0,0">
       <Border Padding="14"
-              BorderBrush="LightGray"
+              BorderBrush="White"
               BorderThickness="1"
               CornerRadius="6">
-        <Grid RowDefinitions="Auto,Auto,*,Auto"
-              RowSpacing="12">
-          <TextBlock FontSize="18"
-                     FontWeight="SemiBold"
-                     Text="Lines" />
-          <TextBlock Grid.Row="1"
-                     Foreground="DimGray"
-                     Text="Reject only the lines that should never be considered." />
-          <ListBox Grid.Row="2"
-                   MinHeight="0"
-                   ItemsSource="{Binding WallCandidates}"
-                   SelectedItem="{Binding SelectedCandidate}">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="contracts:WallCandidateDto">
-                <Border Padding="8"
-                        Margin="0,0,0,8"
-                        BorderBrush="LightGray"
-                        BorderThickness="1"
-                        CornerRadius="4">
-                  <StackPanel>
-                    <TextBlock FontWeight="SemiBold" Text="{Binding SourceEntityRef}" />
-                    <TextBlock Text="{Binding SourceLayer}" />
-                    <TextBlock Foreground="#256D4D"
-                               Text="{Binding AssemblyHint}"
-                               ToolTip.Tip="{Binding DetectionNotes}" />
-                    <TextBlock Text="{Binding Status}" />
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-          <Button Grid.Row="3"
-                  HorizontalAlignment="Left"
-                  Content="Reject Selected Line"
-                  Click="RejectButton_OnClick" />
-        </Grid>
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="12">
+            <TextBlock FontSize="18"
+                       FontWeight="SemiBold"
+                       Text="Plan Elements" />
+            <TextBlock Foreground="White"
+                       Text="Everything is included by default. Exclude only false positives."
+                       TextWrapping="Wrap" />
+
+            <Border Padding="12"
+                    Background="Black"
+                    BorderBrush="White"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Lines" />
+                <TextBlock Foreground="White"
+                           Text="{Binding WallCandidates.Count, StringFormat='Detected: {0}'}" />
+                <ListBox MinHeight="120"
+                         MaxHeight="220"
+                         ItemsSource="{Binding WallCandidates}"
+                         SelectedItem="{Binding SelectedCandidate}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:WallCandidateDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="White"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding SourceEntityRef}" />
+                          <TextBlock Text="{Binding SourceLayer}" />
+                          <TextBlock Foreground="White"
+                                     Text="{Binding AssemblyHint}"
+                                     ToolTip.Tip="{Binding DetectionNotes}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="Black"
+                    BorderBrush="White"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Rooms" />
+                <TextBlock Foreground="White"
+                           Text="{Binding RoomLabelCount, StringFormat='Detected: {0}'}" />
+                <ListBox MinHeight="100"
+                         MaxHeight="180"
+                         ItemsSource="{Binding RoomLabels}"
+                         SelectedItem="{Binding SelectedRoomLabel}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:RoomLabelDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="White"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Text}" />
+                          <TextBlock Foreground="White" Text="{Binding SourceLayer}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="Black"
+                    BorderBrush="White"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Openings" />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <TextBlock Text="{Binding DoorOpeningCount, StringFormat='Doors: {0}'}" />
+                  <TextBlock Text="{Binding WindowOpeningCount, StringFormat='Windows: {0}'}" />
+                </StackPanel>
+                <ListBox MinHeight="100"
+                         MaxHeight="180"
+                         ItemsSource="{Binding OpeningCandidates}"
+                         SelectedItem="{Binding SelectedOpeningCandidate}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:OpeningCandidateDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="White"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding SourceEntityRef}" />
+                          <TextBlock Foreground="White" Text="{Binding Kind}" />
+                          <TextBlock Foreground="White" Text="{Binding SourceLayer}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="Black"
+                    BorderBrush="White"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Opening Labels" />
+                <TextBlock Foreground="White"
+                           Text="{Binding OpeningLabelCount, StringFormat='Detected: {0}'}" />
+                <ListBox MinHeight="100"
+                         MaxHeight="180"
+                         ItemsSource="{Binding OpeningLabels}"
+                         SelectedItem="{Binding SelectedOpeningLabel}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:OpeningLabelDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="White"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Text}" />
+                          <TextBlock Foreground="White" Text="{Binding Kind}" />
+                          <TextBlock Foreground="White" Text="{Binding SourceLayer}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="Black"
+                    BorderBrush="White"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Fixed Elements" />
+                <TextBlock Foreground="White"
+                           Text="{Binding FixedPlanComponentCount, StringFormat='Detected: {0}'}" />
+                <ListBox MinHeight="120"
+                         MaxHeight="220"
+                         ItemsSource="{Binding FixedPlanComponents}"
+                         SelectedItem="{Binding SelectedFixedPlanComponent}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:FixedPlanComponentDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="White"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Kind}" />
+                          <TextBlock Foreground="White" Text="{Binding SourceEntityRef}" />
+                          <TextBlock Foreground="White" Text="{Binding SourceBlockName}" />
+                          <TextBlock Foreground="White" Text="{Binding SourceLayer}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Border>
+
+            <Border Padding="12"
+                    Background="Black"
+                    BorderBrush="White"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Protected Details" />
+                <TextBlock Foreground="White"
+                           Text="{Binding ProtectedDetailAssemblyCount, StringFormat='Detected: {0}'}" />
+                <ListBox MinHeight="100"
+                         MaxHeight="180"
+                         ItemsSource="{Binding ProtectedDetailAssemblies}"
+                         SelectedItem="{Binding SelectedProtectedDetailAssembly}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:ProtectedDetailAssemblyDto">
+                      <Border Padding="8"
+                              Margin="0,0,0,8"
+                              BorderBrush="White"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <StackPanel>
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Kind}" />
+                          <TextBlock Foreground="White" Text="{Binding SourceEntityRef}" />
+                          <TextBlock Foreground="White" Text="{Binding SourceLayer}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
       </Border>
 
       <Border Grid.Column="1"
               Padding="12"
-              Background="White"
-              BorderBrush="LightGray"
+              Background="Black"
+              BorderBrush="White"
               BorderThickness="1"
               CornerRadius="6"
               ClipToBounds="True">
@@ -79,16 +256,16 @@
               RowSpacing="12"
               ClipToBounds="True">
           <TextBlock FontSize="18"
-                     Foreground="Black"
+                     Foreground="White"
                      FontWeight="SemiBold"
                      Text="Preview" />
           <TextBlock Grid.Row="1"
-                     Foreground="DimGray"
+                     Foreground="White"
                      Text="{Binding PreviewSelectionLabel}" />
           <Border Grid.Row="2"
                   Padding="12"
-                  Background="#F8F8F8"
-                  BorderBrush="LightGray"
+                  Background="Black"
+                  BorderBrush="White"
                   BorderThickness="1"
                   CornerRadius="6">
             <TextBlock Text="{Binding InteractionHint}" TextWrapping="Wrap" />
@@ -115,200 +292,51 @@
 
       <Border Grid.Column="2"
               Padding="14"
-              BorderBrush="LightGray"
+              BorderBrush="White"
               BorderThickness="1"
               CornerRadius="6">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
           <StackPanel Spacing="12">
+            <Border Padding="12"
+                    Background="Black"
+                    BorderBrush="White"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <StackPanel Spacing="8">
+                <TextBlock FontSize="18"
+                           FontWeight="SemiBold"
+                           Text="Selected Item" />
+                <TextBlock Foreground="White"
+                           FontWeight="SemiBold"
+                           Text="{Binding SelectedArtifactTypeLabel}" />
+                <TextBlock FontSize="16"
+                           Text="{Binding SelectedArtifactTitle}"
+                           TextWrapping="Wrap" />
+                <TextBlock Foreground="White"
+                           Text="{Binding SelectedArtifactSubtitle}"
+                           TextWrapping="Wrap" />
+                <TextBlock Foreground="White"
+                           Text="{Binding SelectedArtifactDetails}"
+                           TextWrapping="Wrap" />
+                <Button HorizontalAlignment="Left"
+                        IsEnabled="{Binding HasSelectedArtifact}"
+                        Content="Exclude from Curation"
+                        Click="ExcludeSelectedArtifactButton_OnClick" />
+              </StackPanel>
+            </Border>
+
             <TextBlock FontSize="18"
                        FontWeight="SemiBold"
                        Text="Pinch Tools" />
-            <TextBlock Foreground="DimGray"
-                       Text="Add only strategic pinch points that may absorb width or height during fit."
-                       TextWrapping="Wrap" />
 
             <Border Padding="12"
-                    Background="#F8F8F8"
-                    BorderBrush="LightGray"
-                    BorderThickness="1"
-                    CornerRadius="6">
-              <StackPanel Spacing="8">
-                <TextBlock FontWeight="SemiBold" Text="Rooms" />
-                <TextBlock Foreground="DimGray"
-                           Text="Room labels detected from the DXF. These are labels only, not room boundaries yet."
-                           TextWrapping="Wrap" />
-                <ListBox MinHeight="100"
-                         MaxHeight="180"
-                         ItemsSource="{Binding RoomLabels}">
-                  <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="contracts:RoomLabelDto">
-                      <Border Padding="8"
-                              Margin="0,0,0,8"
-                              BorderBrush="LightGray"
-                              BorderThickness="1"
-                              CornerRadius="4">
-                        <StackPanel>
-                          <TextBlock FontWeight="SemiBold" Text="{Binding Text}" />
-                          <TextBlock Foreground="DimGray" Text="{Binding SourceLayer}" />
-                        </StackPanel>
-                      </Border>
-                    </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-              </StackPanel>
-            </Border>
-
-            <Border Padding="12"
-                    Background="#F8F8F8"
-                    BorderBrush="LightGray"
-                    BorderThickness="1"
-                    CornerRadius="6">
-              <StackPanel Spacing="8">
-                <TextBlock FontWeight="SemiBold" Text="Openings" />
-                <TextBlock Foreground="DimGray"
-                           Text="Doors and windows detected exactly from DXF opening layers, with model/size labels."
-                           TextWrapping="Wrap" />
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                  <TextBlock Text="{Binding DoorOpeningCount, StringFormat='Doors: {0}'}" />
-                  <TextBlock Text="{Binding WindowOpeningCount, StringFormat='Windows: {0}'}" />
-                </StackPanel>
-                <TextBlock FontWeight="SemiBold" Text="Opening geometry" />
-                <ListBox MinHeight="100"
-                         MaxHeight="180"
-                         ItemsSource="{Binding OpeningCandidates}"
-                         SelectedItem="{Binding SelectedOpeningCandidate}">
-                  <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="contracts:OpeningCandidateDto">
-                      <Border Padding="8"
-                              Margin="0,0,0,8"
-                              BorderBrush="LightGray"
-                              BorderThickness="1"
-                              CornerRadius="4">
-                        <StackPanel>
-                          <TextBlock FontWeight="SemiBold" Text="{Binding SourceEntityRef}" />
-                          <TextBlock Foreground="DimGray" Text="{Binding Kind}" />
-                          <TextBlock Foreground="DimGray" Text="{Binding SourceLayer}" />
-                        </StackPanel>
-                      </Border>
-                    </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-                <Button HorizontalAlignment="Left"
-                        Content="Remove Selected Opening"
-                        Click="RemoveOpeningCandidateButton_OnClick" />
-                <TextBlock FontWeight="SemiBold" Text="Opening labels" />
-                <ListBox MinHeight="100"
-                         MaxHeight="180"
-                         ItemsSource="{Binding OpeningLabels}"
-                         SelectedItem="{Binding SelectedOpeningLabel}">
-                  <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="contracts:OpeningLabelDto">
-                      <Border Padding="8"
-                              Margin="0,0,0,8"
-                              BorderBrush="LightGray"
-                              BorderThickness="1"
-                              CornerRadius="4">
-                        <StackPanel>
-                          <TextBlock FontWeight="SemiBold" Text="{Binding Text}" />
-                          <TextBlock Foreground="DimGray" Text="{Binding Kind}" />
-                          <TextBlock Foreground="DimGray" Text="{Binding SourceLayer}" />
-                        </StackPanel>
-                      </Border>
-                    </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-                <Button HorizontalAlignment="Left"
-                        Content="Remove Selected Label"
-                        Click="RemoveOpeningLabelButton_OnClick" />
-              </StackPanel>
-            </Border>
-
-            <Border Padding="12"
-                    Background="#F8F8F8"
-                    BorderBrush="LightGray"
-                    BorderThickness="1"
-                    CornerRadius="6">
-              <StackPanel Spacing="8">
-                <TextBlock FontWeight="SemiBold" Text="Fixed Elements" />
-                <TextBlock Foreground="DimGray"
-                           Text="Toilets, fixtures, appliances, and cabinets extracted from DXF blocks/layers. Remove false positives before publishing curation."
-                           TextWrapping="Wrap" />
-                <TextBlock Text="{Binding FixedPlanComponentCount, StringFormat='Detected: {0}'}" />
-                <ListBox MinHeight="120"
-                         MaxHeight="220"
-                         ItemsSource="{Binding FixedPlanComponents}"
-                         SelectedItem="{Binding SelectedFixedPlanComponent}">
-                  <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="contracts:FixedPlanComponentDto">
-                      <Border Padding="8"
-                              Margin="0,0,0,8"
-                              BorderBrush="LightGray"
-                              BorderThickness="1"
-                              CornerRadius="4">
-                        <StackPanel>
-                          <TextBlock FontWeight="SemiBold" Text="{Binding Kind}" />
-                          <TextBlock Foreground="DimGray" Text="{Binding SourceEntityRef}" />
-                          <TextBlock Foreground="DimGray" Text="{Binding SourceBlockName}" />
-                          <TextBlock Foreground="DimGray" Text="{Binding SourceLayer}" />
-                        </StackPanel>
-                      </Border>
-                    </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-                <Button HorizontalAlignment="Left"
-                        Content="Remove Selected Component"
-                        Click="RemoveFixedPlanComponentButton_OnClick" />
-              </StackPanel>
-            </Border>
-
-            <Border Padding="12"
-                    Background="#F8F8F8"
-                    BorderBrush="LightGray"
-                    BorderThickness="1"
-                    CornerRadius="6">
-              <StackPanel Spacing="8">
-                <TextBlock FontWeight="SemiBold" Text="Protected Details" />
-                <TextBlock Foreground="DimGray"
-                           Text="Wet-area and CAD detail assemblies that should persist for fit protection without becoming structural walls."
-                           TextWrapping="Wrap" />
-                <TextBlock Text="{Binding ProtectedDetailAssemblyCount, StringFormat='Detected: {0}'}" />
-                <ListBox MinHeight="100"
-                         MaxHeight="180"
-                         ItemsSource="{Binding ProtectedDetailAssemblies}"
-                         SelectedItem="{Binding SelectedProtectedDetailAssembly}">
-                  <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="contracts:ProtectedDetailAssemblyDto">
-                      <Border Padding="8"
-                              Margin="0,0,0,8"
-                              BorderBrush="LightGray"
-                              BorderThickness="1"
-                              CornerRadius="4">
-                        <StackPanel>
-                          <TextBlock FontWeight="SemiBold" Text="{Binding Kind}" />
-                          <TextBlock Foreground="DimGray" Text="{Binding SourceEntityRef}" />
-                          <TextBlock Foreground="DimGray" Text="{Binding SourceLayer}" />
-                        </StackPanel>
-                      </Border>
-                    </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-                <Button HorizontalAlignment="Left"
-                        Content="Remove Selected Detail"
-                        Click="RemoveProtectedDetailAssemblyButton_OnClick" />
-              </StackPanel>
-            </Border>
-
-            <Border Padding="12"
-                    Background="#F8F8F8"
-                    BorderBrush="LightGray"
+                    Background="Black"
+                    BorderBrush="White"
                     BorderThickness="1"
                     CornerRadius="6">
               <StackPanel Spacing="8">
                 <TextBlock FontWeight="SemiBold" Text="Pinch Groups" />
-                <TextBlock Foreground="DimGray"
-                           Text="Create named shrink zones like Patio, Main Width, or Kitchen Height."
-                           TextWrapping="Wrap" />
                 <TextBlock Text="Group name" />
                 <TextBox Text="{Binding NewPinchGroupName}" />
                 <TextBlock Text="Group axis" />
@@ -324,7 +352,7 @@
                     <DataTemplate x:DataType="contracts:PinchGroupDto">
                       <Border Padding="8"
                               Margin="0,0,0,8"
-                              BorderBrush="LightGray"
+                              BorderBrush="White"
                               BorderThickness="1"
                               CornerRadius="4">
                         <StackPanel>
@@ -339,8 +367,8 @@
             </Border>
 
             <Border Padding="12"
-                    Background="#F8F8F8"
-                    BorderBrush="LightGray"
+                    Background="Black"
+                    BorderBrush="White"
                     BorderThickness="1"
                     CornerRadius="6">
               <StackPanel Spacing="8">
@@ -349,28 +377,28 @@
                 <TextBox Text="{Binding NewPinchMaxTrimMm}" />
                 <Button Content="{Binding AddPinchButtonLabel}"
                         Click="AddPinchButton_OnClick" />
-                <TextBlock Foreground="DimGray"
+                <TextBlock Foreground="White"
                            Text="{Binding InteractionHint}"
                            TextWrapping="Wrap" />
               </StackPanel>
             </Border>
 
             <Border Padding="12"
-                    Background="#F8F8F8"
-                    BorderBrush="LightGray"
+                    Background="Black"
+                    BorderBrush="White"
                     BorderThickness="1"
                     CornerRadius="6">
               <StackPanel Spacing="8">
                 <TextBlock FontWeight="SemiBold" Text="Preview Handles" />
-                <TextBlock Foreground="DimGray"
-                           Text="Drag the visible green handles directly on the canvas. Width uses left/right. Height uses top/bottom."
+                <TextBlock Foreground="White"
+                           Text="Drag the visible handles directly on the canvas. Width uses left/right. Height uses top/bottom."
                            TextWrapping="Wrap" />
               </StackPanel>
             </Border>
 
             <Border Padding="12"
-                    Background="#F8F8F8"
-                    BorderBrush="LightGray"
+                    Background="Black"
+                    BorderBrush="White"
                     BorderThickness="1"
                     CornerRadius="6">
               <StackPanel Spacing="8">
@@ -382,7 +410,7 @@
                     <DataTemplate x:DataType="contracts:PinchMarkerDto">
                       <Border Padding="8"
                               Margin="0,0,0,8"
-                              BorderBrush="LightGray"
+                              BorderBrush="White"
                               BorderThickness="1"
                               CornerRadius="4">
                         <StackPanel>

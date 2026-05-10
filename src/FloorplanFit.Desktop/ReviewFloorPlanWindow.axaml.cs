@@ -11,14 +11,14 @@ public partial class ReviewFloorPlanWindow : Window
         InitializeComponent();
     }
 
-    private async void RejectButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async void ExcludeSelectedArtifactButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is not FloorPlanReviewViewModel viewModel)
         {
             return;
         }
 
-        await viewModel.RejectSelectedCandidateAsync(CancellationToken.None);
+        await viewModel.ExcludeSelectedArtifactAsync(CancellationToken.None);
     }
 
     private async void PublishButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -59,46 +59,6 @@ public partial class ReviewFloorPlanWindow : Window
         }
 
         await viewModel.RemoveSelectedPinchAsync(CancellationToken.None);
-    }
-
-    private async void RemoveOpeningCandidateButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is not FloorPlanReviewViewModel viewModel)
-        {
-            return;
-        }
-
-        await viewModel.RemoveSelectedOpeningCandidateAsync(CancellationToken.None);
-    }
-
-    private async void RemoveOpeningLabelButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is not FloorPlanReviewViewModel viewModel)
-        {
-            return;
-        }
-
-        await viewModel.RemoveSelectedOpeningLabelAsync(CancellationToken.None);
-    }
-
-    private async void RemoveFixedPlanComponentButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is not FloorPlanReviewViewModel viewModel)
-        {
-            return;
-        }
-
-        await viewModel.RemoveSelectedFixedPlanComponentAsync(CancellationToken.None);
-    }
-
-    private async void RemoveProtectedDetailAssemblyButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is not FloorPlanReviewViewModel viewModel)
-        {
-            return;
-        }
-
-        await viewModel.RemoveSelectedProtectedDetailAssemblyAsync(CancellationToken.None);
     }
 
     private async void PreviewControl_OnGeometryPathClicked(object? sender, FloorPlanPreviewControl.GeometryPathClickedEventArgs e)

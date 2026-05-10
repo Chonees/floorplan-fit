@@ -61,7 +61,7 @@ public sealed class FloorPlanReviewViewModelTests
                         Guid.NewGuid(),
                         "LINE:1",
                         "WALLS",
-                        "Pending",
+                        "Accepted",
                         0.95m,
                         null,
                         null,
@@ -147,8 +147,8 @@ public sealed class FloorPlanReviewViewModelTests
                 [],
                 [],
                 [
-                    new WallCandidateDto(Guid.NewGuid(), "LINE:1", "WALLS", "Pending", 0.95m, null, null, firstPathId, 1),
-                    new WallCandidateDto(Guid.NewGuid(), "LINE:2", "WALLS", "Pending", 0.90m, null, null, secondPathId, 2)
+                    new WallCandidateDto(Guid.NewGuid(), "LINE:1", "WALLS", "Accepted", 0.95m, null, null, firstPathId, 1),
+                    new WallCandidateDto(Guid.NewGuid(), "LINE:2", "WALLS", "Accepted", 0.90m, null, null, secondPathId, 2)
                 ],
                 [],
                 [])));
@@ -204,7 +204,7 @@ public sealed class FloorPlanReviewViewModelTests
                 [],
                 [],
                 [
-                    new WallCandidateDto(Guid.NewGuid(), "LINE:WALL:1", "WALLS", "Pending", 0.95m, null, null, wallPathId, 1)
+                    new WallCandidateDto(Guid.NewGuid(), "LINE:WALL:1", "WALLS", "Accepted", 0.95m, null, null, wallPathId, 1)
                 ],
                 [],
                 [])));
@@ -224,7 +224,7 @@ public sealed class FloorPlanReviewViewModelTests
         Assert.Equal("LINE:DOOR:1", viewModel.SelectedOpeningCandidate?.SourceEntityRef);
         Assert.Equal(openingPathId, viewModel.HighlightGeometryPathId);
         Assert.Equal("Previewing opening: LINE:DOOR:1", viewModel.PreviewSelectionLabel);
-        Assert.Contains("Remove Selected Opening", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Exclude from Curation", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -272,7 +272,7 @@ public sealed class FloorPlanReviewViewModelTests
                 ],
                 [],
                 [
-                    new WallCandidateDto(Guid.NewGuid(), "LINE:WALL:1", "WALLS", "Pending", 0.95m, null, null, wallPathId, 1)
+                    new WallCandidateDto(Guid.NewGuid(), "LINE:WALL:1", "WALLS", "Accepted", 0.95m, null, null, wallPathId, 1)
                 ],
                 [],
                 [])));
@@ -292,7 +292,7 @@ public sealed class FloorPlanReviewViewModelTests
         Assert.Equal("Toilet", viewModel.SelectedFixedPlanComponent?.Kind);
         Assert.Equal(toiletPathId, viewModel.HighlightGeometryPathId);
         Assert.Equal("Previewing fixed component: INSERT:1", viewModel.PreviewSelectionLabel);
-        Assert.Contains("Remove Selected Component", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Exclude from Curation", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -339,7 +339,7 @@ public sealed class FloorPlanReviewViewModelTests
                         1)
                 ],
                 [
-                    new WallCandidateDto(Guid.NewGuid(), "LINE:WALL:1", "WALLS", "Pending", 0.95m, null, null, wallPathId, 1)
+                    new WallCandidateDto(Guid.NewGuid(), "LINE:WALL:1", "WALLS", "Accepted", 0.95m, null, null, wallPathId, 1)
                 ],
                 [],
                 [])));
@@ -359,7 +359,183 @@ public sealed class FloorPlanReviewViewModelTests
         Assert.Equal("WetAreaDetail", viewModel.SelectedProtectedDetailAssembly?.Kind);
         Assert.Equal(protectedPathId, viewModel.HighlightGeometryPathId);
         Assert.Equal("Previewing protected detail: DETAIL:MISC:1", viewModel.PreviewSelectionLabel);
-        Assert.Contains("Remove Selected Detail", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Exclude from Curation", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Selecting_room_label_populates_selected_item_summary()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "santa-barbara", "SANTA-BARBARA", isActive: true);
+        template.SetCurrentVersion(versionId);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 10, 18, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "santa-barbara",
+                "SANTA-BARBARA",
+                "Curated Draft",
+                1,
+                null,
+                [],
+                [
+                    new RoomLabelDto(Guid.NewGuid(), "TEXT:1", "ROOM LBLS", "KITCHEN", 125m, 784m, 0.95m, null, 1)
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedRoomLabel = viewModel.RoomLabels.Single();
+
+        Assert.True(viewModel.HasSelectedArtifact);
+        Assert.Equal("Room Label", viewModel.SelectedArtifactTypeLabel);
+        Assert.Equal("KITCHEN", viewModel.SelectedArtifactTitle);
+        Assert.Contains("ROOM LBLS", viewModel.SelectedArtifactSubtitle, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Exclude from Curation", viewModel.ExcludeSelectedArtifactLabel);
+        Assert.Equal("Previewing room label: KITCHEN", viewModel.PreviewSelectionLabel);
+    }
+
+    [Fact]
+    public async Task ExcludeSelectedArtifactAsync_removes_selected_room_label()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var roomLabel = new ExtractedRoomLabel(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "TEXT:1",
+            "ROOM LBLS",
+            "KITCHEN",
+            125m,
+            784m,
+            0.95m,
+            null,
+            1);
+        var template = new FloorPlanTemplate(templateId, "santa-barbara", "SANTA-BARBARA", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var roomLabelRepository = new InMemoryExtractedRoomLabelRepository(roomLabel);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IExtractedRoomLabelRepository>(roomLabelRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 10, 18, 30, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "santa-barbara",
+                "SANTA-BARBARA",
+                "Curated Draft",
+                1,
+                null,
+                [],
+                [
+                    new RoomLabelDto(roomLabel.Id, "TEXT:1", "ROOM LBLS", "KITCHEN", 125m, 784m, 0.95m, null, 1)
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<RemoveRoomLabelHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedRoomLabel = viewModel.RoomLabels.Single();
+
+        await viewModel.ExcludeSelectedArtifactAsync(CancellationToken.None);
+
+        Assert.False(roomLabelRepository.Items.Any());
+    }
+
+    [Fact]
+    public async Task ExcludeSelectedArtifactAsync_rejects_selected_wall_candidate()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var candidate = new ExtractedWallCandidate(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "LINE:68",
+            "WALLS",
+            geometryPathId,
+            101.6m,
+            0.95m,
+            null,
+            ExtractedWallCandidateStatus.Accepted,
+            1);
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var candidateRepository = new InMemoryExtractedWallCandidateRepository(candidate);
+        var markerRepository = new InMemoryPinchMarkerRepository([]);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IExtractedWallCandidateRepository>(candidateRepository);
+        services.AddSingleton<IPinchMarkerRepository>(markerRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 10, 19, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "seminole2000",
+                "SEMINOLE2000",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 120m, 0m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new WallCandidateDto(candidate.Id, "LINE:68", "WALLS", "Accepted", 0.95m, 101.6m, null, geometryPathId, 1)
+                ],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<RejectWallCandidateHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        await viewModel.ExcludeSelectedArtifactAsync(CancellationToken.None);
+
+        Assert.Equal(ExtractedWallCandidateStatus.Rejected, candidate.Status);
+        Assert.True(candidateRepository.UpdateCalled);
     }
 
     [Fact]
@@ -396,7 +572,7 @@ public sealed class FloorPlanReviewViewModelTests
                 [],
                 [],
                 [
-                    new WallCandidateDto(candidateId, "LINE:68", "WALLS", "Pending", 0.95m, null, null, geometryPathId, 1)
+                    new WallCandidateDto(candidateId, "LINE:68", "WALLS", "Accepted", 0.95m, null, null, geometryPathId, 1)
                 ],
                 [
                     new PinchGroupDto(pinchGroupId, "Patio", nameof(PinchAxisTag.Height), 1)
@@ -419,6 +595,73 @@ public sealed class FloorPlanReviewViewModelTests
         Assert.Contains("top or bottom", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task RejectSelectedCandidateAsync_rejects_selected_accepted_candidate()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var candidate = new ExtractedWallCandidate(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "LINE:68",
+            "WALLS",
+            geometryPathId,
+            101.6m,
+            0.95m,
+            null,
+            ExtractedWallCandidateStatus.Accepted,
+            1);
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var candidateRepository = new InMemoryExtractedWallCandidateRepository(candidate);
+        var markerRepository = new InMemoryPinchMarkerRepository([]);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IExtractedWallCandidateRepository>(candidateRepository);
+        services.AddSingleton<IPinchMarkerRepository>(markerRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 9, 22, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "seminole2000",
+                "SEMINOLE2000",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 120m, 0m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new WallCandidateDto(candidate.Id, "LINE:68", "WALLS", "Accepted", 0.95m, 101.6m, null, geometryPathId, 1)
+                ],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<RejectWallCandidateHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        await viewModel.RejectSelectedCandidateAsync(CancellationToken.None);
+
+        Assert.Equal(ExtractedWallCandidateStatus.Rejected, candidate.Status);
+        Assert.True(candidateRepository.UpdateCalled);
+        Assert.Equal(viewModel.DraftCurationId, markerRepository.LastRemovedCurationId);
+        Assert.Equal(candidate.Id, markerRepository.LastRemovedSourceCandidateId);
+    }
+
     private sealed class FakeFloorPlanReviewSessionReader : IFloorPlanReviewSessionReader
     {
         private readonly FloorPlanReviewSessionDto session;
@@ -429,6 +672,14 @@ public sealed class FloorPlanReviewViewModelTests
         }
 
         public Task<FloorPlanReviewSessionDto?> GetByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<FloorPlanReviewSessionDto?>(session);
+        }
+
+        public Task<FloorPlanReviewSessionDto?> GetByVersionAsync(
+            Guid templateId,
+            Guid floorPlanVersionId,
+            CancellationToken cancellationToken)
         {
             return Task.FromResult<FloorPlanReviewSessionDto?>(session);
         }
@@ -465,9 +716,108 @@ public sealed class FloorPlanReviewViewModelTests
         }
     }
 
+    private sealed class InMemoryExtractedWallCandidateRepository : IExtractedWallCandidateRepository
+    {
+        private readonly ExtractedWallCandidate candidate;
+
+        public InMemoryExtractedWallCandidateRepository(ExtractedWallCandidate candidate)
+        {
+            this.candidate = candidate;
+        }
+
+        public bool UpdateCalled { get; private set; }
+
+        public Task AddRangeAsync(
+            IReadOnlyList<ExtractedWallCandidate> domainCandidates,
+            IReadOnlyList<DetectedWallCandidate> detectedCandidates,
+            CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<ExtractedWallCandidate?> GetByIdAsync(Guid candidateId, CancellationToken cancellationToken)
+            => Task.FromResult(candidate.Id == candidateId ? candidate : null);
+
+        public Task UpdateAsync(ExtractedWallCandidate candidate, CancellationToken cancellationToken)
+        {
+            UpdateCalled = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryExtractedRoomLabelRepository : IExtractedRoomLabelRepository
+    {
+        public InMemoryExtractedRoomLabelRepository(params ExtractedRoomLabel[] seed)
+        {
+            Items = [.. seed];
+        }
+
+        public List<ExtractedRoomLabel> Items { get; }
+
+        public Task AddRangeAsync(IReadOnlyList<ExtractedRoomLabel> labels, CancellationToken cancellationToken)
+        {
+            Items.AddRange(labels);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ExtractedRoomLabel>> ListByExtractionRunAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<ExtractedRoomLabel>>(Items.Where(item => item.WallExtractionRunId == wallExtractionRunId).ToArray());
+        }
+
+        public Task RemoveAsync(Guid roomLabelId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == roomLabelId);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryPinchMarkerRepository : IPinchMarkerRepository
+    {
+        public InMemoryPinchMarkerRepository(IReadOnlyList<PinchMarker> seed)
+        {
+            Items = [.. seed];
+        }
+
+        public List<PinchMarker> Items { get; }
+
+        public Guid? LastRemovedCurationId { get; private set; }
+
+        public Guid? LastRemovedSourceCandidateId { get; private set; }
+
+        public Task AddAsync(PinchMarker marker, CancellationToken cancellationToken)
+        {
+            Items.Add(marker);
+            return Task.CompletedTask;
+        }
+
+        public Task<PinchMarker?> GetByIdAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
+            => Task.FromResult(Items.SingleOrDefault(item => item.Id == pinchMarkerId));
+
+        public Task<IReadOnlyList<PinchMarker>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<PinchMarker>>(Items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
+
+        public Task RemoveAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == pinchMarkerId);
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveBySourceCandidateAsync(Guid curationId, Guid sourceCandidateId, CancellationToken cancellationToken)
+        {
+            LastRemovedCurationId = curationId;
+            LastRemovedSourceCandidateId = sourceCandidateId;
+            Items.RemoveAll(item => item.FloorPlanCurationId == curationId && item.SourceCandidateId == sourceCandidateId);
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class InMemoryFloorPlanCurationRepository : IFloorPlanCurationRepository
     {
         private readonly List<FloorPlanCuration> items = [];
+
+        public Task<FloorPlanCuration?> GetByIdAsync(Guid curationId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(items.SingleOrDefault(item => item.Id == curationId));
+        }
 
         public Task<FloorPlanCuration?> GetDraftAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
         {

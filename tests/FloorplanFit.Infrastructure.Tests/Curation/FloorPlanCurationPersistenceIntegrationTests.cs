@@ -153,7 +153,7 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
                             thicknessMm: 101.6m,
                             confidence: 0.95m,
                             detectionNotes: "seeded",
-                            status: ExtractedWallCandidateStatus.Pending,
+                            status: ExtractedWallCandidateStatus.Accepted,
                             sortOrder: 1)
                     ],
                     [
@@ -176,11 +176,11 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
                 var loadedCandidate = await candidateRepository.GetByIdAsync(candidateId, CancellationToken.None);
 
                 Assert.NotNull(loadedCandidate);
-                Assert.Equal(ExtractedWallCandidateStatus.Pending, loadedCandidate.Status);
+                Assert.Equal(ExtractedWallCandidateStatus.Accepted, loadedCandidate.Status);
                 Assert.NotEqual(Guid.Empty, loadedCandidate.GeometryPathId);
                 Assert.Equal(101.6m, loadedCandidate.ThicknessMm);
 
-                loadedCandidate.Accept();
+                loadedCandidate.Reject();
                 await candidateRepository.UpdateAsync(loadedCandidate, CancellationToken.None);
                 await session.CommitAsync(CancellationToken.None);
             }
@@ -189,7 +189,7 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
             {
                 var loadedCandidate = await new SqliteExtractedWallCandidateRepository(session).GetByIdAsync(candidateId, CancellationToken.None);
                 Assert.NotNull(loadedCandidate);
-                Assert.Equal(ExtractedWallCandidateStatus.Accepted, loadedCandidate.Status);
+                Assert.Equal(ExtractedWallCandidateStatus.Rejected, loadedCandidate.Status);
                 Assert.Equal(2, CountRows(session.Connection, session.Transaction, "geometry_segments", "geometry_path_id = (SELECT geometry_path_id FROM extracted_wall_candidates WHERE id = $id)", ("$id", candidateId.ToString())));
             }
         }
@@ -261,6 +261,62 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
                 Assert.Equal("Center", label.HorizontalAlignment);
                 Assert.Equal("Middle", label.VerticalAlignment);
                 Assert.Equal("#FF000000", label.ColorArgb);
+            }
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ExtractedRoomLabelRepository_removes_room_labels_so_false_positives_do_not_persist()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            var extractionRunId = Guid.NewGuid();
+            var labelId = Guid.NewGuid();
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                var repository = new SqliteExtractedRoomLabelRepository(session);
+                await repository.AddRangeAsync(
+                    [
+                        new ExtractedRoomLabel(
+                            labelId,
+                            extractionRunId,
+                            "TEXT:1",
+                            "ROOM LBLS",
+                            "KITCHEN",
+                            125m,
+                            784m,
+                            0.95m,
+                            "Detected from ROOM LBLS text entity.",
+                            1)
+                    ],
+                    CancellationToken.None);
+                await session.CommitAsync(CancellationToken.None);
+            }
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                var repository = new SqliteExtractedRoomLabelRepository(session);
+                await repository.RemoveAsync(labelId, CancellationToken.None);
+                await session.CommitAsync(CancellationToken.None);
+            }
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                var repository = new SqliteExtractedRoomLabelRepository(session);
+                var labels = await repository.ListByExtractionRunAsync(extractionRunId, CancellationToken.None);
+
+                Assert.Empty(labels);
             }
         }
         finally

@@ -7,7 +7,7 @@ namespace FloorplanFit.Application.Tests.FloorPlans.Extraction;
 public sealed class ExtractWallCandidatesHandlerTests
 {
     [Fact]
-    public async Task HandleAsync_persists_pending_candidates_and_returns_extracted_status()
+    public async Task HandleAsync_persists_accepted_candidates_and_returns_extracted_status()
     {
         var versionId = Guid.NewGuid();
         var extractor = new FakeWallExtractor(
@@ -116,7 +116,7 @@ public sealed class ExtractWallCandidatesHandlerTests
         var candidate = Assert.Single(candidates.Items);
         Assert.Equal(versionId, run.FloorPlanVersionId);
         Assert.Equal(run.Id, candidate.WallExtractionRunId);
-        Assert.Equal(ExtractedWallCandidateStatus.Pending, candidate.Status);
+        Assert.Equal(ExtractedWallCandidateStatus.Accepted, candidate.Status);
         var roomLabel = Assert.Single(roomLabels.Items);
         Assert.Equal(run.Id, roomLabel.WallExtractionRunId);
         Assert.Equal("KITCHEN", roomLabel.Text);
@@ -239,6 +239,12 @@ public sealed class ExtractWallCandidatesHandlerTests
         {
             return Task.FromResult<IReadOnlyList<ExtractedRoomLabel>>(
                 Items.Where(item => item.WallExtractionRunId == wallExtractionRunId).ToArray());
+        }
+
+        public Task RemoveAsync(Guid roomLabelId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == roomLabelId);
+            return Task.CompletedTask;
         }
     }
 

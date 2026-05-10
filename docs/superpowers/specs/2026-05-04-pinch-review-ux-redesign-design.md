@@ -1,5 +1,10 @@
 # Pinch Review UX Redesign Design
 
+> [!NOTE] HISTORICAL / UI-SUPERSEDED — 2026-05-10
+> This redesign improved the old review workflow, but it predates the approved `Plan Elements` sidebar and the unified `Exclude from Curation` action.
+>
+> Current direction: `2026-05-10-unified-plan-elements-review-ui-design.md`.
+
 ## Goal
 
 Keep the current single-screen review flow, but make pinch authoring and compression preview obvious enough that a user can discover the workflow without verbal instructions.
