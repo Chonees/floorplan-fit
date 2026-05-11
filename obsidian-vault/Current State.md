@@ -99,7 +99,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Desde 2026-05-07, la opening geometry tambien se puede seleccionar directamente desde el preview canvas, igual que las walls. El hit-test incluye openings, les da prioridad visual sobre walls cuando se superponen, selecciona `SelectedOpeningCandidate`, resalta la apertura elegida en naranja/rojo y deja listo el boton `Remove Selected Opening` para eliminar falsos positivos desde el objeto visual.
 
-- Desde 2026-05-07, los bloques/componentes fijos del plano se extraen como **fixed plan components** separados de walls y openings: `IxMiliaFixedPlanComponentExtractor` lee geometria de `FIXTURES`, `CABS`, `CABS-FLOORPLAN` e inserts relevantes (`TOILET1`, `STOVE`, `SINK`, `DISHWASHER`, `TUB`, `WASH_DRY`, etc.), resuelve/preserva su color original DXF en `ColorArgb`, los persiste y la Review permite verlos, seleccionarlos desde el canvas y eliminar falsos positivos.
+- Desde 2026-05-07, los bloques/componentes fijos del plano se extraen como **fixed plan components** separados de walls y openings: `IxMiliaFixedPlanComponentExtractor` lee geometria de `FIXTURES`, `CABS`, `CABS-FLOORPLAN` e inserts relevantes (`TOILET1`, `STOVE`, `SINK`, `DISHWASHER`, `TUB`, `WASH_DRY`, etc.), y desde 2026-05-10 tambien baja recursivamente a **blocks anidados con layer/nombre generico** para no perder detalles reales embebidos dentro de assemblies de cabinets/fixtures; ademas, las entidades directas de `FIXTURES`, `CABS` y `CABS-FLOORPLAN` ya no se persisten una por una sino que se **agrupan por proximidad geometrica** en componentes curables (`COMPONENT-GROUP`) para que tinas, lavabos, cooktops, hornallas y outlines gruesos del plano original lleguen a Review como artifacts editables reales; resuelve/preserva su color original DXF en `ColorArgb`, los persiste y la Review permite verlos, seleccionarlos desde el canvas y eliminar falsos positivos.
 
 - Desde 2026-05-07, las geometrías de detalle húmedo/protegido se extraen como **protected detail assemblies** separados de walls, openings y fixed components: `IxMiliaProtectedDetailAssemblyExtractor` lee layers protegidos del profile (`MISC`, `HATCH`) como `WetAreaDetail`, mantiene `L1` excluido para evitar ruido masivo, persiste sus geometry paths, los muestra en Review y permite seleccionarlos/remover falsos positivos con `Remove Selected Detail`.
 
@@ -228,7 +228,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
   - `IxMiliaOpeningExtractor` real leyendo geometria de puertas/ventanas desde `DOORS`, `WIN` y `WINS`, y labels exactos desde `DOORTEXT` / `WINDWS LBLS`
 
-  - `IxMiliaFixedPlanComponentExtractor` real leyendo componentes fijos desde `FIXTURES`, `CABS`, `CABS-FLOORPLAN` e inserts de bloques relevantes, transformando coordenadas de bloque a coordenadas de modelo
+  - `IxMiliaFixedPlanComponentExtractor` real leyendo componentes fijos desde `FIXTURES`, `CABS`, `CABS-FLOORPLAN` e inserts de bloques relevantes, siguiendo tambien nested inserts genericos dentro de assemblies para rescatar geometria/color/layer de detalles reales, y transformando coordenadas de bloque a coordenadas de modelo
 
   - `IxMiliaProtectedDetailAssemblyExtractor` real leyendo detail assemblies desde las convenciones protegidas del profile (`MISC`, `HATCH`) y manteniendo `L1` fuera para evitar ruido masivo en SEMINOLE2000
 
@@ -486,3 +486,11 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-07 - Protected detail assemblies for wet-area curation]]
 
 - [[Bugs/2026-05-06 - Axis-tagged pinch migration duplicated markers when groups shared an axis]]
+
+- [[Implementation/2026-05-10 - Relabeled grouped cabinet geometry from nearby fixture text]]
+
+- [[Implementation/2026-05-10 - Split cabinet groups from inner fixture symbols]]
+
+- [[Bugs/2026-05-10 - Missing sink symbols live on L1 so fixed-component extractor skips them]]
+
+- [[Implementation/2026-05-10 - Experimental L1 fixed-component extraction]]

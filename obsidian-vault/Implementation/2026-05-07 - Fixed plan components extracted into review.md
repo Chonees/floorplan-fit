@@ -28,6 +28,7 @@ Toilets, fixtures, appliances, cabinets, and inserted CAD blocks are real plan o
   - `CABS`
   - `CABS-FLOORPLAN`
   - relevant `INSERT` blocks such as `TOILET1`, `STOVE`, `SINK`, `DISHWASHER`, `TUB`, and `WASH_DRY`
+- Since 2026-05-10, the extractor also walks **nested/generic block inserts** recursively so cabinet or fixture assemblies do not drop real original-plan sub-blocks just because the outer insert sits on layer `0` / `2` or uses a non-semantic block name.
 - Extracted components persist as `ExtractedFixedPlanComponent`.
 - Each component can own one or more persisted `geometry_paths`.
 - The Review session exposes `FixedPlanComponentDto`.
@@ -66,5 +67,6 @@ Toilets, fixtures, appliances, cabinets, and inserted CAD blocks are real plan o
 
 - DXF block inserts need transformation from block-local coordinates into model coordinates using insertion point, scale, rotation, and block base point.
 - Color resolution needs CAD semantics: `BYLAYER` resolves through the entity layer; nested block entities on layer `0` inherit the insert layer; `BYBLOCK` falls back to the insert color when available.
+- Generic wrapper inserts are not safe rejection criteria. The semantic signal may live deeper in nested block entities or their layers, so extraction now resolves kind/source layer/color recursively before giving up.
 - Components are not openings. They should not feed door/window protection logic directly; they are fixed/protected plan details for curation and future fit constraints.
 - Because `geometry_segments` is still linear-only, arcs/circles/ellipses from fixture geometry are flattened into segment paths for preview/persistence.
