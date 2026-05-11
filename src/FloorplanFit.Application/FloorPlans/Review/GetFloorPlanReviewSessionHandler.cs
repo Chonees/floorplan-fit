@@ -16,4 +16,12 @@ public sealed class GetFloorPlanReviewSessionHandler
     {
         return reviewSessionReader.GetByTemplateAsync(templateId, cancellationToken);
     }
+
+    public Task<FloorPlanReviewSessionDto?> HandleAsync(
+        Guid templateId,
+        Guid floorPlanVersionId,
+        CancellationToken cancellationToken)
+    {
+        return reviewSessionReader.GetByVersionAsync(templateId, floorPlanVersionId, cancellationToken);
+    }
 }

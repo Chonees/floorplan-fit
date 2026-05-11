@@ -39,8 +39,10 @@ public sealed class FloorPlanPreviewControl : Control
             HighlightGeometryPathIdProperty,
             PinchMarkersProperty,
             RoomLabelsProperty,
+            HighlightRoomLabelIdProperty,
             OpeningCandidatesProperty,
             OpeningLabelsProperty,
+            HighlightOpeningLabelIdProperty,
             FixedPlanComponentsProperty,
             ProtectedDetailAssembliesProperty,
             PreviewPinchGroupIdProperty,
@@ -88,11 +90,17 @@ public sealed class FloorPlanPreviewControl : Control
     public static readonly StyledProperty<IReadOnlyList<RoomLabelDto>?> RoomLabelsProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<RoomLabelDto>?>(nameof(RoomLabels));
 
+    public static readonly StyledProperty<Guid?> HighlightRoomLabelIdProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, Guid?>(nameof(HighlightRoomLabelId));
+
     public static readonly StyledProperty<IReadOnlyList<OpeningCandidateDto>?> OpeningCandidatesProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<OpeningCandidateDto>?>(nameof(OpeningCandidates));
 
     public static readonly StyledProperty<IReadOnlyList<OpeningLabelDto>?> OpeningLabelsProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<OpeningLabelDto>?>(nameof(OpeningLabels));
+
+    public static readonly StyledProperty<Guid?> HighlightOpeningLabelIdProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, Guid?>(nameof(HighlightOpeningLabelId));
 
     public static readonly StyledProperty<IReadOnlyList<FixedPlanComponentDto>?> FixedPlanComponentsProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<FixedPlanComponentDto>?>(nameof(FixedPlanComponents));
@@ -133,6 +141,12 @@ public sealed class FloorPlanPreviewControl : Control
         set => SetValue(RoomLabelsProperty, value);
     }
 
+    public Guid? HighlightRoomLabelId
+    {
+        get => GetValue(HighlightRoomLabelIdProperty);
+        set => SetValue(HighlightRoomLabelIdProperty, value);
+    }
+
     public IReadOnlyList<OpeningCandidateDto>? OpeningCandidates
     {
         get => GetValue(OpeningCandidatesProperty);
@@ -143,6 +157,12 @@ public sealed class FloorPlanPreviewControl : Control
     {
         get => GetValue(OpeningLabelsProperty);
         set => SetValue(OpeningLabelsProperty, value);
+    }
+
+    public Guid? HighlightOpeningLabelId
+    {
+        get => GetValue(HighlightOpeningLabelIdProperty);
+        set => SetValue(HighlightOpeningLabelIdProperty, value);
     }
 
     public IReadOnlyList<FixedPlanComponentDto>? FixedPlanComponents
@@ -437,8 +457,8 @@ public sealed class FloorPlanPreviewControl : Control
             ProtectedDetailAssemblies,
             artifactIndex.ProtectedDetailGeometryPathIds,
             HighlightGeometryPathId);
-        CadTextPreviewLayerRenderer.RenderRoomLabels(context, viewport.Value, RoomLabels);
-        CadTextPreviewLayerRenderer.RenderOpeningLabels(context, viewport.Value, OpeningLabels);
+        CadTextPreviewLayerRenderer.RenderRoomLabels(context, viewport.Value, RoomLabels, HighlightRoomLabelId);
+        CadTextPreviewLayerRenderer.RenderOpeningLabels(context, viewport.Value, OpeningLabels, HighlightOpeningLabelId);
         PinchMarkerPreviewLayerRenderer.Render(
             context,
             viewport.Value,

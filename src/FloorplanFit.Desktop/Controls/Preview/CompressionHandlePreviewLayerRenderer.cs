@@ -7,8 +7,8 @@ namespace FloorplanFit.Desktop.Controls.Preview;
 internal static class CompressionHandlePreviewLayerRenderer
 {
     private const double CornerRadius = 6d;
-    private static readonly IBrush HandleBrush = new SolidColorBrush(Color.FromArgb(32, 46, 139, 87));
-    private static readonly Pen HandlePen = new(new SolidColorBrush(Color.FromArgb(180, 46, 139, 87)), 1.5);
+    private static readonly IBrush HandleBrush = new SolidColorBrush(Color.FromArgb(32, 0, 0, 0));
+    private static readonly Pen HandlePen = new(new SolidColorBrush(Color.FromArgb(220, 0, 0, 0)), 1.5);
 
     public static void Render(
         DrawingContext context,

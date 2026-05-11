@@ -149,7 +149,7 @@ El usuario puede revisar:
 ### Qu? puede hacer el usuario
 
 - seleccionar una l?nea, opening, fixture o detail desde el canvas
-- rechazar l?neas que no sirven
+- revisar wall candidates aceptadas por defecto y rechazar solo l?neas falsas positivas
 - eliminar openings falsas positivas
 - eliminar labels falsas positivas
 - eliminar fixed components falsos positivos
@@ -245,7 +245,8 @@ Eso genera una versi?n activa reusable que contiene:
 - template/version del floor plan
 - extraction run base
 - artifacts visibles y curados
-- rejected wall candidates
+- wall candidates v?lidas por defecto, excluyendo las rechazadas por el usuario
+- rejected wall candidates como auditor?a de lo que no debe persistir
 - removals/corrections de falsos positivos
 - pinch groups
 - pinch markers

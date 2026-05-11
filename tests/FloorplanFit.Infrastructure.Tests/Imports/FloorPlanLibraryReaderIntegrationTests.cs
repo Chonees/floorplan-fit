@@ -202,7 +202,7 @@ public sealed class FloorPlanLibraryReaderIntegrationTests
                 null,
                 0.95m,
                 null,
-                ExtractedWallCandidateStatus.Pending,
+                ExtractedWallCandidateStatus.Accepted,
                 1)
         ],
         [

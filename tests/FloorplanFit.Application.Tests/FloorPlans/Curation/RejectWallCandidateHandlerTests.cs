@@ -7,10 +7,10 @@ namespace FloorplanFit.Application.Tests.FloorPlans.Curation;
 public sealed class RejectWallCandidateHandlerTests
 {
     [Fact]
-    public async Task HandleAsync_rejects_a_pending_candidate_and_removes_its_pinch_markers_from_the_draft()
+    public async Task HandleAsync_rejects_an_accepted_candidate_and_removes_its_pinch_markers_from_the_draft()
     {
         var curationId = Guid.NewGuid();
-        var candidate = new ExtractedWallCandidate(Guid.NewGuid(), Guid.NewGuid(), "LINE:12", "A-WALL", Guid.NewGuid(), 101.6m, 0.95m, null, ExtractedWallCandidateStatus.Pending, 1);
+        var candidate = new ExtractedWallCandidate(Guid.NewGuid(), Guid.NewGuid(), "LINE:12", "A-WALL", Guid.NewGuid(), 101.6m, 0.95m, null, ExtractedWallCandidateStatus.Accepted, 1);
         var marker = new PinchMarker(
             Guid.NewGuid(),
             curationId,

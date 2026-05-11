@@ -84,7 +84,7 @@ public sealed class ExtractWallCandidatesHandler
                 item.ThicknessMm,
                 item.Confidence,
                 item.DetectionNotes,
-                ExtractedWallCandidateStatus.Pending,
+                ExtractedWallCandidateStatus.Accepted,
                 sortOrder: index + 1))
             .ToArray();
         var roomLabels = detectedRoomLabels

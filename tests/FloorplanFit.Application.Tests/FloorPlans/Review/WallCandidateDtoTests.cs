@@ -34,7 +34,7 @@ public sealed class WallCandidateDtoTests
             Guid.NewGuid(),
             "LINE:1",
             "WALLS",
-            "Pending",
+            "Accepted",
             0.95m,
             thicknessMm,
             null,

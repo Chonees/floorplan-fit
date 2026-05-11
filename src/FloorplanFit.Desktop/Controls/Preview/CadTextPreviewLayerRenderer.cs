@@ -8,12 +8,12 @@ namespace FloorplanFit.Desktop.Controls.Preview;
 internal static class CadTextPreviewLayerRenderer
 {
     private const double FallbackFontSize = 11d;
-    private const string ReadablePreviewLabelColorArgb = "#FF000000";
 
     public static void RenderRoomLabels(
         DrawingContext context,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
-        IReadOnlyList<RoomLabelDto>? roomLabels)
+        IReadOnlyList<RoomLabelDto>? roomLabels,
+        Guid? highlightedRoomLabelId = null)
     {
         if (roomLabels is not { Count: > 0 })
         {
@@ -27,7 +27,7 @@ internal static class CadTextPreviewLayerRenderer
                 continue;
             }
 
-            var plan = CreateRoomLabelRenderPlan(roomLabel, viewport);
+            var plan = CreateRoomLabelRenderPlan(roomLabel, viewport, roomLabel.RoomLabelId == highlightedRoomLabelId);
             RenderText(context, plan, roomLabel.TextStyleName);
         }
     }
@@ -35,7 +35,8 @@ internal static class CadTextPreviewLayerRenderer
     public static void RenderOpeningLabels(
         DrawingContext context,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
-        IReadOnlyList<OpeningLabelDto>? openingLabels)
+        IReadOnlyList<OpeningLabelDto>? openingLabels,
+        Guid? highlightedOpeningLabelId = null)
     {
         if (openingLabels is not { Count: > 0 })
         {
@@ -49,7 +50,7 @@ internal static class CadTextPreviewLayerRenderer
                 continue;
             }
 
-            var plan = CreateOpeningLabelRenderPlan(openingLabel, viewport);
+            var plan = CreateOpeningLabelRenderPlan(openingLabel, viewport, openingLabel.OpeningLabelId == highlightedOpeningLabelId);
             RenderText(context, plan, openingLabel.TextStyleName);
         }
     }
@@ -61,7 +62,8 @@ internal static class CadTextPreviewLayerRenderer
 
     internal static TextRenderPlan CreateRoomLabelRenderPlan(
         RoomLabelDto roomLabel,
-        FloorPlanPreviewGeometry.PreviewViewport viewport)
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        bool isSelected = false)
     {
         var fontSize = roomLabel.TextHeight is > 0m
             ? Math.Max(1d, (double)roomLabel.TextHeight.Value * viewport.Scale)
@@ -75,12 +77,15 @@ internal static class CadTextPreviewLayerRenderer
             roomLabel.HorizontalAlignment,
             roomLabel.VerticalAlignment,
             roomLabel.AttachmentPoint,
-            ReadablePreviewLabelColorArgb);
+            isSelected
+                ? PreviewSemanticPalette.SelectionHighlightArgb
+                : PreviewSemanticPalette.ReadablePreviewLabelColorArgb);
     }
 
     internal static TextRenderPlan CreateOpeningLabelRenderPlan(
         OpeningLabelDto openingLabel,
-        FloorPlanPreviewGeometry.PreviewViewport viewport)
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        bool isSelected = false)
     {
         var fontSize = openingLabel.TextHeight is > 0m
             ? Math.Max(1d, (double)openingLabel.TextHeight.Value * viewport.Scale)
@@ -94,7 +99,9 @@ internal static class CadTextPreviewLayerRenderer
             openingLabel.HorizontalAlignment,
             openingLabel.VerticalAlignment,
             openingLabel.AttachmentPoint,
-            ReadablePreviewLabelColorArgb);
+            isSelected
+                ? PreviewSemanticPalette.SelectionHighlightArgb
+                : PreviewSemanticPalette.ReadablePreviewLabelColorArgb);
     }
 
     internal static Point ResolveTextOriginForMetrics(

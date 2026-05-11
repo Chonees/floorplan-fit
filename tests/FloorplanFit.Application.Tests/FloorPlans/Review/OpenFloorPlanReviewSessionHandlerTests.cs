@@ -17,6 +17,14 @@ public sealed class OpenFloorPlanReviewSessionHandlerTests
         existingTemplate.SetCurrentVersion(versionId);
 
         var templateRepository = new InMemoryFloorPlanTemplateRepository(existingTemplate);
+        var versionRepository = new InMemoryFloorPlanVersionRepository(
+            new FloorPlanVersion(
+                versionId,
+                templateId,
+                Guid.NewGuid(),
+                "fingerprint",
+                1,
+                new DateTime(2026, 4, 30, 17, 0, 0, DateTimeKind.Utc)));
         var curationRepository = new InMemoryFloorPlanCurationRepository();
         var unitOfWork = new FakeUnitOfWork();
         var clock = new FakeClock(new DateTime(2026, 4, 30, 18, 0, 0, DateTimeKind.Utc));
@@ -38,7 +46,7 @@ public sealed class OpenFloorPlanReviewSessionHandlerTests
             PinchGroups: [],
             PinchMarkers: []);
         var reviewReader = new FakeFloorPlanReviewSessionReader(expectedSession);
-        var handler = new OpenFloorPlanReviewSessionHandler(templateRepository, reviewReader, startOrResumeHandler);
+        var handler = new OpenFloorPlanReviewSessionHandler(templateRepository, versionRepository, reviewReader, startOrResumeHandler);
 
         var response = await handler.HandleAsync(templateId, CancellationToken.None);
 
@@ -58,6 +66,7 @@ public sealed class OpenFloorPlanReviewSessionHandlerTests
     {
         var template = new FloorPlanTemplate(Guid.NewGuid(), "santa-barbara", "SANTA-BARBARA", isActive: true);
         var templateRepository = new InMemoryFloorPlanTemplateRepository(template);
+        var versionRepository = new InMemoryFloorPlanVersionRepository();
         var reviewReader = new FakeFloorPlanReviewSessionReader(null);
         var curationRepository = new InMemoryFloorPlanCurationRepository();
         var unitOfWork = new FakeUnitOfWork();
@@ -65,7 +74,7 @@ public sealed class OpenFloorPlanReviewSessionHandlerTests
             curationRepository,
             new FakeClock(new DateTime(2026, 4, 30, 18, 0, 0, DateTimeKind.Utc)),
             unitOfWork);
-        var handler = new OpenFloorPlanReviewSessionHandler(templateRepository, reviewReader, startOrResumeHandler);
+        var handler = new OpenFloorPlanReviewSessionHandler(templateRepository, versionRepository, reviewReader, startOrResumeHandler);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             handler.HandleAsync(template.Id, CancellationToken.None));
@@ -88,6 +97,53 @@ public sealed class OpenFloorPlanReviewSessionHandlerTests
         {
             LastTemplateId = templateId;
             return Task.FromResult(session);
+        }
+
+        public Task<FloorPlanReviewSessionDto?> GetByVersionAsync(
+            Guid templateId,
+            Guid floorPlanVersionId,
+            CancellationToken cancellationToken)
+        {
+            LastTemplateId = templateId;
+            return Task.FromResult(session);
+        }
+    }
+
+    private sealed class InMemoryFloorPlanVersionRepository : IFloorPlanVersionRepository
+    {
+        private readonly List<FloorPlanVersion> items;
+
+        public InMemoryFloorPlanVersionRepository(params FloorPlanVersion[] items)
+        {
+            this.items = items.ToList();
+        }
+
+        public Task<FloorPlanVersion?> GetByIdAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(items.SingleOrDefault(item => item.Id == floorPlanVersionId));
+        }
+
+        public Task<int> GetNextVersionNumberAsync(Guid floorPlanTemplateId, CancellationToken cancellationToken)
+        {
+            var nextVersion = items
+                .Where(item => item.FloorPlanTemplateId == floorPlanTemplateId)
+                .Select(item => item.VersionNumber)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+
+            return Task.FromResult(nextVersion);
+        }
+
+        public Task AddAsync(FloorPlanVersion version, CancellationToken cancellationToken)
+        {
+            items.Add(version);
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            items.RemoveAll(item => item.Id == floorPlanVersionId);
+            return Task.CompletedTask;
         }
     }
 
@@ -125,6 +181,11 @@ public sealed class OpenFloorPlanReviewSessionHandlerTests
     private sealed class InMemoryFloorPlanCurationRepository : IFloorPlanCurationRepository
     {
         private readonly List<FloorPlanCuration> items = [];
+
+        public Task<FloorPlanCuration?> GetByIdAsync(Guid curationId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(items.SingleOrDefault(item => item.Id == curationId));
+        }
 
         public Task<FloorPlanCuration?> GetDraftAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
         {

@@ -106,6 +106,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - Limitacion tecnica vigente: como el schema runtime actual de `geometry_segments` solo persiste segmentos lineales, los arcos de puertas del DXF se aplanan a polilineas para preview. Visualmente conserva la geometria de swing, pero una preservacion CAD 100% nativa de arcos requiere extender `geometry_segments` con `segment_type`, centro/radio/clockwise.
 
 - Implementacion cerrada el 2026-05-10 para Review: la ventana ya quedo reorganizada como **Plan Elements | Preview | Selected Item + Pinch Tools**, todas las familias curables viven juntas en el panel izquierdo y la accion visible quedo unificada como **Exclude from Curation**. Internamente, walls siguen usando rechazo auditable y room labels ya tienen via real de exclusion persistida.
+- Convencion visual cerrada el 2026-05-10 para el preview de Review: **windows** usan paleta cian, **doors** usan como base el color real del seed plan actual (`SEMINOLE2000.dxf` layer `DOORS` = `#455668`) con highlight azul-gris mas claro, **fixed elements** usan paleta roja por defecto pero **cabinets** usan paleta cian, las **selecciones** usan ahora exactamente el mismo verde del pinch seleccionado (`SeaGreen` / `#2E8B57`) para walls, openings, fixed elements, protected details, room labels y opening labels; pinch markers siguen `SeaGreen` / `DodgerBlue` / `SlateGray` segun estado.
 
 
 
@@ -435,6 +436,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - [[Implementation/2026-05-09 - Subtractive wall candidate curation]]
 - [[Implementation/2026-05-10 - Unified plan elements review UI and room label exclusion]]
+- [[Decisions/2026-05-10 - Semantic preview palette for review artifacts]]
 - [[Implementation/2026-05-09 - Versioned floorplan library with per-version delete]]
 
 - [[Bugs/2026-05-02 - Open Review crashes right after extraction because committed SQLite transaction is reused]]

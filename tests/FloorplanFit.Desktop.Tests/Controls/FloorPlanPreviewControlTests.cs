@@ -192,20 +192,23 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
-    public void OpeningPreviewLayerRenderer_uses_original_semantic_opening_colors_and_highlight()
+    public void OpeningPreviewLayerRenderer_uses_requested_semantic_opening_palette_and_highlight()
     {
         var windowPen = OpeningPreviewLayerRenderer.CreatePen("Window", isHighlighted: false);
         var doorPen = OpeningPreviewLayerRenderer.CreatePen("Door", isHighlighted: false);
-        var highlightedPen = OpeningPreviewLayerRenderer.CreatePen("Door", isHighlighted: true);
+        var highlightedWindowPen = OpeningPreviewLayerRenderer.CreatePen("Window", isHighlighted: true);
+        var highlightedDoorPen = OpeningPreviewLayerRenderer.CreatePen("Door", isHighlighted: true);
 
-        Assert.Equal(Color.FromRgb(0, 147, 197), Assert.IsType<SolidColorBrush>(windowPen.Brush).Color);
-        Assert.Equal(Color.FromRgb(150, 83, 13), Assert.IsType<SolidColorBrush>(doorPen.Brush).Color);
-        Assert.Equal(Color.FromRgb(255, 72, 24), Assert.IsType<SolidColorBrush>(highlightedPen.Brush).Color);
-        Assert.True(highlightedPen.Thickness > doorPen.Thickness);
+        Assert.Equal(Color.FromRgb(0, 188, 212), Assert.IsType<SolidColorBrush>(windowPen.Brush).Color);
+        Assert.Equal(Color.Parse("#FF455668"), Assert.IsType<SolidColorBrush>(doorPen.Brush).Color);
+        Assert.Equal(Colors.SeaGreen, Assert.IsType<SolidColorBrush>(highlightedWindowPen.Brush).Color);
+        Assert.Equal(Colors.SeaGreen, Assert.IsType<SolidColorBrush>(highlightedDoorPen.Brush).Color);
+        Assert.True(highlightedWindowPen.Thickness > windowPen.Thickness);
+        Assert.True(highlightedDoorPen.Thickness > doorPen.Thickness);
     }
 
     [Fact]
-    public void CreateFixedPlanComponentPen_uses_original_dxf_color_when_available()
+    public void FixedPlanComponentPreviewLayerRenderer_uses_red_palette_even_when_dxf_color_is_available()
     {
         var component = new FixedPlanComponentDto(
             Guid.NewGuid(),
@@ -223,11 +226,33 @@ public sealed class FloorPlanPreviewControlTests
         var pen = FixedPlanComponentPreviewLayerRenderer.CreatePen(component, isHighlighted: false);
 
         var brush = Assert.IsType<SolidColorBrush>(pen.Brush);
-        Assert.Equal(Color.Parse("#FF00AEEF"), brush.Color);
+        Assert.Equal(Color.FromRgb(220, 38, 38), brush.Color);
     }
 
     [Fact]
-    public void FixedPlanComponentPreviewLayerRenderer_falls_back_to_semantic_color_when_dxf_color_is_missing()
+    public void FixedPlanComponentPreviewLayerRenderer_uses_cyan_palette_for_cabinets()
+    {
+        var component = new FixedPlanComponentDto(
+            Guid.NewGuid(),
+            "LINE:1",
+            "CABS",
+            "Cabinet",
+            "LINE",
+            SourceBlockName: null,
+            [Guid.NewGuid()],
+            0.95m,
+            null,
+            1,
+            ColorArgb: "#FFFF0000");
+
+        var pen = FixedPlanComponentPreviewLayerRenderer.CreatePen(component, isHighlighted: false);
+
+        var brush = Assert.IsType<SolidColorBrush>(pen.Brush);
+        Assert.Equal(Color.FromRgb(0, 188, 212), brush.Color);
+    }
+
+    [Fact]
+    public void FixedPlanComponentPreviewLayerRenderer_falls_back_to_red_palette_when_dxf_color_is_missing()
     {
         var component = new FixedPlanComponentDto(
             Guid.NewGuid(),
@@ -244,7 +269,29 @@ public sealed class FloorPlanPreviewControlTests
         var pen = FixedPlanComponentPreviewLayerRenderer.CreatePen(component, isHighlighted: false);
 
         var brush = Assert.IsType<SolidColorBrush>(pen.Brush);
-        Assert.Equal(Color.FromRgb(111, 66, 193), brush.Color);
+        Assert.Equal(Color.FromRgb(220, 38, 38), brush.Color);
+    }
+
+    [Fact]
+    public void FixedPlanComponentPreviewLayerRenderer_uses_selection_green_when_highlighted()
+    {
+        var component = new FixedPlanComponentDto(
+            Guid.NewGuid(),
+            "INSERT:1",
+            "FIXTURES",
+            "Tub",
+            "INSERT",
+            "TUB",
+            [Guid.NewGuid()],
+            0.95m,
+            null,
+            1);
+
+        var normalPen = FixedPlanComponentPreviewLayerRenderer.CreatePen(component, isHighlighted: false);
+        var highlightedPen = FixedPlanComponentPreviewLayerRenderer.CreatePen(component, isHighlighted: true);
+
+        Assert.Equal(Colors.SeaGreen, Assert.IsType<SolidColorBrush>(highlightedPen.Brush).Color);
+        Assert.True(highlightedPen.Thickness > normalPen.Thickness);
     }
 
     [Fact]
@@ -266,6 +313,27 @@ public sealed class FloorPlanPreviewControlTests
 
         var brush = Assert.IsType<SolidColorBrush>(pen.Brush);
         Assert.Equal(Color.Parse("#FF00FF00"), brush.Color);
+    }
+
+    [Fact]
+    public void ProtectedDetailPreviewLayerRenderer_uses_selection_green_when_highlighted()
+    {
+        var assembly = new ProtectedDetailAssemblyDto(
+            Guid.NewGuid(),
+            "DETAIL:MISC:1",
+            "MISC",
+            "WetAreaDetail",
+            "DETAIL-GROUP",
+            [Guid.NewGuid()],
+            0.90m,
+            null,
+            1);
+
+        var normalPen = ProtectedDetailPreviewLayerRenderer.CreatePen(assembly, isHighlighted: false);
+        var highlightedPen = ProtectedDetailPreviewLayerRenderer.CreatePen(assembly, isHighlighted: true);
+
+        Assert.Equal(Colors.SeaGreen, Assert.IsType<SolidColorBrush>(highlightedPen.Brush).Color);
+        Assert.True(highlightedPen.Thickness > normalPen.Thickness);
     }
 
     [Fact]
@@ -366,9 +434,39 @@ public sealed class FloorPlanPreviewControlTests
             1,
             ColorArgb: "#FFFFFFFF");
 
-        var plan = CadTextPreviewLayerRenderer.CreateRoomLabelRenderPlan(roomLabel, viewport.Value);
+        var plan = CadTextPreviewLayerRenderer.CreateRoomLabelRenderPlan(roomLabel, viewport.Value, isSelected: false);
 
         Assert.Equal("#FF000000", plan.ColorArgb);
+    }
+
+    [Fact]
+    public void CreateRoomLabelRenderPlan_uses_selection_green_when_selected()
+    {
+        var pathId = Guid.NewGuid();
+        GeometryPathDto[] geometryPaths =
+        [
+            new GeometryPathDto(
+                pathId,
+                IsClosed: false,
+                [new GeometrySegmentDto(pathId, 1, 0m, 0m, 100m, 100m)])
+        ];
+        var viewport = FloorPlanPreviewGeometry.CalculateViewport(geometryPaths, new Rect(0, 0, 500, 500), 48d);
+        Assert.NotNull(viewport);
+        var roomLabel = new RoomLabelDto(
+            Guid.NewGuid(),
+            "TEXT:2",
+            "ROOM LBLS",
+            "MASTER BATH",
+            25m,
+            75m,
+            0.95m,
+            null,
+            1,
+            ColorArgb: "#FFFFFFFF");
+
+        var plan = CadTextPreviewLayerRenderer.CreateRoomLabelRenderPlan(roomLabel, viewport.Value, isSelected: true);
+
+        Assert.Equal("#FF2E8B57", plan.ColorArgb);
     }
 
     [Fact]
@@ -438,9 +536,40 @@ public sealed class FloorPlanPreviewControlTests
             1,
             ColorArgb: "#FFFFFFFF");
 
-        var plan = CadTextPreviewLayerRenderer.CreateOpeningLabelRenderPlan(label, viewport.Value);
+        var plan = CadTextPreviewLayerRenderer.CreateOpeningLabelRenderPlan(label, viewport.Value, isSelected: false);
 
         Assert.Equal("#FF000000", plan.ColorArgb);
+    }
+
+    [Fact]
+    public void CreateOpeningLabelRenderPlan_uses_selection_green_when_selected()
+    {
+        var pathId = Guid.NewGuid();
+        GeometryPathDto[] geometryPaths =
+        [
+            new GeometryPathDto(
+                pathId,
+                IsClosed: false,
+                [new GeometrySegmentDto(pathId, 1, 0m, 0m, 100m, 100m)])
+        ];
+        var viewport = FloorPlanPreviewGeometry.CalculateViewport(geometryPaths, new Rect(0, 0, 500, 500), 48d);
+        Assert.NotNull(viewport);
+        var label = new OpeningLabelDto(
+            Guid.NewGuid(),
+            "TEXT:1",
+            "DOORTEXT",
+            "Door",
+            "2668",
+            25m,
+            75m,
+            0.95m,
+            null,
+            1,
+            ColorArgb: "#FFFFFFFF");
+
+        var plan = CadTextPreviewLayerRenderer.CreateOpeningLabelRenderPlan(label, viewport.Value, isSelected: true);
+
+        Assert.Equal("#FF2E8B57", plan.ColorArgb);
     }
 
     [Fact]

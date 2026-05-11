@@ -44,23 +44,20 @@ internal static class FixedPlanComponentPreviewLayerRenderer
     {
         if (isHighlighted)
         {
-            return new Pen(new SolidColorBrush(Color.FromRgb(255, 72, 24)), 3.2d);
+            return new Pen(
+                PreviewSemanticPalette.Brush(PreviewSemanticPalette.FixedElementHighlight),
+                3.2d);
         }
 
-        if (Color.TryParse(component.ColorArgb, out var originalColor))
-        {
-            return new Pen(new SolidColorBrush(originalColor), 1.35d);
-        }
+        return new Pen(
+            PreviewSemanticPalette.Brush(ResolveBaseColor(component)),
+            1.35d);
+    }
 
-        var color = component.Kind switch
-        {
-            "Toilet" => Color.FromRgb(111, 66, 193),
-            "Appliance" => Color.FromRgb(25, 135, 84),
-            "Cabinet" => Color.FromRgb(90, 98, 104),
-            "Fixture" => Color.FromRgb(13, 110, 253),
-            _ => Color.FromRgb(102, 16, 242)
-        };
-
-        return new Pen(new SolidColorBrush(color), 1.35d);
+    private static Color ResolveBaseColor(FixedPlanComponentDto component)
+    {
+        return string.Equals(component.Kind, "Cabinet", StringComparison.OrdinalIgnoreCase)
+            ? PreviewSemanticPalette.Cabinet
+            : PreviewSemanticPalette.FixedElement;
     }
 }

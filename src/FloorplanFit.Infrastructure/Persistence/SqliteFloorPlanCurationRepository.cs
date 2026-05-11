@@ -14,6 +14,36 @@ public sealed class SqliteFloorPlanCurationRepository : IFloorPlanCurationReposi
         this.session = session;
     }
 
+    public Task<FloorPlanCuration?> GetByIdAsync(Guid curationId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            SELECT
+                id,
+                floorplan_version_id,
+                curation_version,
+                status,
+                based_on_curation_id,
+                notes,
+                created_at_utc,
+                published_at_utc
+            FROM floorplan_curations
+            WHERE id = $id
+            LIMIT 1
+            """);
+        command.Parameters.AddWithValue("$id", curationId.ToString());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return Task.FromResult<FloorPlanCuration?>(null);
+        }
+
+        return Task.FromResult<FloorPlanCuration?>(MapCuration(reader));
+    }
+
     public Task<FloorPlanCuration?> GetDraftAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

@@ -49,8 +49,8 @@ internal static class FloorPlanPreviewGeometry
     {
         var isHighlighted = highlightGeometryPathId == pathId;
         return isHighlighted
-            ? new PathStyle(Colors.OrangeRed, 3.5d, true)
-            : new PathStyle(Colors.SlateGray, 1.25d, false);
+            ? new PathStyle(Preview.PreviewSemanticPalette.WallHighlight, 3.5d, true)
+            : new PathStyle(Preview.PreviewSemanticPalette.Wall, 1.25d, false);
     }
 
     public static Guid? HitTestPath(

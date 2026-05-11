@@ -116,6 +116,10 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     public Guid? SelectedPinchGroupId => SelectedPinchGroup?.PinchGroupId;
 
+    public Guid? SelectedRoomLabelId => SelectedRoomLabel?.RoomLabelId;
+
+    public Guid? SelectedOpeningLabelId => SelectedOpeningLabel?.OpeningLabelId;
+
     public int DoorOpeningCount => OpeningCandidates.Count(item => string.Equals(item.Kind, "Door", StringComparison.OrdinalIgnoreCase));
 
     public int WindowOpeningCount => OpeningCandidates.Count(item => string.Equals(item.Kind, "Window", StringComparison.OrdinalIgnoreCase));
@@ -889,6 +893,8 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedArtifactTitle));
         OnPropertyChanged(nameof(SelectedArtifactSubtitle));
         OnPropertyChanged(nameof(SelectedArtifactDetails));
+        OnPropertyChanged(nameof(SelectedRoomLabelId));
+        OnPropertyChanged(nameof(SelectedOpeningLabelId));
         OnPropertyChanged(nameof(ExcludeSelectedArtifactLabel));
     }
 

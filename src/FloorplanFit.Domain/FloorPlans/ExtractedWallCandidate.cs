@@ -73,9 +73,9 @@ public sealed class ExtractedWallCandidate
 
     public void Reject()
     {
-        if (Status != ExtractedWallCandidateStatus.Pending)
+        if (Status == ExtractedWallCandidateStatus.Rejected)
         {
-            throw new InvalidOperationException("Only pending wall candidates can be rejected.");
+            throw new InvalidOperationException("Wall candidate is already rejected.");
         }
 
         Status = ExtractedWallCandidateStatus.Rejected;

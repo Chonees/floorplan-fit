@@ -287,6 +287,11 @@ public sealed class ImportFloorPlanHandlerTests
     {
         public List<FloorPlanVersion> Items { get; } = [];
 
+        public Task<FloorPlanVersion?> GetByIdAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Items.SingleOrDefault(item => item.Id == floorPlanVersionId));
+        }
+
         public Task<int> GetNextVersionNumberAsync(Guid floorPlanTemplateId, CancellationToken cancellationToken)
         {
             var nextVersion = Items
@@ -301,6 +306,12 @@ public sealed class ImportFloorPlanHandlerTests
         public Task AddAsync(FloorPlanVersion version, CancellationToken cancellationToken)
         {
             Items.Add(version);
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == floorPlanVersionId);
             return Task.CompletedTask;
         }
     }

@@ -25,7 +25,7 @@ public sealed class AddPinchMarkerHandlerTests
             101.6m,
             0.95m,
             null,
-            ExtractedWallCandidateStatus.Pending,
+            ExtractedWallCandidateStatus.Accepted,
             1);
 
         var candidateRepository = new InMemoryExtractedWallCandidateRepository(candidate);

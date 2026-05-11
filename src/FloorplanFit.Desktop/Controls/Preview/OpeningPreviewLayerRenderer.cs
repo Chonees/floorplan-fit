@@ -41,13 +41,27 @@ internal static class OpeningPreviewLayerRenderer
     {
         if (isHighlighted)
         {
-            return new Pen(new SolidColorBrush(Color.FromRgb(255, 72, 24)), 3.2d);
+            return new Pen(
+                PreviewSemanticPalette.Brush(GetHighlightColor(kind)),
+                3.2d);
         }
 
-        var color = string.Equals(kind, "Window", StringComparison.OrdinalIgnoreCase)
-            ? Color.FromRgb(0, 147, 197)
-            : Color.FromRgb(150, 83, 13);
+        return new Pen(
+            PreviewSemanticPalette.Brush(GetBaseColor(kind)),
+            1.6d);
+    }
 
-        return new Pen(new SolidColorBrush(color), 1.6d);
+    private static Color GetBaseColor(string kind)
+    {
+        return string.Equals(kind, "Window", StringComparison.OrdinalIgnoreCase)
+            ? PreviewSemanticPalette.Window
+            : PreviewSemanticPalette.Door;
+    }
+
+    private static Color GetHighlightColor(string kind)
+    {
+        return string.Equals(kind, "Window", StringComparison.OrdinalIgnoreCase)
+            ? PreviewSemanticPalette.WindowHighlight
+            : PreviewSemanticPalette.DoorHighlight;
     }
 }

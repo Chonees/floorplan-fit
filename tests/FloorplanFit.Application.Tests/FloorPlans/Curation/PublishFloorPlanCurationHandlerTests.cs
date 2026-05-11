@@ -131,6 +131,11 @@ public sealed class PublishFloorPlanCurationHandlerTests
 
         public bool UpdateCalled { get; private set; }
 
+        public Task<FloorPlanCuration?> GetByIdAsync(Guid curationId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(curation.Id == curationId ? curation : null);
+        }
+
         public Task<FloorPlanCuration?> GetDraftAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
         {
             return Task.FromResult(curation.FloorPlanVersionId == floorPlanVersionId && curation.Status == FloorPlanCurationStatus.Draft ? curation : null);

@@ -130,7 +130,8 @@ public sealed partial class DxfExtractionProfile
             {
                 ["CABS"] = "Cabinet",
                 ["CABS-FLOORPLAN"] = "Cabinet",
-                ["FIXTURES"] = "Fixture"
+                ["FIXTURES"] = "Fixture",
+                ["L1"] = "Fixture"
             },
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {

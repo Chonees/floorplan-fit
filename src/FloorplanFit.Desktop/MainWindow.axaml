@@ -4,50 +4,133 @@
         xmlns:contracts="using:FloorplanFit.Contracts.FloorPlans"
         x:Class="FloorplanFit.Desktop.MainWindow"
         x:DataType="viewModels:LibraryViewModel"
-        Width="900"
-        Height="600"
+        RequestedThemeVariant="Dark"
+        Background="Black"
+        Width="1100"
+        Height="680"
         Title="Floorplan Fit - Library">
-  <Grid RowDefinitions="Auto,Auto,*" Margin="24">
-    <TextBlock FontSize="24" FontWeight="Bold" Text="Floorplan Library" />
+  <Grid RowDefinitions="Auto,Auto,*"
+        Margin="24"
+        Background="Black">
+    <TextBlock FontSize="24"
+               FontWeight="Bold"
+               Foreground="White"
+               Text="Floorplan Library" />
 
-    <StackPanel Grid.Row="1"
-                Orientation="Horizontal"
-                Spacing="12"
-                Margin="0,16,0,16">
+    <Grid Grid.Row="1"
+          ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
+          ColumnSpacing="12"
+          Margin="0,16,0,16">
       <Button Name="ImportButton"
+              Grid.Column="0"
               Content="Import DXF"
               Click="ImportButton_OnClick" />
       <Button Name="ExtractButton"
-              Content="Extract Walls"
+              Grid.Column="1"
+              Content="Extract Selected Version"
               Click="ExtractButton_OnClick" />
       <Button Name="ReviewButton"
-              Content="Open Review"
+              Grid.Column="2"
+              Content="Open Selected Review"
               Click="ReviewButton_OnClick" />
-      <TextBlock VerticalAlignment="Center"
+      <Button Name="DeleteSelectedVersionButton"
+              Grid.Column="3"
+              Content="Delete Selected Version"
+              Click="DeleteSelectedVersionButton_OnClick" />
+      <TextBlock Grid.Column="4"
+                 VerticalAlignment="Center"
+                 Foreground="White"
+                 Text="{Binding SelectedVersionLabel}" />
+      <TextBlock Grid.Column="5"
+                 VerticalAlignment="Center"
+                 Foreground="White"
                  Text="{Binding StatusMessage}" />
-    </StackPanel>
+    </Grid>
 
-    <ListBox Grid.Row="2"
-             ItemsSource="{Binding Items}"
-             SelectedItem="{Binding SelectedItem}">
-      <ListBox.ItemTemplate>
-        <DataTemplate x:DataType="contracts:FloorPlanLibraryItemDto">
-          <Border Padding="12"
-                  Margin="0,0,0,8"
-                  BorderBrush="LightGray"
-                  BorderThickness="1"
-                  CornerRadius="6">
-            <Grid ColumnDefinitions="2*,2*,*,*,*"
-                  RowDefinitions="Auto">
-              <TextBlock Grid.Column="0" Text="{Binding Code}" />
-              <TextBlock Grid.Column="1" Text="{Binding Name}" />
-              <TextBlock Grid.Column="2" Text="{Binding Status}" />
-              <TextBlock Grid.Column="3" Text="{Binding ActiveVersionNumber}" />
-              <TextBlock Grid.Column="4" Text="{Binding SourceUnit}" />
-            </Grid>
-          </Border>
-        </DataTemplate>
-      </ListBox.ItemTemplate>
-    </ListBox>
+    <ScrollViewer Grid.Row="2"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+      <ItemsControl ItemsSource="{Binding Items}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="contracts:FloorPlanLibraryItemDto">
+            <Border Padding="12"
+                    Margin="0,0,0,10"
+                    Background="Black"
+                    BorderBrush="White"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <Expander IsExpanded="True">
+                <Expander.Header>
+                  <Grid ColumnDefinitions="2*,2*,Auto,Auto">
+                    <TextBlock Grid.Column="0"
+                               FontWeight="SemiBold"
+                               Foreground="White"
+                               Text="{Binding Code}" />
+                    <TextBlock Grid.Column="1"
+                               Margin="12,0,0,0"
+                               Foreground="White"
+                               Text="{Binding Name}" />
+                    <TextBlock Grid.Column="2"
+                               Margin="12,0,0,0"
+                               Foreground="White"
+                               Text="{Binding VersionCount, StringFormat='{}{0} version(s)'}" />
+                    <TextBlock Grid.Column="3"
+                               Margin="12,0,0,0"
+                               Foreground="White"
+                               Text="{Binding ActiveVersionNumber, StringFormat='Current v{0}'}" />
+                  </Grid>
+                </Expander.Header>
+
+                <ItemsControl Margin="0,12,0,0"
+                              ItemsSource="{Binding Versions}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="contracts:FloorPlanLibraryVersionDto">
+                      <Border Padding="10"
+                              Margin="0,0,0,8"
+                              Background="Black"
+                              BorderBrush="White"
+                              BorderThickness="1"
+                              CornerRadius="4">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
+                          <TextBlock Grid.Column="0"
+                                     FontWeight="SemiBold"
+                                     Foreground="White"
+                                     Text="{Binding DisplayName}" />
+                          <TextBlock Grid.Column="1"
+                                     Margin="12,0,0,0"
+                                     Foreground="White"
+                                     Text="{Binding Status}" />
+                          <TextBlock Grid.Column="2"
+                                     Margin="12,0,0,0"
+                                     Foreground="White"
+                                     Text="{Binding SourceUnit}" />
+                          <TextBlock Grid.Column="3"
+                                     Margin="12,0,0,0"
+                                     Foreground="White"
+                                     FontWeight="SemiBold"
+                                     Text="{Binding CurrentLabel}" />
+                          <Button Grid.Column="4"
+                                  Margin="12,0,0,0"
+                                  Content="Select"
+                                  Click="SelectVersionButton_OnClick" />
+                          <Button Grid.Column="5"
+                                  Margin="12,0,0,0"
+                                  Content="Open"
+                                  Click="OpenVersionButton_OnClick" />
+                          <Button Grid.Column="6"
+                                  Margin="12,0,0,0"
+                                  Content="Delete"
+                                  Click="DeleteVersionButton_OnClick" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Expander>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
   </Grid>
 </Window>

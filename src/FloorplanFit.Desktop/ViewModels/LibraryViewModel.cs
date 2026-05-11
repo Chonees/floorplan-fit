@@ -24,7 +24,14 @@ public sealed partial class LibraryViewModel : ObservableObject
     private FloorPlanLibraryItemDto? selectedItem;
 
     [ObservableProperty]
+    private FloorPlanLibraryVersionDto? selectedVersion;
+
+    [ObservableProperty]
     private string statusMessage = "Ready";
+
+    public string SelectedVersionLabel => SelectedItem is null || SelectedVersion is null
+        ? "No version selected"
+        : $"Selected: {SelectedItem.Code} v{SelectedVersion.VersionNumber}";
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
@@ -46,44 +53,90 @@ public sealed partial class LibraryViewModel : ObservableObject
         await ExtractByTemplateAsync(response.Item.TemplateId, cancellationToken);
         await RefreshItemsAsync(cancellationToken);
         SelectedItem = Items.FirstOrDefault(item => item.TemplateId == response.Item.TemplateId);
+        SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.IsCurrent);
         StatusMessage = $"Imported and extracted {response.Item.Name} v{response.Item.ActiveVersionNumber}";
     }
 
     public async Task ExtractSelectedAsync(CancellationToken cancellationToken)
     {
-        if (SelectedItem is null)
+        if (SelectedItem is null || SelectedVersion is null)
         {
             return;
         }
 
-        StatusMessage = $"Extracting walls for {SelectedItem.Name}...";
-        await ExtractByTemplateAsync(SelectedItem.TemplateId, cancellationToken);
+        var templateId = SelectedItem.TemplateId;
+        var versionId = SelectedVersion.VersionId;
+        StatusMessage = $"Extracting walls for {SelectedItem.Name} v{SelectedVersion.VersionNumber}...";
+        await ExtractByVersionAsync(versionId, cancellationToken);
         await RefreshItemsAsync(cancellationToken);
-        SelectedItem = Items.FirstOrDefault(item => item.TemplateId == SelectedItem.TemplateId);
-        StatusMessage = $"Extracted walls for {SelectedItem?.Name ?? "floor plan"}";
+        SelectedItem = Items.FirstOrDefault(item => item.TemplateId == templateId);
+        SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == versionId)
+            ?? SelectedItem?.Versions.FirstOrDefault(item => item.IsCurrent);
+        StatusMessage = $"Extracted walls for {SelectedItem?.Name ?? "floor plan"} v{SelectedVersion?.VersionNumber}";
     }
 
     public async Task<FloorPlanReviewViewModel?> OpenSelectedReviewAsync(CancellationToken cancellationToken)
     {
-        if (SelectedItem is null)
+        if (SelectedItem is null || SelectedVersion is null)
         {
             return null;
         }
 
         var templateId = SelectedItem.TemplateId;
-        if (string.Equals(SelectedItem.Status, "Imported", StringComparison.OrdinalIgnoreCase))
+        var versionId = SelectedVersion.VersionId;
+        if (string.Equals(SelectedVersion.Status, "Imported", StringComparison.OrdinalIgnoreCase))
         {
             await ExtractSelectedAsync(cancellationToken);
         }
 
-        var reviewViewModel = new FloorPlanReviewViewModel(scopeFactory, templateId);
+        var reviewViewModel = new FloorPlanReviewViewModel(scopeFactory, templateId, versionId);
         await reviewViewModel.LoadAsync(cancellationToken);
         return reviewViewModel;
+    }
+
+    public async Task<FloorPlanReviewViewModel?> OpenVersionReviewAsync(
+        FloorPlanLibraryItemDto item,
+        FloorPlanLibraryVersionDto version,
+        CancellationToken cancellationToken)
+    {
+        SelectVersion(item, version);
+        return await OpenSelectedReviewAsync(cancellationToken);
+    }
+
+    public void SelectVersion(FloorPlanLibraryItemDto item, FloorPlanLibraryVersionDto version)
+    {
+        SelectedItem = item;
+        SelectedVersion = version;
+        StatusMessage = $"Selected {item.Code} v{version.VersionNumber}";
+    }
+
+    public async Task DeleteSelectedVersionAsync(CancellationToken cancellationToken)
+    {
+        if (SelectedVersion is null)
+        {
+            StatusMessage = "Select a version before deleting.";
+            return;
+        }
+
+        await DeleteVersionAsync(SelectedVersion, cancellationToken);
+    }
+
+    public async Task DeleteVersionAsync(FloorPlanLibraryVersionDto version, CancellationToken cancellationToken)
+    {
+        StatusMessage = $"Deleting v{version.VersionNumber}...";
+
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<RemoveFloorPlanVersionHandler>();
+        await handler.HandleAsync(version.VersionId, cancellationToken);
+
+        await RefreshItemsAsync(cancellationToken);
+        StatusMessage = $"Deleted v{version.VersionNumber}";
     }
 
     private async Task RefreshItemsAsync(CancellationToken cancellationToken)
     {
         var selectedTemplateId = SelectedItem?.TemplateId;
+        var selectedVersionId = SelectedVersion?.VersionId;
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<GetFloorPlanLibraryHandler>();
         var items = await handler.HandleAsync(cancellationToken);
@@ -98,6 +151,9 @@ public sealed partial class LibraryViewModel : ObservableObject
         SelectedItem = selectedTemplateId is null
             ? Items.FirstOrDefault()
             : Items.FirstOrDefault(item => item.TemplateId == selectedTemplateId);
+        SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == selectedVersionId)
+            ?? SelectedItem?.Versions.FirstOrDefault(item => item.IsCurrent)
+            ?? SelectedItem?.Versions.FirstOrDefault();
     }
 
     private async Task ExtractByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
@@ -109,5 +165,28 @@ public sealed partial class LibraryViewModel : ObservableObject
 
         var handler = scope.ServiceProvider.GetRequiredService<ExtractWallCandidatesHandler>();
         await handler.HandleAsync(source.FloorPlanVersionId, source.ManagedFilePath, cancellationToken);
+    }
+
+    private async Task ExtractByVersionAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var sourceReader = scope.ServiceProvider.GetRequiredService<IFloorPlanExtractionSourceReader>();
+        var source = await sourceReader.GetByVersionAsync(floorPlanVersionId, cancellationToken)
+            ?? throw new InvalidOperationException("Selected floor plan version was not found for extraction.");
+
+        var handler = scope.ServiceProvider.GetRequiredService<ExtractWallCandidatesHandler>();
+        await handler.HandleAsync(source.FloorPlanVersionId, source.ManagedFilePath, cancellationToken);
+    }
+
+    partial void OnSelectedItemChanged(FloorPlanLibraryItemDto? value)
+    {
+        SelectedVersion = value?.Versions.FirstOrDefault(item => item.IsCurrent)
+            ?? value?.Versions.FirstOrDefault();
+        OnPropertyChanged(nameof(SelectedVersionLabel));
+    }
+
+    partial void OnSelectedVersionChanged(FloorPlanLibraryVersionDto? value)
+    {
+        OnPropertyChanged(nameof(SelectedVersionLabel));
     }
 }

@@ -7,8 +7,8 @@ internal static class PreviewWorkspaceRenderer
 {
     private const double DotSpacing = 24d;
     private const double DotRadius = 1.15d;
-    private static readonly IBrush BackgroundBrush = new SolidColorBrush(Color.FromRgb(250, 251, 252));
-    private static readonly IBrush DotBrush = new SolidColorBrush(Color.FromArgb(92, 148, 163, 184));
+    private static readonly IBrush BackgroundBrush = Brushes.White;
+    private static readonly IBrush DotBrush = new SolidColorBrush(Color.FromArgb(92, 190, 190, 190));
 
     public static void Render(DrawingContext context, Rect bounds)
     {

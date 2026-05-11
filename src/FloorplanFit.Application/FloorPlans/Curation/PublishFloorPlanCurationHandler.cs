@@ -1,4 +1,5 @@
 using FloorplanFit.Application.Abstractions;
+using FloorplanFit.Domain.FloorPlans;
 
 namespace FloorplanFit.Application.FloorPlans.Curation;
 
@@ -29,13 +30,14 @@ public sealed class PublishFloorPlanCurationHandler
         var template = await floorPlanTemplateRepository.GetByIdAsync(templateId, cancellationToken)
             ?? throw new InvalidOperationException("Floor plan template was not found.");
 
-        if (template.CurrentVersionId is null)
+        var curation = await floorPlanCurationRepository.GetByIdAsync(curationId, cancellationToken)
+            ?? throw new InvalidOperationException("Draft curation was not found.");
+
+        if (curation.Status != FloorPlanCurationStatus.Draft)
         {
-            throw new InvalidOperationException("Floor plan template does not have an active version.");
+            throw new InvalidOperationException("Draft curation was not found.");
         }
 
-        var curation = await floorPlanCurationRepository.GetDraftAsync(template.CurrentVersionId.Value, cancellationToken)
-            ?? throw new InvalidOperationException("Draft curation was not found.");
         var pinchMarkers = await pinchMarkerRepository.ListByCurationAsync(curationId, cancellationToken);
 
         if (pinchMarkers.Count == 0)

@@ -44,14 +44,18 @@ internal static class ProtectedDetailPreviewLayerRenderer
     {
         if (isHighlighted)
         {
-            return new Pen(new SolidColorBrush(Color.FromRgb(255, 72, 24)), 3.4d);
+            return new Pen(
+                PreviewSemanticPalette.Brush(PreviewSemanticPalette.ProtectedDetailHighlight),
+                3.4d);
         }
 
         if (Color.TryParse(assembly.ColorArgb, out var originalColor))
         {
-            return new Pen(new SolidColorBrush(originalColor), 1.6d);
+            return new Pen(PreviewSemanticPalette.Brush(originalColor), 1.6d);
         }
 
-        return new Pen(new SolidColorBrush(Color.FromRgb(32, 201, 151)), 1.6d);
+        return new Pen(
+            PreviewSemanticPalette.Brush(PreviewSemanticPalette.FixedElement),
+            1.6d);
     }
 }

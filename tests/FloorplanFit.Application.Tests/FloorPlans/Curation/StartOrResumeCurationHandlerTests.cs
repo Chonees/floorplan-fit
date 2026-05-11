@@ -75,6 +75,16 @@ public sealed class StartOrResumeCurationHandlerTests
 
         public FloorPlanCuration? AddedItem { get; private set; }
 
+        public Task<FloorPlanCuration?> GetByIdAsync(Guid curationId, CancellationToken cancellationToken)
+            => Task.FromResult(
+                draft?.Id == curationId
+                    ? draft
+                    : published?.Id == curationId
+                        ? published
+                        : AddedItem?.Id == curationId
+                            ? AddedItem
+                            : null);
+
         public Task<FloorPlanCuration?> GetDraftAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
             => Task.FromResult(draft?.FloorPlanVersionId == floorPlanVersionId ? draft : null);
 

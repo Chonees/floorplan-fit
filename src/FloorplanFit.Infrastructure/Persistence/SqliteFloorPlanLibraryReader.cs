@@ -26,53 +26,90 @@ public sealed class SqliteFloorPlanLibraryReader : IFloorPlanLibraryReader
                 t.id,
                 t.code,
                 t.name,
+                t.current_version_id,
+                v.id,
                 v.version_number,
                 v.created_at_utc,
                 mc.source_unit,
-                t.active_published_curation_id,
                 CASE
                     WHEN EXISTS (
                         SELECT 1
                         FROM floorplan_curations c
-                        WHERE c.floorplan_version_id = t.current_version_id
+                        WHERE c.floorplan_version_id = v.id
                           AND c.status = {(int)FloorPlanCurationStatus.Draft}
                     ) THEN 'Curated Draft'
-                    WHEN t.active_published_curation_id IS NOT NULL THEN 'Published'
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM floorplan_curations c
+                        WHERE c.floorplan_version_id = v.id
+                          AND c.status = {(int)FloorPlanCurationStatus.Published}
+                    ) THEN 'Published'
                     WHEN EXISTS (
                         SELECT 1
                         FROM wall_extraction_runs r
                         JOIN extracted_wall_candidates c ON c.wall_extraction_run_id = r.id
-                        WHERE r.floorplan_version_id = t.current_version_id
+                        WHERE r.floorplan_version_id = v.id
                     ) THEN 'Extracted'
                     ELSE 'Imported'
-                END AS derived_status
+                END AS derived_status,
+                CASE
+                    WHEN t.active_published_curation_id IS NOT NULL
+                     AND EXISTS (
+                         SELECT 1
+                         FROM floorplan_curations c
+                         WHERE c.id = t.active_published_curation_id
+                           AND c.floorplan_version_id = v.id
+                     ) THEN t.active_published_curation_id
+                    ELSE NULL
+                END AS active_published_curation_id
             FROM floorplan_templates t
-            JOIN floorplan_versions v ON v.id = t.current_version_id
+            JOIN floorplan_versions v ON v.floorplan_template_id = t.id
             JOIN imported_documents d ON d.id = v.imported_document_id
             JOIN measurement_contexts mc ON mc.id = d.measurement_context_id
             WHERE t.is_active = 1
-            ORDER BY v.created_at_utc DESC, t.code ASC
+            ORDER BY t.code ASC, v.version_number DESC
             """);
 
-        var items = new List<FloorPlanLibraryItemDto>();
+        var templates = new Dictionary<Guid, TemplateAccumulator>();
         using var reader = command.ExecuteReader();
 
         while (reader.Read())
         {
-            var sourceUnit = (LengthUnit)reader.GetInt32(5);
-            Guid? activePublishedCurationId = reader.IsDBNull(6) ? null : Guid.Parse(reader.GetString(6));
-            var status = reader.GetString(7);
+            var templateId = Guid.Parse(reader.GetString(0));
+            if (!templates.TryGetValue(templateId, out var template))
+            {
+                template = new TemplateAccumulator(
+                    templateId,
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.IsDBNull(3) ? null : Guid.Parse(reader.GetString(3)));
+                templates.Add(templateId, template);
+            }
 
-            items.Add(new FloorPlanLibraryItemDto(
-                Guid.Parse(reader.GetString(0)),
-                reader.GetString(1),
-                reader.GetString(2),
-                status,
-                reader.GetInt32(3),
-                DateTime.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            var versionId = Guid.Parse(reader.GetString(4));
+            var sourceUnit = (LengthUnit)reader.GetInt32(7);
+            template.Versions.Add(new FloorPlanLibraryVersionDto(
+                versionId,
+                reader.GetInt32(5),
+                reader.GetString(8),
+                DateTime.Parse(reader.GetString(6), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                 sourceUnit.ToString().ToLowerInvariant(),
-                activePublishedCurationId));
+                template.CurrentVersionId == versionId,
+                reader.IsDBNull(9) ? null : Guid.Parse(reader.GetString(9))));
         }
+
+        var items = templates.Values
+            .OrderByDescending(item => item.Versions.FirstOrDefault(version => version.IsCurrent)?.ImportedAtUtc ?? DateTime.MinValue)
+            .ThenBy(item => item.Code, StringComparer.OrdinalIgnoreCase)
+            .Select(item => new FloorPlanLibraryItemDto(
+                item.TemplateId,
+                item.Code,
+                item.Name,
+                item.Versions.Count,
+                item.CurrentVersionId,
+                item.Versions.FirstOrDefault(version => version.IsCurrent)?.VersionNumber,
+                item.Versions))
+            .ToArray();
 
         return Task.FromResult<IReadOnlyList<FloorPlanLibraryItemDto>>(items);
     }
@@ -80,7 +117,17 @@ public sealed class SqliteFloorPlanLibraryReader : IFloorPlanLibraryReader
     private SqliteCommand CreateCommand(string sql)
     {
         var command = session.Connection.CreateCommand();
+        command.Transaction = session.Transaction;
         command.CommandText = sql;
         return command;
+    }
+
+    private sealed record TemplateAccumulator(
+        Guid TemplateId,
+        string Code,
+        string Name,
+        Guid? CurrentVersionId)
+    {
+        public List<FloorPlanLibraryVersionDto> Versions { get; } = [];
     }
 }

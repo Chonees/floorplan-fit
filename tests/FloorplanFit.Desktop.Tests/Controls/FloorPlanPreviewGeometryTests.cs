@@ -50,7 +50,7 @@ public sealed class FloorPlanPreviewGeometryTests
     }
 
     [Fact]
-    public void GetPathStyle_returns_emphasized_red_style_for_highlighted_path()
+    public void GetPathStyle_returns_selection_green_style_for_highlighted_path()
     {
         var highlightedPathId = Guid.NewGuid();
 
@@ -62,7 +62,7 @@ public sealed class FloorPlanPreviewGeometryTests
         Assert.Equal(1.25d, normal.Thickness);
 
         Assert.True(highlighted.IsHighlighted);
-        Assert.Equal(Colors.OrangeRed, highlighted.Color);
+        Assert.Equal(Colors.SeaGreen, highlighted.Color);
         Assert.True(highlighted.Thickness > normal.Thickness);
     }
 

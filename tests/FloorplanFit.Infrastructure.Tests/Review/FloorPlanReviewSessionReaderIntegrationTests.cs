@@ -29,7 +29,7 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
             await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
 
             var import = await ExecuteImportAsync(workspace, sourcePath, now);
-            await SeedExtractionAndDraftAsync(workspace, now.AddMinutes(5));
+            var rejectedGeometryPathId = await SeedExtractionAndDraftAsync(workspace, now.AddMinutes(5));
 
             await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
             var reader = new SqliteFloorPlanReviewSessionReader(session);
@@ -52,6 +52,9 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
             var candidate = reviewSession.WallCandidates.Single();
             Assert.Equal("WALLS", candidate.SourceLayer);
             Assert.NotNull(candidate.GeometryPathId);
+            Assert.Equal("Accepted", candidate.Status);
+            Assert.DoesNotContain(reviewSession.WallCandidates, item => item.SourceEntityRef == "LINE:REJECTED");
+            Assert.DoesNotContain(reviewSession.GeometryPaths, item => item.Id == rejectedGeometryPathId);
 
             var pinchMarker = reviewSession.PinchMarkers.Single();
             Assert.Equal("Patio", pinchMarker.PinchGroupName);
@@ -108,7 +111,7 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
         return await handler.HandleAsync(new ImportFloorPlanRequest(sourcePath), CancellationToken.None);
     }
 
-    private static async Task SeedExtractionAndDraftAsync(AppWorkspace workspace, DateTime now)
+    private static async Task<Guid> SeedExtractionAndDraftAsync(AppWorkspace workspace, DateTime now)
     {
         await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
         var templateRepository = new SqliteFloorPlanTemplateRepository(session);
@@ -136,11 +139,22 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
             null,
             0.95m,
             null,
-            ExtractedWallCandidateStatus.Pending,
+            ExtractedWallCandidateStatus.Accepted,
             1);
+        var rejectedCandidate = new ExtractedWallCandidate(
+            Guid.NewGuid(),
+            extractionRun.Id,
+            "LINE:REJECTED",
+            "WALLS",
+            Guid.Empty,
+            null,
+            0.70m,
+            "False positive rejected by curation.",
+            ExtractedWallCandidateStatus.Rejected,
+            2);
 
         await new SqliteExtractedWallCandidateRepository(session).AddRangeAsync(
-            [candidate],
+            [candidate, rejectedCandidate],
             [
                 new DetectedWallCandidate(
                     "LINE:1",
@@ -148,12 +162,23 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
                     [new GeometryPoint(0m, 0m), new GeometryPoint(120m, 0m)],
                     null,
                     0.95m,
+                    null),
+                new DetectedWallCandidate(
+                    "LINE:REJECTED",
+                    "WALLS",
+                    [new GeometryPoint(0m, 20m), new GeometryPoint(120m, 20m)],
+                    null,
+                    0.70m,
                     null)
             ],
             CancellationToken.None);
 
         var persistedCandidate = await new SqliteExtractedWallCandidateRepository(session).GetByIdAsync(candidate.Id, CancellationToken.None)
             ?? throw new InvalidOperationException("Expected persisted candidate.");
+        var persistedRejectedCandidate = await new SqliteExtractedWallCandidateRepository(session).GetByIdAsync(rejectedCandidate.Id, CancellationToken.None)
+            ?? throw new InvalidOperationException("Expected persisted rejected candidate.");
+        var rejectedGeometryPathId = persistedRejectedCandidate.GeometryPathId
+            ?? throw new InvalidOperationException("Expected rejected candidate geometry path.");
 
         await new SqliteExtractedRoomLabelRepository(session).AddRangeAsync(
             [
@@ -306,6 +331,7 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
             CancellationToken.None);
 
         await session.CommitAsync(CancellationToken.None);
+        return rejectedGeometryPathId;
     }
 
     private sealed class FixedClock : IClock

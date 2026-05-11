@@ -32,7 +32,7 @@ public sealed class GetFloorPlanReviewSessionHandlerTests
                     Guid.NewGuid(),
                     "LINE:1",
                     "WALLS",
-                    "Pending",
+                    "Accepted",
                     0.95m,
                     null,
                     null,
@@ -63,6 +63,15 @@ public sealed class GetFloorPlanReviewSessionHandlerTests
         public Guid? LastTemplateId { get; private set; }
 
         public Task<FloorPlanReviewSessionDto?> GetByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
+        {
+            LastTemplateId = templateId;
+            return Task.FromResult<FloorPlanReviewSessionDto?>(expected);
+        }
+
+        public Task<FloorPlanReviewSessionDto?> GetByVersionAsync(
+            Guid templateId,
+            Guid floorPlanVersionId,
+            CancellationToken cancellationToken)
         {
             LastTemplateId = templateId;
             return Task.FromResult<FloorPlanReviewSessionDto?>(expected);

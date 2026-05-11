@@ -661,7 +661,10 @@ extracted_wall_candidates
 
 ### Importante
 
-Un wall candidate detectado no equivale a ?pared curada final?. Es evidencia t?cnica revisable.
+Un wall candidate detectado no equivale a pared curada final.
+Para que la review sea operable, la curation usa un flujo subtractivo:
+las wall candidates nuevas quedan aceptadas por defecto, el usuario rechaza falsos positivos, y el read-model activo
+del review/futuro fit carga solo candidates no rechazadas.
 
 ---
 

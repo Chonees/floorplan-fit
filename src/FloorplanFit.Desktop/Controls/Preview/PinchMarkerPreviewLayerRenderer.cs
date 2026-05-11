@@ -62,13 +62,13 @@ internal static class PinchMarkerPreviewLayerRenderer
         var isActiveGroup = previewPinchGroupId is not null && marker.PinchGroupId == previewPinchGroupId;
         if (isActiveGroup)
         {
-            return new PinchMarkerVisualStyle(Colors.SeaGreen, 5d);
+            return new PinchMarkerVisualStyle(PreviewSemanticPalette.ActivePinchGroup, 5d);
         }
 
         var isActiveAxis = string.Equals(marker.AxisTag, previewAxisTag, StringComparison.OrdinalIgnoreCase);
         return isActiveAxis
-            ? new PinchMarkerVisualStyle(Colors.DodgerBlue, 4d)
-            : new PinchMarkerVisualStyle(Colors.SlateGray, 4d);
+            ? new PinchMarkerVisualStyle(PreviewSemanticPalette.ActivePinchAxis, 4d)
+            : new PinchMarkerVisualStyle(PreviewSemanticPalette.InactivePinch, 4d);
     }
 
     internal readonly record struct PinchMarkerVisualStyle(Color Fill, double Radius);
