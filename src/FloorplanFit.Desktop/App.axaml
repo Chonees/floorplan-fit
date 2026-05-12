@@ -13,6 +13,14 @@
     <SolidColorBrush x:Key="AccentBrushStrong" Color="#4D4A5566" />
     <SolidColorBrush x:Key="DangerBrush" Color="#40394550" />
     <SolidColorBrush x:Key="SuccessBrush" Color="#33424D5D" />
+    <SolidColorBrush x:Key="MetricChipBrush" Color="#3D36404C" />
+    <SolidColorBrush x:Key="ButtonBaseBrush" Color="#33374250" />
+    <SolidColorBrush x:Key="ButtonPrimaryBorderBrush" Color="#80FFFFFF" />
+    <SolidColorBrush x:Key="DangerButtonBrush" Color="#33414C5A" />
+    <SolidColorBrush x:Key="ToolActiveBrush" Color="#5A4B5665" />
+    <SolidColorBrush x:Key="ToolActiveCheckedBrush" Color="#5A4A5566" />
+    <SolidColorBrush x:Key="StrongBorderBrush" Color="#B3FFFFFF" />
+    <SolidColorBrush x:Key="InputBrush" Color="#26313C48" />
   </Application.Resources>
 
   <Application.Styles>
@@ -56,7 +64,7 @@
     </Style>
 
     <Style Selector="Border.metric-chip">
-      <Setter Property="Background" Value="#3D36404C" />
+      <Setter Property="Background" Value="{DynamicResource MetricChipBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="999" />
@@ -64,7 +72,7 @@
     </Style>
 
     <Style Selector="Button">
-      <Setter Property="Background" Value="#33374250" />
+      <Setter Property="Background" Value="{DynamicResource ButtonBaseBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
       <Setter Property="BorderThickness" Value="1" />
@@ -74,7 +82,7 @@
 
     <Style Selector="Button.primary">
       <Setter Property="Background" Value="{DynamicResource AccentBrushStrong}" />
-      <Setter Property="BorderBrush" Value="#80FFFFFF" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ButtonPrimaryBorderBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
 
@@ -84,13 +92,13 @@
     </Style>
 
     <Style Selector="Button.danger">
-      <Setter Property="Background" Value="#33414C5A" />
-      <Setter Property="BorderBrush" Value="#80FFFFFF" />
+      <Setter Property="Background" Value="{DynamicResource DangerButtonBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ButtonPrimaryBorderBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
 
     <Style Selector="Button.tool">
-      <Setter Property="Background" Value="#33374250" />
+      <Setter Property="Background" Value="{DynamicResource ButtonBaseBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="14" />
@@ -100,8 +108,8 @@
     </Style>
 
     <Style Selector="Button.tool-active">
-      <Setter Property="Background" Value="#5A4B5665" />
-      <Setter Property="BorderBrush" Value="#B3FFFFFF" />
+      <Setter Property="Background" Value="{DynamicResource ToolActiveBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}" />
     </Style>
 
     <Style Selector="ToggleButton.folder-toggle">
@@ -115,12 +123,12 @@
     </Style>
 
     <Style Selector="ToggleButton.folder-toggle:checked">
-      <Setter Property="Background" Value="#5A4A5566" />
-      <Setter Property="BorderBrush" Value="#B3FFFFFF" />
+      <Setter Property="Background" Value="{DynamicResource ToolActiveCheckedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}" />
     </Style>
 
     <Style Selector="TextBox">
-      <Setter Property="Background" Value="#26313C48" />
+      <Setter Property="Background" Value="{DynamicResource InputBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
       <Setter Property="BorderThickness" Value="1" />
@@ -128,7 +136,7 @@
     </Style>
 
     <Style Selector="ComboBox">
-      <Setter Property="Background" Value="#26313C48" />
+      <Setter Property="Background" Value="{DynamicResource InputBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
       <Setter Property="BorderThickness" Value="1" />

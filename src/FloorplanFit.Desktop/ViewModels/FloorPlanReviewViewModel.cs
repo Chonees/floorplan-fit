@@ -6,6 +6,7 @@ using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.Controls;
+using FloorplanFit.Desktop.Controls.Preview;
 using FloorplanFit.Domain.FloorPlans;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -431,7 +432,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         ? string.Empty
         : $"Decision: {SelectedCuratedArtifact.DecisionState}";
 
-    public string SelectedCuratedArtifactColorArgb => SelectedCuratedArtifact?.ResolvedColorArgb ?? "#00000000";
+    public string SelectedCuratedArtifactColorArgb => SelectedCuratedArtifact?.ResolvedColorArgb ?? PreviewSemanticPalette.TransparentArgb;
 
     public string SelectedArtifactPositionSummary =>
         SelectedRoomLabel is not null

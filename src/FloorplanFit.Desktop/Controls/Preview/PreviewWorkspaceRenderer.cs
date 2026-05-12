@@ -7,10 +7,10 @@ internal static class PreviewWorkspaceRenderer
 {
     private const double DotSpacing = 24d;
     private const double DotRadius = 1.15d;
-    private static readonly IBrush BackgroundBrush = new SolidColorBrush(Color.Parse("#FF0F172A"));
-    private static readonly IBrush DotBrush = new SolidColorBrush(Color.FromArgb(92, 190, 190, 190));
-    private static readonly Pen MinorGridPen = new(new SolidColorBrush(Color.Parse("#FF1E293B")), 1d);
-    private static readonly Pen MajorGridPen = new(new SolidColorBrush(Color.Parse("#FF334155")), 1.05d);
+    private static readonly IBrush BackgroundBrush = PreviewSemanticPalette.Brush(PreviewSemanticPalette.WorkspaceBackground);
+    private static readonly IBrush DotBrush = PreviewSemanticPalette.Brush(PreviewSemanticPalette.WorkspaceDot);
+    private static readonly Pen MinorGridPen = new(PreviewSemanticPalette.Brush(PreviewSemanticPalette.MinorGrid), 1d);
+    private static readonly Pen MajorGridPen = new(PreviewSemanticPalette.Brush(PreviewSemanticPalette.MajorGrid), 1.05d);
 
     public static void Render(
         DrawingContext context,

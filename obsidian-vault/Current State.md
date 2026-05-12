@@ -442,7 +442,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-- Desde 2026-05-09, las wall candidates siguen un flujo **subtractive/accepted-by-default**: la extracción persiste candidates nuevas como `Accepted`, Review muestra solo candidates no rechazadas, y `Reject Selected Line` marca falsos positivos como `Rejected` y limpia sus pinch markers asociados. Lo rechazado queda como auditoría, no como input activo del futuro fit.
+- Desde 2026-05-09, las wall candidates siguen un flujo **subtractive/accepted-by-default**: la extracciÃƒÂ³n persiste candidates nuevas como `Accepted`, Review muestra solo candidates no rechazadas, y `Reject Selected Line` marca falsos positivos como `Rejected` y limpia sus pinch markers asociados. Lo rechazado queda como auditorÃƒÂ­a, no como input activo del futuro fit.
 
 
 
@@ -529,7 +529,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-- Desde 2026-05-06, la evidencia DXF para 2x4 / 2x6 no es color por entidad: en `SEMINOLE2000.dxf` y `SANTA-BARBARA.dxf`, las entidades de `WALLS` son `BYLAYER`; la seÃ±al fuerte es la distancia geomÃ©trica entre caras paralelas, con clusters claros cerca de `4"` y `6"`.
+- Desde 2026-05-06, la evidencia DXF para 2x4 / 2x6 no es color por entidad: en `SEMINOLE2000.dxf` y `SANTA-BARBARA.dxf`, las entidades de `WALLS` son `BYLAYER`; la seÃƒÆ’Ã‚Â±al fuerte es la distancia geomÃƒÆ’Ã‚Â©trica entre caras paralelas, con clusters claros cerca de `4"` y `6"`.
 
 
 
@@ -541,7 +541,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-- Desde 2026-05-06, `IxMiliaWallExtractor` ya infiere hints de espesor desde geometrÃ­a: pares paralelos solapados cerca de `4"` guardan `ThicknessMm = 101.6`, pares cerca de `6"` guardan `ThicknessMm = 152.4`; `ELECTRICAL WALLS` queda fuera de esta inferencia.
+- Desde 2026-05-06, `IxMiliaWallExtractor` ya infiere hints de espesor desde geometrÃƒÆ’Ã‚Â­a: pares paralelos solapados cerca de `4"` guardan `ThicknessMm = 101.6`, pares cerca de `6"` guardan `ThicknessMm = 152.4`; `ELECTRICAL WALLS` queda fuera de esta inferencia.
 
 
 
@@ -625,7 +625,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-- Desde 2026-05-07, las geometrÃ­as de detalle hÃºmedo/protegido se extraen como **protected detail assemblies** separados de walls, openings y fixed components: `IxMiliaProtectedDetailAssemblyExtractor` lee layers protegidos del profile (`MISC`, `HATCH`) como `WetAreaDetail`, mantiene `L1` excluido para evitar ruido masivo, persiste sus geometry paths, los muestra en Review y permite seleccionarlos/remover falsos positivos con `Remove Selected Detail`.
+- Desde 2026-05-07, las geometrÃƒÆ’Ã‚Â­as de detalle hÃƒÆ’Ã‚Âºmedo/protegido se extraen como **protected detail assemblies** separados de walls, openings y fixed components: `IxMiliaProtectedDetailAssemblyExtractor` lee layers protegidos del profile (`MISC`, `HATCH`) como `WetAreaDetail`, mantiene `L1` excluido para evitar ruido masivo, persiste sus geometry paths, los muestra en Review y permite seleccionarlos/remover falsos positivos con `Remove Selected Detail`.
 
 
 
@@ -667,11 +667,11 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-- Auditoria de 2026-05-11 sobre colores Desktop/Review: la app NO tiene un sistema 100% tokenizado. El chrome general si centraliza varios brushes en `src/FloorplanFit.Desktop/App.axaml` (`AppBackgroundBrush`, `PanelBrush`, `SectionBrush`, `TextPrimaryBrush`, etc.), pero varios estilos siguen con hex inline dentro del mismo `App.axaml` (`Border.metric-chip`, `Button`, `Button.danger`, `Button.tool-active`, `TextBox`, `ComboBox`). En preview tambien hay modularizacion parcial: `PreviewSemanticPalette` concentra colores de overlays y `FloorPlanArtifactTaxonomy` concentra ARGB de artifacts curados, pero `PreviewWorkspaceRenderer` y `CompressionHandlePreviewLayerRenderer` todavia usan brushes locales hardcodeados.
+- Cierre de **Loop 1 / visual system cleanup** el **2026-05-12**: `src/FloorplanFit.Desktop/App.axaml` ya promovio los colores interactivos del shell a recursos nombrados (`MetricChipBrush`, `ButtonBaseBrush`, `ButtonPrimaryBorderBrush`, `DangerButtonBrush`, `ToolActiveBrush`, `ToolActiveCheckedBrush`, `StrongBorderBrush`, `InputBrush`) y el preview ahora concentra tambien fondo/grid/handles/default transparent en `src/FloorplanFit.Desktop/Controls/Preview/PreviewSemanticPalette.cs`. `PreviewWorkspaceRenderer`, `CompressionHandlePreviewLayerRenderer` y `FloorPlanReviewViewModel.SelectedCuratedArtifactColorArgb` dejaron de depender de literals locales para ese slice.
 
 - Auditoria de 2026-05-12 sobre modularizacion: la separacion mejoro mucho en `src/FloorplanFit.Desktop/Controls/Preview/*`, pero el criterio **un archivo = una responsabilidad** todavia NO esta cerrado. `FloorPlanPreviewControl.cs` sigue en **1610 lineas** y `FloorPlanReviewViewModel.cs` en **1851 lineas**, senal de que la orquestacion visual y de interaccion todavia esta demasiado concentrada.
 
-- Auditoria de 2026-05-12 sobre documentacion de arquitectura: el mapa exhaustivo `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` quedo desactualizado despues de la ola `native dimensions` del **2026-05-11**. Su frontmatter sigue en `last_verified: 2026-05-09`, todavia afirma que "las dimensiones CAD siguen pendientes", y no cubre archivos nuevos ya presentes como `IxMiliaAdjustedDxfExporter.cs`, `SaveFloorPlanDimensionOverrideHandler.cs`, `SqliteFloorPlanDimensionOverrideRepository.cs` y `NativeDimensionEditor.cs`.
+- Cierre de **Loop 0 / canonical architecture truth** el **2026-05-12**: el mapa exhaustivo `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` ya fue refreshado post-`native dimensions`, quedo con `last_verified: 2026-05-12`, cubre **454 tracked files** y en la verificacion final dio **0 tracked files faltantes** frente al working tree relevante.
 
 - Decision de arquitectura tomada el **2026-05-12**: la limpieza senior del repo avanza como **modularizacion por loops** con **doc-first order**. Secuencia aprobada: **Loop 0 verdad canonica -> Loop 1 sistema visual -> Loop 2 preview composition/interactions -> Loop 3 review orchestration -> Loop 4 cleanup final**.
 
@@ -2047,7 +2047,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-  - `PinchGroup` vuelve a ser parte activa del flujo: cada pinch pertenece a un grupo nombrado y el eje vive en el grupo para que el fit futuro recorte solo zonas especÃ­ficas
+  - `PinchGroup` vuelve a ser parte activa del flujo: cada pinch pertenece a un grupo nombrado y el eje vive en el grupo para que el fit futuro recorte solo zonas especÃƒÆ’Ã‚Â­ficas
 
 
 
@@ -2245,7 +2245,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-- El mapa exhaustivo `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` fue revalidado el **2026-05-09** contra el working tree real de la branch; hoy cubre **323 archivos relevantes presentes** (**302 versionados presentes + 21 nuevos no versionados todavia**) y documenta la arquitectura activa **CAD-faithful curation + pinch-native shrink zones** con entrada por archivo en formato **mision + importancia + use case**.
+- El mapa exhaustivo `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` fue revalidado el **2026-05-12** contra el working tree real de la branch; hoy cubre **454 tracked files relevantes presentes**, con **0 tracked files faltantes** en el mapa al cierre de Loop 0, y documenta la arquitectura activa en formato **mision + importancia + use case**.
 
 
 
@@ -2343,7 +2343,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 0** del programa de modularizacion: refrescar el mapa canonico de arquitectura y alinear la documentacion con la realidad post-`native dimensions` antes de seguir partiendo codigo.
+0. Ejecutar **Loop 2** del programa de modularizacion: partir `FloorPlanPreviewControl` en shell de composicion + herramientas de viewport, seleccion, hit-testing y coordinacion de layers/interacciones sin mezclar estado UI con render.
 
 
 
@@ -2361,7 +2361,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-1. Crear el **curation correction backbone** antes de seguir agregando muchas familias DXF: estado/overrides para remover, ocultar, mover, renombrar o reclasificar artifacts sin confundir source extraction con verdad curada.
+1. Ejecutar **Loop 3** del programa de modularizacion: bajar el peso de `FloorPlanReviewViewModel` separando selection state, commands/actions, pinch tools state, dimension editing state y summaries view-facing.
 
 
 
@@ -2373,7 +2373,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-2. Continuar el refactor gradual de `FloorPlanPreviewControl`: ya se extrajeron indexing/renderers para openings, fixed components, CAD text labels, pinch markers, workspace background y compression handles; falta preparar la capa de dimensiones y/o el backbone de correcciones curadas.
+2. Ejecutar **Loop 4** del programa de modularizacion: cleanup final de naming, ownership por carpeta, docs finales y chequeo de drift para que el repo quede realmente legible despues de los loops 2 y 3.
 
 
 
@@ -2590,6 +2590,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 - [[Implementation/2026-05-08 - Architecture map refreshed for CAD-faithful curation]]
+
+- [[Implementation/2026-05-12 - Loop 1 visual system cleanup]]
 
 
 

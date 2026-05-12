@@ -51,6 +51,25 @@ public sealed class AppXamlInitializationTests
         Assert.Contains("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", mainXaml, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AppAxaml_promotes_interactive_style_colors_to_named_resources()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "App.axaml");
+        var xaml = File.ReadAllText(xamlPath);
+
+        Assert.Contains("x:Key=\"MetricChipBrush\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"ButtonBaseBrush\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"ButtonPrimaryBorderBrush\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"ToolActiveBrush\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"InputBrush\"", xaml, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("Background\" Value=\"#3D36404C\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Background\" Value=\"#33374250\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Background\" Value=\"#5A4B5665\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Background\" Value=\"#26313C48\"", xaml, StringComparison.Ordinal);
+    }
+
     private static string FindSolutionRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
