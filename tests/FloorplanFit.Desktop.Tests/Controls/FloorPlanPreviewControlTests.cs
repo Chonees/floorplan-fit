@@ -134,6 +134,20 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void FloorPlanPreviewControl_control_helpers_delegate_to_preview_interaction_coordinator()
+    {
+        var zoomedIn = FloorPlanPreviewControl.CalculateWheelZoomFactor(1d, wheelDeltaY: 1d);
+        var panned = FloorPlanPreviewControl.ResolvePanStateForDrag(
+            new FloorPlanPreviewControl.PreviewZoomState(1.5d, new Vector(10d, 15d)),
+            new Point(50d, 50d),
+            new Point(70d, 80d));
+
+        Assert.True(zoomedIn > 1d);
+        Assert.Equal(1.5d, panned.ZoomFactor);
+        Assert.Equal(new Vector(30d, 45d), panned.PanOffset);
+    }
+
+    [Fact]
     public void BuildHitTestGeometry_keeps_opening_paths_selectable_and_topmost()
     {
         var wallPathId = Guid.NewGuid();

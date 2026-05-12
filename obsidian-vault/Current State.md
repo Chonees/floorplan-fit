@@ -677,6 +677,12 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Decision de alcance tomada el **2026-05-12** para **Loop 2**: el primer slice debe ser **quirurgico y seguro**. Prioridad: extraer coordinacion de interaccion (`pointer`, `zoom`, `pan`, `artifact drag`, `dimension edit`) desde `FloorPlanPreviewControl` antes de atacar wiring repetitivo de observers o mas cleanup de render.
 
+- Cierre de **Loop 2A / preview interaction extraction** el **2026-05-12**: `src/FloorplanFit.Desktop/Controls/Preview/PreviewInteractionCoordinator.cs` ya concentra wheel zoom, middle-button pan, left-button press priority, pointer move y pointer release. `src/FloorplanFit.Desktop/Controls/FloorPlanPreviewControl.cs` paso a capturar/aplicar `InteractionState`, delegar request/outcome y quedarse con side effects de UI como pointer capture y publicacion de eventos.
+
+- Verificacion de cierre de **Loop 2A** el **2026-05-12**: el focused preview slice paso **48/48** tests con `PreviewInteractionCoordinatorTests|FloorPlanPreviewControlTests` y la suite completa `FloorplanFit.Desktop.Tests` quedo en **109/109 PASS**. Sigue apareciendo el warning `CS8625` en `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs`, pero no pertenece al alcance de este loop.
+
+- Estado de hotspot post-Loop 2A: aunque la coordinacion de interaccion ya salio del cuerpo principal, `FloorPlanPreviewControl.cs` sigue siendo un hotspot Desktop grande (**1747 lineas** al 2026-05-12) y el siguiente corte sano es **Loop 2B** sobre observer wiring / invalidation repetition antes de meterse con `FloorPlanReviewViewModel`.
+
 
 
 
@@ -2345,7 +2351,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 2** del programa de modularizacion: partir `FloorPlanPreviewControl` en shell de composicion + herramientas de viewport, seleccion, hit-testing y coordinacion de layers/interacciones sin mezclar estado UI con render.
+0. Ejecutar **Loop 2B** del programa de modularizacion: sacar de `FloorPlanPreviewControl` el wiring repetitivo de observers/invalidation y terminar de consolidarlo como shell Avalonia alrededor de `PreviewInteractionCoordinator`.
 
 
 
@@ -2594,6 +2600,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-08 - Architecture map refreshed for CAD-faithful curation]]
 
 - [[Implementation/2026-05-12 - Loop 1 visual system cleanup]]
+
+- [[Implementation/2026-05-12 - Loop 2A preview interaction extraction]]
 
 
 
