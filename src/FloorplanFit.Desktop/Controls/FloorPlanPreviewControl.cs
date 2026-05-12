@@ -389,13 +389,21 @@ public sealed class FloorPlanPreviewControl : Control
         var pointerProperties = e.GetCurrentPoint(this).Properties;
         if (pointerProperties.IsMiddleButtonPressed)
         {
-            isPanningPreview = true;
-            panStartPoint = e.GetPosition(this);
-            panStartZoomState = previewZoomState;
+            var panStart = PreviewInteractionCoordinator.HandleMiddleButtonPressed(
+                PreviewInteractionCoordinator.CreatePointerPressedRequestForPan(
+                    e.GetPosition(this),
+                    previewZoomState));
+            isPanningPreview = panStart.IsPanningPreview;
+            panStartPoint = panStart.PanStartPoint;
+            panStartZoomState = panStart.PanStartZoomState;
             activeDragEdge = null;
             activePreviewTrimMm = 0m;
-            e.Pointer.Capture(this);
-            e.Handled = true;
+            if (panStart.CapturePointer)
+            {
+                e.Pointer.Capture(this);
+            }
+
+            e.Handled = panStart.Handled;
             return;
         }
 
@@ -800,46 +808,20 @@ public sealed class FloorPlanPreviewControl : Control
     }
 
     internal static double CalculateWheelZoomFactor(double currentZoomFactor, double wheelDeltaY)
-    {
-        var safeCurrentZoom = double.IsFinite(currentZoomFactor)
-            ? currentZoomFactor
-            : 1d;
-        var requestedZoom = safeCurrentZoom * Math.Pow(UserZoomStep, wheelDeltaY);
-        return Math.Clamp(requestedZoom, MinimumUserZoomFactor, MaximumUserZoomFactor);
-    }
+        => PreviewInteractionCoordinator.CalculateWheelZoomFactor(currentZoomFactor, wheelDeltaY);
 
     internal static PreviewZoomState ResolveZoomStateForWheel(
         FloorPlanPreviewGeometry.PreviewViewport baseViewport,
         PreviewZoomState currentState,
         Point pointerPosition,
         double wheelDeltaY)
-    {
-        var currentZoom = Math.Clamp(
-            double.IsFinite(currentState.ZoomFactor) ? currentState.ZoomFactor : 1d,
-            MinimumUserZoomFactor,
-            MaximumUserZoomFactor);
-        var currentViewport = baseViewport.WithUserTransform(currentZoom, currentState.PanOffset);
-        var worldPoint = currentViewport.Unproject(pointerPosition);
-        var nextZoom = CalculateWheelZoomFactor(currentZoom, wheelDeltaY);
-        var nextViewportWithoutPan = baseViewport.WithUserTransform(nextZoom, default);
-        var projectedWithoutPan = nextViewportWithoutPan.Project(worldPoint.X, worldPoint.Y);
-        var nextPanOffset = new Vector(
-            pointerPosition.X - projectedWithoutPan.X,
-            pointerPosition.Y - projectedWithoutPan.Y);
-
-        return new PreviewZoomState(nextZoom, nextPanOffset);
-    }
+        => PreviewInteractionCoordinator.ResolveZoomStateForWheel(baseViewport, currentState, pointerPosition, wheelDeltaY);
 
     internal static PreviewZoomState ResolvePanStateForDrag(
         PreviewZoomState startState,
         Point startPointerPosition,
         Point currentPointerPosition)
-    {
-        var pointerDelta = currentPointerPosition - startPointerPosition;
-        return new PreviewZoomState(
-            startState.ZoomFactor,
-            startState.PanOffset + pointerDelta);
-    }
+        => PreviewInteractionCoordinator.ResolvePanStateForDrag(startState, startPointerPosition, currentPointerPosition);
 
     private IReadOnlyList<GeometryPathDto> BuildPreviewGeometry(PinchAxisTag? axisTag)
     {
