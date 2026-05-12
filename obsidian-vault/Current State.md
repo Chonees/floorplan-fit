@@ -675,6 +675,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Decision de arquitectura tomada el **2026-05-12**: la limpieza senior del repo avanza como **modularizacion por loops** con **doc-first order**. Secuencia aprobada: **Loop 0 verdad canonica -> Loop 1 sistema visual -> Loop 2 preview composition/interactions -> Loop 3 review orchestration -> Loop 4 cleanup final**.
 
+- Decision de alcance tomada el **2026-05-12** para **Loop 2**: el primer slice debe ser **quirurgico y seguro**. Prioridad: extraer coordinacion de interaccion (`pointer`, `zoom`, `pan`, `artifact drag`, `dimension edit`) desde `FloorPlanPreviewControl` antes de atacar wiring repetitivo de observers o mas cleanup de render.
+
 
 
 
