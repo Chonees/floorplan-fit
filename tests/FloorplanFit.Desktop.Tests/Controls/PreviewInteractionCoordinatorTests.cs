@@ -109,6 +109,95 @@ public sealed class PreviewInteractionCoordinatorTests
         Assert.Equal(roomLabel.RoomLabelId, outcome.RoomLabelClickedId);
     }
 
+    [Fact]
+    public void HandlePointerMoved_updates_preview_trim_while_edge_drag_is_active()
+    {
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0, 0, 800, 600),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 2d,
+            OffsetX: 100d,
+            OffsetY: 80d);
+
+        var state = new PreviewInteractionCoordinator.InteractionState(
+            PreviewZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
+            IsPanningPreview: false,
+            PanStartPoint: default,
+            PanStartZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
+            ActiveDragEdge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Right,
+            DragStartPoint: new Point(420d, 200d),
+            ActivePreviewTrimMm: 0m,
+            ActiveArtifactMove: null,
+            ActiveDimensionEdit: null);
+
+        var outcome = PreviewInteractionCoordinator.HandlePointerMoved(
+            new PreviewInteractionCoordinator.PointerMovedRequest(
+                CurrentState: state,
+                PointerPosition: new Point(390d, 200d),
+                Viewport: viewport,
+                ResolveSnappedDimensionWorldPoint: null));
+
+        Assert.False(outcome.Handled);
+        Assert.True(outcome.InvalidateVisual);
+        Assert.Equal(15m, outcome.NextState.ActivePreviewTrimMm);
+    }
+
+    [Fact]
+    public void HandlePointerReleased_clears_edge_drag_without_marking_release_as_handled()
+    {
+        var state = new PreviewInteractionCoordinator.InteractionState(
+            PreviewZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
+            IsPanningPreview: false,
+            PanStartPoint: default,
+            PanStartZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
+            ActiveDragEdge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Left,
+            DragStartPoint: new Point(200d, 120d),
+            ActivePreviewTrimMm: 18m,
+            ActiveArtifactMove: null,
+            ActiveDimensionEdit: null);
+
+        var outcome = PreviewInteractionCoordinator.HandlePointerReleased(
+            new PreviewInteractionCoordinator.PointerReleasedRequest(
+                CurrentState: state,
+                PointerPosition: new Point(215d, 120d),
+                Viewport: null,
+                BuildDimensionEditedEventArgs: null));
+
+        Assert.False(outcome.Handled);
+        Assert.True(outcome.ReleasePointerCapture);
+        Assert.True(outcome.InvalidateVisual);
+        Assert.Null(outcome.NextState.ActiveDragEdge);
+        Assert.Equal(0m, outcome.NextState.ActivePreviewTrimMm);
+    }
+
+    [Fact]
+    public void HandlePointerReleased_commits_translation_only_when_delta_is_meaningful()
+    {
+        var move = FloorPlanPreviewControl.PreviewArtifactMoveState.ForTranslation(
+            FloorPlanArtifactSourceKinds.OpeningCandidate,
+            Guid.NewGuid(),
+            new Point(100d, 100d),
+            baseDx: 0m,
+            baseDy: 0m);
+        var state = PreviewInteractionCoordinator.InteractionState.ForArtifactMove(
+            FloorPlanPreviewControl.PreviewZoomState.Default,
+            move with { CurrentDeltaX = 12m, CurrentDeltaY = -4m });
+
+        var outcome = PreviewInteractionCoordinator.HandlePointerReleased(
+            new PreviewInteractionCoordinator.PointerReleasedRequest(
+                CurrentState: state,
+                PointerPosition: new Point(124d, 92d),
+                Viewport: null,
+                BuildDimensionEditedEventArgs: null));
+
+        Assert.True(outcome.Handled);
+        Assert.True(outcome.ReleasePointerCapture);
+        Assert.NotNull(outcome.CommittedArtifactMove);
+        Assert.Equal(12m, outcome.CommittedArtifactMove!.TranslationDx);
+        Assert.Equal(-4m, outcome.CommittedArtifactMove.TranslationDy);
+    }
+
     private static DimensionDto CreateDimension(string sourceKey)
         => new(
             Guid.NewGuid(),

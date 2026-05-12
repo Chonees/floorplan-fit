@@ -46,6 +46,68 @@ internal static class PreviewInteractionCoordinator
         FloorPlanPreviewControl.PreviewArtifactMoveState? StartedArtifactMove,
         FloorPlanPreviewControl.PreviewDimensionEditState? StartedDimensionEdit);
 
+    internal readonly record struct InteractionState(
+        FloorPlanPreviewControl.PreviewZoomState PreviewZoomState,
+        bool IsPanningPreview,
+        Point PanStartPoint,
+        FloorPlanPreviewControl.PreviewZoomState PanStartZoomState,
+        FloorPlanPreviewGeometry.PreviewCompressionEdge? ActiveDragEdge,
+        Point DragStartPoint,
+        decimal ActivePreviewTrimMm,
+        FloorPlanPreviewControl.PreviewArtifactMoveState? ActiveArtifactMove,
+        FloorPlanPreviewControl.PreviewDimensionEditState? ActiveDimensionEdit)
+    {
+        public static InteractionState Default { get; } = new(
+            FloorPlanPreviewControl.PreviewZoomState.Default,
+            false,
+            default,
+            FloorPlanPreviewControl.PreviewZoomState.Default,
+            null,
+            default,
+            0m,
+            null,
+            null);
+
+        public static InteractionState ForArtifactMove(
+            FloorPlanPreviewControl.PreviewZoomState previewZoomState,
+            FloorPlanPreviewControl.PreviewArtifactMoveState move)
+            => new(
+                previewZoomState,
+                false,
+                default,
+                FloorPlanPreviewControl.PreviewZoomState.Default,
+                null,
+                default,
+                0m,
+                move,
+                null);
+    }
+
+    internal readonly record struct PointerMovedRequest(
+        InteractionState CurrentState,
+        Point PointerPosition,
+        FloorPlanPreviewGeometry.PreviewViewport? Viewport,
+        Func<FloorPlanPreviewControl.PreviewDimensionEditState, Point, Point>? ResolveSnappedDimensionWorldPoint);
+
+    internal readonly record struct PointerMovedOutcome(
+        bool Handled,
+        bool InvalidateVisual,
+        InteractionState NextState);
+
+    internal readonly record struct PointerReleasedRequest(
+        InteractionState CurrentState,
+        Point PointerPosition,
+        FloorPlanPreviewGeometry.PreviewViewport? Viewport,
+        Func<FloorPlanPreviewControl.PreviewDimensionEditState, FloorPlanPreviewControl.DimensionEditedEventArgs?>? BuildDimensionEditedEventArgs);
+
+    internal readonly record struct PointerReleasedOutcome(
+        bool Handled,
+        bool InvalidateVisual,
+        bool ReleasePointerCapture,
+        InteractionState NextState,
+        FloorPlanPreviewControl.MovableArtifactMovedEventArgs? CommittedArtifactMove,
+        FloorPlanPreviewControl.DimensionEditedEventArgs? CommittedDimensionEdit);
+
     public static double CalculateWheelZoomFactor(double currentZoomFactor, double wheelDeltaY)
     {
         var safeCurrentZoom = double.IsFinite(currentZoomFactor)
@@ -241,5 +303,210 @@ internal static class PreviewInteractionCoordinator
             StartedEdgeDrag: null,
             StartedArtifactMove: startedArtifactMove,
             StartedDimensionEdit: null);
+    }
+
+    public static PointerMovedOutcome HandlePointerMoved(PointerMovedRequest request)
+    {
+        var state = request.CurrentState;
+        if (state.IsPanningPreview)
+        {
+            return new PointerMovedOutcome(
+                Handled: true,
+                InvalidateVisual: true,
+                NextState: state with
+                {
+                    PreviewZoomState = ResolvePanStateForDrag(state.PanStartZoomState, state.PanStartPoint, request.PointerPosition)
+                });
+        }
+
+        if (state.ActiveArtifactMove is { } activeArtifactMove)
+        {
+            if (request.Viewport is null || request.Viewport.Value.Scale <= double.Epsilon)
+            {
+                return new PointerMovedOutcome(false, false, state);
+            }
+
+            var delta = ResolveWorldDelta(request.Viewport.Value, activeArtifactMove.PointerStart, request.PointerPosition);
+            return new PointerMovedOutcome(
+                Handled: true,
+                InvalidateVisual: true,
+                NextState: state with
+                {
+                    ActiveArtifactMove = activeArtifactMove with
+                    {
+                        CurrentDeltaX = delta.DeltaX,
+                        CurrentDeltaY = delta.DeltaY
+                    }
+                });
+        }
+
+        if (state.ActiveDimensionEdit is { } activeDimensionEdit)
+        {
+            if (request.Viewport is null ||
+                request.Viewport.Value.Scale <= double.Epsilon ||
+                request.ResolveSnappedDimensionWorldPoint is null)
+            {
+                return new PointerMovedOutcome(false, false, state);
+            }
+
+            var snappedWorld = request.ResolveSnappedDimensionWorldPoint(activeDimensionEdit, request.PointerPosition);
+            return new PointerMovedOutcome(
+                Handled: true,
+                InvalidateVisual: true,
+                NextState: state with
+                {
+                    ActiveDimensionEdit = activeDimensionEdit with
+                    {
+                        CurrentWorldPoint = snappedWorld
+                    }
+                });
+        }
+
+        if (state.ActiveDragEdge is not { } activeDragEdge)
+        {
+            return new PointerMovedOutcome(false, false, state);
+        }
+
+        if (request.Viewport is null || request.Viewport.Value.Scale <= double.Epsilon)
+        {
+            return new PointerMovedOutcome(false, false, state);
+        }
+
+        var pixelDelta = activeDragEdge switch
+        {
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Right => Math.Max(0d, state.DragStartPoint.X - request.PointerPosition.X),
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Left => Math.Max(0d, request.PointerPosition.X - state.DragStartPoint.X),
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Top => Math.Max(0d, request.PointerPosition.Y - state.DragStartPoint.Y),
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Bottom => Math.Max(0d, state.DragStartPoint.Y - request.PointerPosition.Y),
+            _ => 0d
+        };
+
+        return new PointerMovedOutcome(
+            Handled: false,
+            InvalidateVisual: true,
+            NextState: state with
+            {
+                ActivePreviewTrimMm = (decimal)(pixelDelta / request.Viewport.Value.Scale)
+            });
+    }
+
+    public static PointerReleasedOutcome HandlePointerReleased(PointerReleasedRequest request)
+    {
+        var state = request.CurrentState;
+        if (state.IsPanningPreview)
+        {
+            return new PointerReleasedOutcome(
+                Handled: true,
+                InvalidateVisual: true,
+                ReleasePointerCapture: true,
+                NextState: state with { IsPanningPreview = false },
+                CommittedArtifactMove: null,
+                CommittedDimensionEdit: null);
+        }
+
+        if (state.ActiveArtifactMove is { } activeArtifactMove)
+        {
+            var delta = request.Viewport is null || request.Viewport.Value.Scale <= double.Epsilon
+                ? (activeArtifactMove.CurrentDeltaX, activeArtifactMove.CurrentDeltaY)
+                : ResolveWorldDelta(request.Viewport.Value, activeArtifactMove.PointerStart, request.PointerPosition);
+            var movement = ResolveMovement(activeArtifactMove, delta.Item1, delta.Item2);
+
+            return new PointerReleasedOutcome(
+                Handled: true,
+                InvalidateVisual: true,
+                ReleasePointerCapture: true,
+                NextState: state with { ActiveArtifactMove = null },
+                CommittedArtifactMove: movement,
+                CommittedDimensionEdit: null);
+        }
+
+        if (state.ActiveDimensionEdit is { } activeDimensionEdit)
+        {
+            return new PointerReleasedOutcome(
+                Handled: true,
+                InvalidateVisual: true,
+                ReleasePointerCapture: true,
+                NextState: state with { ActiveDimensionEdit = null },
+                CommittedArtifactMove: null,
+                CommittedDimensionEdit: request.BuildDimensionEditedEventArgs?.Invoke(activeDimensionEdit));
+        }
+
+        if (state.ActiveDragEdge is not null)
+        {
+            return new PointerReleasedOutcome(
+                Handled: false,
+                InvalidateVisual: true,
+                ReleasePointerCapture: true,
+                NextState: state with
+                {
+                    ActiveDragEdge = null,
+                    ActivePreviewTrimMm = 0m
+                },
+                CommittedArtifactMove: null,
+                CommittedDimensionEdit: null);
+        }
+
+        return new PointerReleasedOutcome(false, false, false, state, null, null);
+    }
+
+    private static (decimal DeltaX, decimal DeltaY) ResolveWorldDelta(
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Point startPointer,
+        Point currentPointer)
+    {
+        var startWorld = viewport.Unproject(startPointer);
+        var currentWorld = viewport.Unproject(currentPointer);
+        return (
+            RoundModelValue((decimal)(currentWorld.X - startWorld.X)),
+            RoundModelValue((decimal)(currentWorld.Y - startWorld.Y)));
+    }
+
+    private static FloorPlanPreviewControl.MovableArtifactMovedEventArgs? ResolveMovement(
+        FloorPlanPreviewControl.PreviewArtifactMoveState move,
+        decimal deltaX,
+        decimal deltaY)
+    {
+        if (move.PositionMode == FloorPlanArtifactPositionMode.AbsolutePoint)
+        {
+            var moved = FloorPlanPreviewControl.ApplyAbsolutePointDelta(move.BaseX, move.BaseY, deltaX, deltaY);
+            if (!HasMeaningfulDifference(move.BaseX, moved.X) && !HasMeaningfulDifference(move.BaseY, moved.Y))
+            {
+                return null;
+            }
+
+            return new FloorPlanPreviewControl.MovableArtifactMovedEventArgs(
+                move.SourceArtifactKind,
+                move.SourceArtifactId,
+                move.PositionMode,
+                moved.X,
+                moved.Y,
+                null,
+                null);
+        }
+
+        var translated = FloorPlanPreviewControl.ApplyTranslationDelta(move.BaseDx, move.BaseDy, deltaX, deltaY);
+        if (!HasMeaningfulDifference(move.BaseDx, translated.Dx) && !HasMeaningfulDifference(move.BaseDy, translated.Dy))
+        {
+            return null;
+        }
+
+        return new FloorPlanPreviewControl.MovableArtifactMovedEventArgs(
+            move.SourceArtifactKind,
+            move.SourceArtifactId,
+            move.PositionMode,
+            null,
+            null,
+            translated.Dx,
+            translated.Dy);
+    }
+
+    private static bool HasMeaningfulDifference(decimal original, decimal updated)
+    {
+        return decimal.Abs(updated - original) >= FloorPlanPreviewControl.MovementPersistenceEpsilon;
+    }
+
+    private static decimal RoundModelValue(decimal value)
+    {
+        return decimal.Round(value, 3, MidpointRounding.AwayFromZero);
     }
 }

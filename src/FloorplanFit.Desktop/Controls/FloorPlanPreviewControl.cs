@@ -512,83 +512,33 @@ public sealed class FloorPlanPreviewControl : Control
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-
-        if (isPanningPreview)
+        var axisTag = ParseAxisTag();
+        var viewport = GetPreviewViewport(axisTag);
+        var pointerPosition = e.GetPosition(this);
+        Func<PreviewDimensionEditState, Point, Point>? resolveSnappedDimensionWorldPoint = null;
+        if (viewport is { } activeViewport)
         {
-            previewZoomState = ResolvePanStateForDrag(panStartZoomState, panStartPoint, e.GetPosition(this));
-            e.Handled = true;
+            resolveSnappedDimensionWorldPoint = (edit, currentPointerPosition)
+                => ResolveSnappedDimensionEditWorldPoint(edit, activeViewport, currentPointerPosition);
+        }
+
+        var moveOutcome = PreviewInteractionCoordinator.HandlePointerMoved(
+            new PreviewInteractionCoordinator.PointerMovedRequest(
+                CurrentState: CaptureInteractionState(),
+                PointerPosition: pointerPosition,
+                Viewport: viewport,
+                ResolveSnappedDimensionWorldPoint: resolveSnappedDimensionWorldPoint));
+
+        ApplyInteractionState(moveOutcome.NextState);
+        if (moveOutcome.InvalidateVisual)
+        {
             InvalidateVisual();
-            return;
         }
 
-        if (activeArtifactMove is not null)
+        if (moveOutcome.Handled)
         {
-            var activeMoveViewport = GetPreviewViewport(ParseAxisTag());
-            if (activeMoveViewport is null || activeMoveViewport.Value.Scale <= double.Epsilon)
-            {
-                return;
-            }
-
-            var currentPointerPosition = e.GetPosition(this);
-            var delta = ResolveWorldDelta(activeMoveViewport.Value, activeArtifactMove.Value.PointerStart, currentPointerPosition);
-            activeArtifactMove = activeArtifactMove.Value with
-            {
-                CurrentDeltaX = delta.DeltaX,
-                CurrentDeltaY = delta.DeltaY
-            };
             e.Handled = true;
-            InvalidateVisual();
-            return;
         }
-
-        if (activeDimensionEdit is not null)
-        {
-            var activeMoveViewport = GetPreviewViewport(ParseAxisTag());
-            if (activeMoveViewport is null || activeMoveViewport.Value.Scale <= double.Epsilon)
-            {
-                return;
-            }
-
-            var currentPointerPosition = e.GetPosition(this);
-            var currentWorld = activeMoveViewport.Value.Unproject(currentPointerPosition);
-            var viewportContext = CadViewportContext.Create(activeMoveViewport.Value);
-            var snappedWorld = ResolveSnappedWorldPoint(
-                currentWorld,
-                viewportContext,
-                ResolveDimensionSnapAnchors(activeDimensionEdit.Value.BaseDimension, activeDimensionEdit.Value.HandleKind),
-                enableGridSnap: true);
-            activeDimensionEdit = activeDimensionEdit.Value with
-            {
-                CurrentWorldPoint = snappedWorld
-            };
-            e.Handled = true;
-            InvalidateVisual();
-            return;
-        }
-
-        if (activeDragEdge is null || GeometryPaths is not { Count: > 0 })
-        {
-            return;
-        }
-
-        var viewport = GetPreviewViewport(ParseAxisTag());
-        if (viewport is null || viewport.Value.Scale <= double.Epsilon)
-        {
-            return;
-        }
-
-        var current = e.GetPosition(this);
-        var pixelDelta = activeDragEdge switch
-        {
-            FloorPlanPreviewGeometry.PreviewCompressionEdge.Right => Math.Max(0d, dragStartPoint.X - current.X),
-            FloorPlanPreviewGeometry.PreviewCompressionEdge.Left => Math.Max(0d, current.X - dragStartPoint.X),
-            FloorPlanPreviewGeometry.PreviewCompressionEdge.Top => Math.Max(0d, current.Y - dragStartPoint.Y),
-            FloorPlanPreviewGeometry.PreviewCompressionEdge.Bottom => Math.Max(0d, dragStartPoint.Y - current.Y),
-            _ => 0d
-        };
-
-        activePreviewTrimMm = (decimal)(pixelDelta / viewport.Value.Scale);
-        InvalidateVisual();
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -619,69 +569,38 @@ public sealed class FloorPlanPreviewControl : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+        var releaseOutcome = PreviewInteractionCoordinator.HandlePointerReleased(
+            new PreviewInteractionCoordinator.PointerReleasedRequest(
+                CurrentState: CaptureInteractionState(),
+                PointerPosition: e.GetPosition(this),
+                Viewport: GetPreviewViewport(ParseAxisTag()),
+                BuildDimensionEditedEventArgs: BuildDimensionEditedEventArgs));
 
-        if (isPanningPreview)
+        ApplyInteractionState(releaseOutcome.NextState);
+        if (releaseOutcome.ReleasePointerCapture)
         {
-            isPanningPreview = false;
             e.Pointer.Capture(null);
-            e.Handled = true;
-            InvalidateVisual();
-            return;
         }
 
-        if (activeArtifactMove is not null)
+        if (releaseOutcome.Handled)
         {
-            var move = activeArtifactMove.Value;
-            var viewport = GetPreviewViewport(ParseAxisTag());
-            var delta = viewport is null || viewport.Value.Scale <= double.Epsilon
-                ? (move.CurrentDeltaX, move.CurrentDeltaY)
-                : ResolveWorldDelta(viewport.Value, move.PointerStart, e.GetPosition(this));
-            var movement = ResolveMovement(move, delta.Item1, delta.Item2);
-
-            activeArtifactMove = null;
-            e.Pointer.Capture(null);
             e.Handled = true;
-            InvalidateVisual();
-
-            if (movement is not null)
-            {
-                MovableArtifactMoved?.Invoke(this, movement);
-            }
-
-            return;
         }
 
-        if (activeDimensionEdit is not null)
+        if (releaseOutcome.InvalidateVisual)
         {
-            var edit = activeDimensionEdit.Value;
-            var editedDimension = BuildEditedDimensionPreview(
-                edit,
-                Dimensions?.FirstOrDefault(item => item.DimensionId == edit.BaseDimension.DimensionId) ?? edit.BaseDimension);
-            activeDimensionEdit = null;
-            e.Pointer.Capture(null);
-            e.Handled = true;
             InvalidateVisual();
-
-            if (editedDimension is not null && !editedDimension.Equals(edit.BaseDimension))
-            {
-                DimensionEdited?.Invoke(this, new DimensionEditedEventArgs(
-                    edit.BaseDimension.DimensionId,
-                    ResolveSourceDimensionKey(edit.BaseDimension),
-                    editedDimension));
-            }
-
-            return;
         }
 
-        if (activeDragEdge is null)
+        if (releaseOutcome.CommittedArtifactMove is { } movement)
         {
-            return;
+            MovableArtifactMoved?.Invoke(this, movement);
         }
 
-        activeDragEdge = null;
-        activePreviewTrimMm = 0m;
-        e.Pointer.Capture(null);
-        InvalidateVisual();
+        if (releaseOutcome.CommittedDimensionEdit is { } editedDimension)
+        {
+            DimensionEdited?.Invoke(this, editedDimension);
+        }
     }
 
     public override void Render(DrawingContext context)
@@ -924,6 +843,58 @@ public sealed class FloorPlanPreviewControl : Control
         return rendered.FirstOrDefault();
     }
 
+    private PreviewInteractionCoordinator.InteractionState CaptureInteractionState()
+        => new(
+            previewZoomState,
+            isPanningPreview,
+            panStartPoint,
+            panStartZoomState,
+            activeDragEdge,
+            dragStartPoint,
+            activePreviewTrimMm,
+            activeArtifactMove,
+            activeDimensionEdit);
+
+    private void ApplyInteractionState(PreviewInteractionCoordinator.InteractionState state)
+    {
+        previewZoomState = state.PreviewZoomState;
+        isPanningPreview = state.IsPanningPreview;
+        panStartPoint = state.PanStartPoint;
+        panStartZoomState = state.PanStartZoomState;
+        activeDragEdge = state.ActiveDragEdge;
+        dragStartPoint = state.DragStartPoint;
+        activePreviewTrimMm = state.ActivePreviewTrimMm;
+        activeArtifactMove = state.ActiveArtifactMove;
+        activeDimensionEdit = state.ActiveDimensionEdit;
+    }
+
+    private Point ResolveSnappedDimensionEditWorldPoint(
+        PreviewDimensionEditState edit,
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Point pointerPosition)
+    {
+        var currentWorld = viewport.Unproject(pointerPosition);
+        var viewportContext = CadViewportContext.Create(viewport);
+        return ResolveSnappedWorldPoint(
+            currentWorld,
+            viewportContext,
+            ResolveDimensionSnapAnchors(edit.BaseDimension, edit.HandleKind),
+            enableGridSnap: true);
+    }
+
+    private DimensionEditedEventArgs? BuildDimensionEditedEventArgs(PreviewDimensionEditState edit)
+    {
+        var editedDimension = BuildEditedDimensionPreview(
+            edit,
+            Dimensions?.FirstOrDefault(item => item.DimensionId == edit.BaseDimension.DimensionId) ?? edit.BaseDimension);
+        return editedDimension is not null && !editedDimension.Equals(edit.BaseDimension)
+            ? new DimensionEditedEventArgs(
+                edit.BaseDimension.DimensionId,
+                ResolveSourceDimensionKey(edit.BaseDimension),
+                editedDimension)
+            : null;
+    }
+
     private Rect GetGeometryViewportBounds(PinchAxisTag? axisTag)
     {
         var bounds = GetLocalRenderBounds(Bounds);
@@ -1156,62 +1127,6 @@ public sealed class FloorPlanPreviewControl : Control
         }
 
         return new HashSet<Guid>();
-    }
-
-    private static (decimal DeltaX, decimal DeltaY) ResolveWorldDelta(
-        FloorPlanPreviewGeometry.PreviewViewport viewport,
-        Point startPointer,
-        Point currentPointer)
-    {
-        var startWorld = viewport.Unproject(startPointer);
-        var currentWorld = viewport.Unproject(currentPointer);
-        return (
-            RoundModelValue((decimal)(currentWorld.X - startWorld.X)),
-            RoundModelValue((decimal)(currentWorld.Y - startWorld.Y)));
-    }
-
-    private static MovableArtifactMovedEventArgs? ResolveMovement(
-        PreviewArtifactMoveState move,
-        decimal deltaX,
-        decimal deltaY)
-    {
-        if (move.PositionMode == FloorPlanArtifactPositionMode.AbsolutePoint)
-        {
-            var moved = ApplyAbsolutePointDelta(move.BaseX, move.BaseY, deltaX, deltaY);
-            if (!HasMeaningfulDifference(move.BaseX, moved.X) && !HasMeaningfulDifference(move.BaseY, moved.Y))
-            {
-                return null;
-            }
-
-            return new MovableArtifactMovedEventArgs(
-                move.SourceArtifactKind,
-                move.SourceArtifactId,
-                move.PositionMode,
-                moved.X,
-                moved.Y,
-                null,
-                null);
-        }
-
-        var translated = ApplyTranslationDelta(move.BaseDx, move.BaseDy, deltaX, deltaY);
-        if (!HasMeaningfulDifference(move.BaseDx, translated.Dx) && !HasMeaningfulDifference(move.BaseDy, translated.Dy))
-        {
-            return null;
-        }
-
-        return new MovableArtifactMovedEventArgs(
-            move.SourceArtifactKind,
-            move.SourceArtifactId,
-            move.PositionMode,
-            null,
-            null,
-            translated.Dx,
-            translated.Dy);
-    }
-
-    private static bool HasMeaningfulDifference(decimal original, decimal updated)
-    {
-        return decimal.Abs(updated - original) >= MovementPersistenceEpsilon;
     }
 
     private static string ResolveSourceDimensionKey(DimensionDto dimension)
