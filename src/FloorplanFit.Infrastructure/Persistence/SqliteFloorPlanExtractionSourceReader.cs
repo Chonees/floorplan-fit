@@ -21,7 +21,11 @@ public sealed class SqliteFloorPlanExtractionSourceReader : IFloorPlanExtraction
             SELECT
                 t.id,
                 v.id,
-                d.storage_path
+                d.storage_path,
+                d.id,
+                d.measurement_context_id,
+                d.original_file_name,
+                d.dxf_version
             FROM floorplan_templates t
             JOIN floorplan_versions v ON v.id = t.current_version_id
             JOIN imported_documents d ON d.id = v.imported_document_id
@@ -40,7 +44,13 @@ public sealed class SqliteFloorPlanExtractionSourceReader : IFloorPlanExtraction
             new FloorPlanExtractionSource(
                 Guid.Parse(reader.GetString(0)),
                 Guid.Parse(reader.GetString(1)),
-                reader.GetString(2)));
+                reader.GetString(2))
+            {
+                ImportedDocumentId = Guid.Parse(reader.GetString(3)),
+                MeasurementContextId = Guid.Parse(reader.GetString(4)),
+                OriginalFileName = reader.GetString(5),
+                DxfVersion = reader.IsDBNull(6) ? null : reader.GetString(6)
+            });
     }
 
     public Task<FloorPlanExtractionSource?> GetByVersionAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
@@ -52,7 +62,11 @@ public sealed class SqliteFloorPlanExtractionSourceReader : IFloorPlanExtraction
             SELECT
                 t.id,
                 v.id,
-                d.storage_path
+                d.storage_path,
+                d.id,
+                d.measurement_context_id,
+                d.original_file_name,
+                d.dxf_version
             FROM floorplan_versions v
             JOIN floorplan_templates t ON t.id = v.floorplan_template_id
             JOIN imported_documents d ON d.id = v.imported_document_id
@@ -71,7 +85,13 @@ public sealed class SqliteFloorPlanExtractionSourceReader : IFloorPlanExtraction
             new FloorPlanExtractionSource(
                 Guid.Parse(reader.GetString(0)),
                 Guid.Parse(reader.GetString(1)),
-                reader.GetString(2)));
+                reader.GetString(2))
+            {
+                ImportedDocumentId = Guid.Parse(reader.GetString(3)),
+                MeasurementContextId = Guid.Parse(reader.GetString(4)),
+                OriginalFileName = reader.GetString(5),
+                DxfVersion = reader.IsDBNull(6) ? null : reader.GetString(6)
+            });
     }
 
     private SqliteCommand CreateCommand(string sql)

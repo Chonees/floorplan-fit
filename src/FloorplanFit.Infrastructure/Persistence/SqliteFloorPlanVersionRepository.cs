@@ -131,6 +131,12 @@ public sealed class SqliteFloorPlanVersionRepository : IFloorPlanVersionReposito
             ExecuteNonQuery(
                 "DELETE FROM pinch_groups WHERE floorplan_curation_id = $curation_id",
                 ("$curation_id", curationId.ToString()));
+            ExecuteNonQuery(
+                "DELETE FROM floorplan_dimension_override_primitives WHERE floorplan_curation_id = $curation_id",
+                ("$curation_id", curationId.ToString()));
+            ExecuteNonQuery(
+                "DELETE FROM floorplan_dimension_overrides WHERE floorplan_curation_id = $curation_id",
+                ("$curation_id", curationId.ToString()));
         }
 
         DeleteByIds("floorplan_curations", "id", curationIds);
@@ -158,6 +164,26 @@ public sealed class SqliteFloorPlanVersionRepository : IFloorPlanVersionReposito
                 """,
                 ("$wall_extraction_run_id", extractionRunId.ToString()));
             ExecuteNonQuery(
+                """
+                DELETE FROM extracted_dimension_line_segments
+                WHERE dimension_id IN (
+                    SELECT id
+                    FROM extracted_dimensions
+                    WHERE wall_extraction_run_id = $wall_extraction_run_id
+                )
+                """,
+                ("$wall_extraction_run_id", extractionRunId.ToString()));
+            ExecuteNonQuery(
+                """
+                DELETE FROM extracted_dimension_primitives
+                WHERE dimension_id IN (
+                    SELECT id
+                    FROM extracted_dimensions
+                    WHERE wall_extraction_run_id = $wall_extraction_run_id
+                )
+                """,
+                ("$wall_extraction_run_id", extractionRunId.ToString()));
+            ExecuteNonQuery(
                 "DELETE FROM extracted_fixed_plan_components WHERE wall_extraction_run_id = $wall_extraction_run_id",
                 ("$wall_extraction_run_id", extractionRunId.ToString()));
             ExecuteNonQuery(
@@ -174,6 +200,9 @@ public sealed class SqliteFloorPlanVersionRepository : IFloorPlanVersionReposito
                 ("$wall_extraction_run_id", extractionRunId.ToString()));
             ExecuteNonQuery(
                 "DELETE FROM extracted_wall_candidates WHERE wall_extraction_run_id = $wall_extraction_run_id",
+                ("$wall_extraction_run_id", extractionRunId.ToString()));
+            ExecuteNonQuery(
+                "DELETE FROM extracted_dimensions WHERE wall_extraction_run_id = $wall_extraction_run_id",
                 ("$wall_extraction_run_id", extractionRunId.ToString()));
         }
 

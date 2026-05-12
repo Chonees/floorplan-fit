@@ -224,6 +224,9 @@ public sealed class ImportFloorPlanHandlerTests
             SourcePathReceived = sourceFilePath;
             return Task.FromResult(managedPath);
         }
+
+        public Task<string> ReserveAdjustedDxfPathAsync(string sourceFileName, CancellationToken cancellationToken)
+            => Task.FromResult(managedPath);
     }
 
     private sealed class SequenceManagedFileStorage : IManagedFileStorage
@@ -240,6 +243,16 @@ public sealed class ImportFloorPlanHandlerTests
             if (managedPaths.Count == 0)
             {
                 throw new InvalidOperationException("No managed path configured for this import.");
+            }
+
+            return Task.FromResult(managedPaths.Dequeue());
+        }
+
+        public Task<string> ReserveAdjustedDxfPathAsync(string sourceFileName, CancellationToken cancellationToken)
+        {
+            if (managedPaths.Count == 0)
+            {
+                throw new InvalidOperationException("No managed path configured for this adjusted DXF export.");
             }
 
             return Task.FromResult(managedPaths.Dequeue());

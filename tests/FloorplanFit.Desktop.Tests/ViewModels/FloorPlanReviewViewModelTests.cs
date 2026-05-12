@@ -82,7 +82,39 @@ public sealed class FloorPlanReviewViewModelTests
                         0.5m,
                         120m,
                         1)
-                ])));
+                ])
+            {
+                Dimensions =
+                [
+                    new DimensionDto(
+                        Guid.NewGuid(),
+                        "DIMENSION:1",
+                        "DIMS",
+                        "DIMENSION",
+                        "*D169",
+                        "10'-4\"",
+                        "GeometryBlock",
+                        string.Empty,
+                        123.810387305188m,
+                        3144.7838375517752m,
+                        "Inch",
+                        0,
+                        0m,
+                        0m,
+                        94.5741888255622m,
+                        516.95664946623m,
+                        0m,
+                        218.38457613075m,
+                        524.795084103958m,
+                        0m,
+                        94.5741888255622m,
+                        537.195356591169m,
+                        0.0000000000000074m,
+                        0.99m,
+                        null,
+                        1)
+                ]
+            }));
         services.AddTransient<StartOrResumeCurationHandler>();
         services.AddTransient<OpenFloorPlanReviewSessionHandler>();
         services.AddTransient<GetFloorPlanReviewSessionHandler>();
@@ -100,6 +132,10 @@ public sealed class FloorPlanReviewViewModelTests
         Assert.Equal("KITCHEN", viewModel.RoomLabels.Single().Text);
         Assert.Single(viewModel.OpeningCandidates);
         Assert.Single(viewModel.OpeningLabels);
+        Assert.Single(viewModel.Dimensions);
+        Assert.Single(viewModel.VisibleDimensions);
+        Assert.Equal("10'-4\"", viewModel.Dimensions.Single().DisplayText);
+        Assert.Equal(1, viewModel.DimensionCount);
         Assert.Equal("Door", viewModel.OpeningCandidates.Single().Kind);
         Assert.Equal("2668", viewModel.OpeningLabels.Single().Text);
         Assert.Equal(1, viewModel.DoorOpeningCount);
@@ -112,6 +148,189 @@ public sealed class FloorPlanReviewViewModelTests
         Assert.NotNull(viewModel.SelectedCandidate);
         Assert.Equal(geometryPathId, viewModel.HighlightGeometryPathId);
         Assert.Equal("Previewing candidate: LINE:1", viewModel.PreviewSelectionLabel);
+    }
+
+    [Fact]
+    public async Task Review_queue_filters_and_search_keep_navigation_minimal_without_touching_preview_data()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var wallPathId = Guid.NewGuid();
+        var curatedPathId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 11, 21, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "seminole2000",
+                "SEMINOLE2000",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(wallPathId, false, [new GeometrySegmentDto(wallPathId, 1, 0m, 0m, 120m, 0m)]),
+                    new GeometryPathDto(curatedPathId, false, [new GeometrySegmentDto(curatedPathId, 1, 40m, 0m, 76m, 0m)])
+                ],
+                [
+                    new RoomLabelDto(Guid.NewGuid(), "TEXT:ROOM:1", "ROOM LBLS", "KITCHEN", 125m, 784m, 0.95m, null, 1)
+                ],
+                [],
+                [
+                    new OpeningLabelDto(Guid.NewGuid(), "TEXT:OPENING:1", "DOORTEXT", "Door", "2668", 50m, 20m, 0.95m, null, 1)
+                ],
+                [
+                    new FixedPlanComponentDto(
+                        Guid.NewGuid(),
+                        "INSERT:TUB:1",
+                        "FIXTURES",
+                        "Tub",
+                        "INSERT",
+                        "TUB1",
+                        [curatedPathId],
+                        0.95m,
+                        null,
+                        1)
+                ],
+                [],
+                [
+                    new WallCandidateDto(Guid.NewGuid(), "LINE:WALL:1", "WALLS", "Accepted", 0.95m, null, null, wallPathId, 1)
+                ],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedReviewQueueFilter = "Text & Notes";
+        viewModel.ReviewQueueSearchText = "kitch";
+
+        Assert.Empty(viewModel.VisibleWallCandidates);
+        Assert.Single(viewModel.VisibleRoomLabels);
+        Assert.Equal("KITCHEN", viewModel.VisibleRoomLabels.Single().Text);
+        Assert.Empty(viewModel.VisibleOpeningLabels);
+        Assert.Single(viewModel.VisibleCuratedPlanArtifacts);
+        Assert.Equal(1, viewModel.VisibleQueueItemCount);
+        Assert.Equal("Showing 1 of 4 review items", viewModel.QueueSummary);
+        Assert.Equal(2, viewModel.GeometryPaths.Count);
+    }
+
+    [Fact]
+    public async Task Queue_expanders_behave_like_a_single_open_folder_stack()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var wallPathId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 11, 21, 10, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "seminole2000",
+                "SEMINOLE2000",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(wallPathId, false, [new GeometrySegmentDto(wallPathId, 1, 0m, 0m, 120m, 0m)])
+                ],
+                [
+                    new RoomLabelDto(Guid.NewGuid(), "TEXT:ROOM:1", "ROOM LBLS", "KITCHEN", 125m, 784m, 0.95m, null, 1)
+                ],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new WallCandidateDto(Guid.NewGuid(), "LINE:WALL:1", "WALLS", "Accepted", 0.95m, null, null, wallPathId, 1)
+                ],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.IsRoomNamesQueueExpanded = true;
+
+        Assert.False(viewModel.IsCuratedObjectsQueueExpanded);
+        Assert.True(viewModel.IsRoomNamesQueueExpanded);
+
+        viewModel.IsStructureQueueExpanded = true;
+
+        Assert.True(viewModel.IsStructureQueueExpanded);
+        Assert.False(viewModel.IsRoomNamesQueueExpanded);
+        Assert.False(viewModel.IsOpeningCodesQueueExpanded);
+        Assert.False(viewModel.IsCuratedObjectsQueueExpanded);
+    }
+
+    [Fact]
+    public async Task Inspector_tool_selection_falls_back_to_overview_when_the_active_tool_is_no_longer_valid()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "santa-barbara", "SANTA-BARBARA", isActive: true);
+        template.SetCurrentVersion(versionId);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 11, 21, 20, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "santa-barbara",
+                "SANTA-BARBARA",
+                "Curated Draft",
+                1,
+                null,
+                [],
+                [
+                    new RoomLabelDto(Guid.NewGuid(), "TEXT:1", "ROOM LBLS", "KITCHEN", 125m, 784m, 0.95m, null, 1)
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedRoomLabel = viewModel.RoomLabels.Single();
+        viewModel.SelectInspectorTool("Text");
+
+        Assert.True(viewModel.IsTextToolSelected);
+
+        viewModel.SelectedRoomLabel = null;
+
+        Assert.True(viewModel.IsOverviewToolSelected);
+        Assert.False(viewModel.CanUseTextTool);
     }
 
     [Fact]
@@ -221,9 +440,11 @@ public sealed class FloorPlanReviewViewModelTests
 
         Assert.True(selected);
         Assert.Null(viewModel.SelectedCandidate);
-        Assert.Equal("LINE:DOOR:1", viewModel.SelectedOpeningCandidate?.SourceEntityRef);
+        Assert.Equal("LINE:DOOR:1", viewModel.SelectedCuratedArtifact?.SourceEntityRef);
+        Assert.Equal(FloorPlanArtifactTaxonomy.OpeningFamily, viewModel.SelectedCuratedArtifact?.ResolvedFamily);
+        Assert.Equal(FloorPlanArtifactTaxonomy.DoorType, viewModel.SelectedCuratedArtifact?.ResolvedType);
         Assert.Equal(openingPathId, viewModel.HighlightGeometryPathId);
-        Assert.Equal("Previewing opening: LINE:DOOR:1", viewModel.PreviewSelectionLabel);
+        Assert.Equal("Previewing curated object: LINE:DOOR:1", viewModel.PreviewSelectionLabel);
         Assert.Contains("Exclude from Curation", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -289,9 +510,11 @@ public sealed class FloorPlanReviewViewModelTests
 
         Assert.True(selected);
         Assert.Null(viewModel.SelectedCandidate);
-        Assert.Equal("Toilet", viewModel.SelectedFixedPlanComponent?.Kind);
+        Assert.Equal("INSERT:1", viewModel.SelectedCuratedArtifact?.SourceEntityRef);
+        Assert.Equal(FloorPlanArtifactTaxonomy.FixedFamily, viewModel.SelectedCuratedArtifact?.ResolvedFamily);
+        Assert.Equal(FloorPlanArtifactTaxonomy.ToiletType, viewModel.SelectedCuratedArtifact?.ResolvedType);
         Assert.Equal(toiletPathId, viewModel.HighlightGeometryPathId);
-        Assert.Equal("Previewing fixed component: INSERT:1", viewModel.PreviewSelectionLabel);
+        Assert.Equal("Previewing curated object: INSERT:1", viewModel.PreviewSelectionLabel);
         Assert.Contains("Exclude from Curation", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -356,9 +579,11 @@ public sealed class FloorPlanReviewViewModelTests
 
         Assert.True(selected);
         Assert.Null(viewModel.SelectedCandidate);
-        Assert.Equal("WetAreaDetail", viewModel.SelectedProtectedDetailAssembly?.Kind);
+        Assert.Equal("DETAIL:MISC:1", viewModel.SelectedCuratedArtifact?.SourceEntityRef);
+        Assert.Equal(FloorPlanArtifactTaxonomy.ProtectedFamily, viewModel.SelectedCuratedArtifact?.ResolvedFamily);
+        Assert.Equal(FloorPlanArtifactTaxonomy.UnknownWetAssemblyType, viewModel.SelectedCuratedArtifact?.ResolvedType);
         Assert.Equal(protectedPathId, viewModel.HighlightGeometryPathId);
-        Assert.Equal("Previewing protected detail: DETAIL:MISC:1", viewModel.PreviewSelectionLabel);
+        Assert.Equal("Previewing curated object: DETAIL:MISC:1", viewModel.PreviewSelectionLabel);
         Assert.Contains("Exclude from Curation", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -405,7 +630,7 @@ public sealed class FloorPlanReviewViewModelTests
         viewModel.SelectedRoomLabel = viewModel.RoomLabels.Single();
 
         Assert.True(viewModel.HasSelectedArtifact);
-        Assert.Equal("Room Label", viewModel.SelectedArtifactTypeLabel);
+        Assert.Equal("Room Name", viewModel.SelectedArtifactTypeLabel);
         Assert.Equal("KITCHEN", viewModel.SelectedArtifactTitle);
         Assert.Contains("ROOM LBLS", viewModel.SelectedArtifactSubtitle, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("Exclude from Curation", viewModel.ExcludeSelectedArtifactLabel);

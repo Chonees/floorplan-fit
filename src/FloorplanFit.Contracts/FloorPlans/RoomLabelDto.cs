@@ -17,4 +17,9 @@ public sealed record RoomLabelDto(
     string? HorizontalAlignment = null,
     string? VerticalAlignment = null,
     string? AttachmentPoint = null,
-    string? ColorArgb = null);
+    string? ColorArgb = null,
+    bool HasManualPosition = false,
+    decimal? DetectedX = null,
+    decimal? DetectedY = null,
+    bool HasManualTextHeight = false,
+    decimal? DetectedTextHeight = null);

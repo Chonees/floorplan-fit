@@ -94,6 +94,7 @@ public sealed class OpenFloorPlanReviewSessionIntegrationTests
             new IxMiliaOpeningExtractor(),
             new IxMiliaFixedPlanComponentExtractor(),
             new IxMiliaProtectedDetailAssemblyExtractor(),
+            new IxMiliaDimensionExtractor(),
             new SqliteWallExtractionRunRepository(session),
             new SqliteExtractedWallCandidateRepository(session),
             new SqliteExtractedRoomLabelRepository(session),
@@ -101,6 +102,7 @@ public sealed class OpenFloorPlanReviewSessionIntegrationTests
             new SqliteExtractedOpeningLabelRepository(session),
             new SqliteExtractedFixedPlanComponentRepository(session),
             new SqliteExtractedProtectedDetailAssemblyRepository(session),
+            new SqliteExtractedDimensionRepository(session),
             new SqliteUnitOfWork(session),
             new FixedClock(now));
 

@@ -45,6 +45,8 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
             Assert.NotEmpty(reviewSession.OpeningLabels);
             Assert.NotEmpty(reviewSession.FixedPlanComponents);
             Assert.NotEmpty(reviewSession.ProtectedDetailAssemblies);
+            Assert.NotEmpty(reviewSession.Dimensions);
+            Assert.NotNull(reviewSession.MeasurementContext);
             Assert.Single(reviewSession.PinchGroups);
             Assert.Single(reviewSession.PinchMarkers);
             Assert.NotEmpty(reviewSession.GeometryPaths);
@@ -77,6 +79,25 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
             Assert.Contains(reviewSession.ProtectedDetailAssemblies.Single().GeometryPathIds, pathId =>
                 reviewSession.GeometryPaths.Any(path => path.Id == pathId));
             Assert.Contains(reviewSession.GeometryPaths, item => item.Id == reviewSession.OpeningCandidates.Single().GeometryPathId);
+            var dimension = reviewSession.Dimensions.Single();
+            Assert.Equal("Inch", reviewSession.MeasurementContext!.SourceUnit);
+            Assert.Equal(25.4m, reviewSession.MeasurementContext.ToMillimetersFactor);
+            Assert.Equal(1m, reviewSession.MeasurementContext.LinearToleranceMm);
+            Assert.Equal(0.5m, reviewSession.MeasurementContext.AngularToleranceDeg);
+            Assert.Equal("10'-4\"", dimension.DisplayText);
+            Assert.Equal("GeometryBlock", dimension.DisplayTextSource);
+            Assert.Equal("DIMS", dimension.SourceLayer);
+            Assert.Equal(123.810387305188m, dimension.MeasurementSourceUnits);
+            Assert.Equal("AB12", dimension.SourceHandle);
+            Assert.Equal(408.8391899621098m, dimension.RenderTextX);
+            Assert.Equal(518.9677806582538m, dimension.RenderTextY);
+            Assert.Equal(3.5m, dimension.RenderTextHeight);
+            Assert.Equal("MiddleCenter", dimension.RenderTextAttachmentPoint);
+            Assert.Equal(3, dimension.LineSegments.Count);
+            Assert.Equal(3, dimension.LinePrimitives.Count);
+            Assert.Single(dimension.TextPrimitives);
+            Assert.Equal(2, dimension.InsertPrimitives.Count);
+            Assert.Equal("_Dot", dimension.InsertPrimitives[0].Name);
         }
         finally
         {
@@ -298,6 +319,71 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
                     0.90m,
                     "Detected from MISC protected detail geometry.",
                     "#FF00FF00")
+            ],
+            CancellationToken.None);
+
+        await new SqliteExtractedDimensionRepository(session).AddRangeAsync(
+            [
+                new ExtractedDimension(
+                    Guid.NewGuid(),
+                    extractionRun.Id,
+                    "DIMENSION:1",
+                    "DIMS",
+                    "DIMENSION",
+                    "*D169",
+                    "10'-4\"",
+                    "GeometryBlock",
+                    string.Empty,
+                    123.810387305188m,
+                    3144.7838375517752m,
+                    "Inch",
+                    0,
+                    0m,
+                    0m,
+                    94.5741888255622m,
+                    516.95664946623m,
+                    0m,
+                    218.38457613075m,
+                    524.795084103958m,
+                    0m,
+                    94.5741888255622m,
+                    537.195356591169m,
+                    0.0000000000000074m,
+                    0.99m,
+                    "Detected native DIMENSION on layer DIMS.",
+                    1,
+                    renderTextX: 408.8391899621098m,
+                    renderTextY: 518.9677806582538m,
+                    renderTextHeight: 3.5m,
+                    renderTextRotationDegrees: 0m,
+                    renderTextStyleName: "ARCH",
+                    renderTextAttachmentPoint: "MiddleCenter",
+                    lineSegments:
+                    [
+                        new ExtractedDimensionLineSegment(440.5741888255912m, 519.7784891962231m, 440.5741888255912m, 512.9566494662152m),
+                        new ExtractedDimensionLineSegment(372.5741888256203m, 524.9408070879156m, 372.5741888256203m, 512.9566494662152m),
+                        new ExtractedDimensionLineSegment(437.0741888255913m, 516.9566494662152m, 376.0741888256204m, 516.9566494662152m)
+                    ],
+                    sourceHandle: "AB12",
+                    linePrimitives:
+                    [
+                        new ExtractedDimensionLinePrimitive("AB12-LINE-1", 1, 440.5741888255912m, 519.7784891962231m, 440.5741888255912m, 512.9566494662152m),
+                        new ExtractedDimensionLinePrimitive("AB12-LINE-2", 2, 372.5741888256203m, 524.9408070879156m, 372.5741888256203m, 512.9566494662152m),
+                        new ExtractedDimensionLinePrimitive("AB12-LINE-3", 3, 437.0741888255913m, 516.9566494662152m, 376.0741888256204m, 516.9566494662152m)
+                    ],
+                    textPrimitives:
+                    [
+                        new ExtractedDimensionTextPrimitive("AB12-TEXT-1", 1, "10'-4\"", 408.8391899621098m, 518.9677806582538m, 3.5m, 0m)
+                        {
+                            StyleName = "ARCH",
+                            AttachmentPoint = "MiddleCenter"
+                        }
+                    ],
+                    insertPrimitives:
+                    [
+                        new ExtractedDimensionInsertPrimitive("AB12-INSERT-1", 1, "_Dot", 440.5741888255912m, 516.9566494662152m, 0m),
+                        new ExtractedDimensionInsertPrimitive("AB12-INSERT-2", 2, "_Dot", 372.5741888256203m, 516.9566494662152m, 0m)
+                    ])
             ],
             CancellationToken.None);
 

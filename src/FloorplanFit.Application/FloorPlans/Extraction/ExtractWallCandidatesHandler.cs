@@ -10,6 +10,7 @@ public sealed class ExtractWallCandidatesHandler
     private readonly IOpeningExtractor openingExtractor;
     private readonly IFixedPlanComponentExtractor fixedPlanComponentExtractor;
     private readonly IProtectedDetailAssemblyExtractor protectedDetailAssemblyExtractor;
+    private readonly IDimensionExtractor dimensionExtractor;
     private readonly IWallExtractionRunRepository wallExtractionRunRepository;
     private readonly IExtractedWallCandidateRepository extractedWallCandidateRepository;
     private readonly IExtractedRoomLabelRepository extractedRoomLabelRepository;
@@ -17,6 +18,7 @@ public sealed class ExtractWallCandidatesHandler
     private readonly IExtractedOpeningLabelRepository extractedOpeningLabelRepository;
     private readonly IExtractedFixedPlanComponentRepository extractedFixedPlanComponentRepository;
     private readonly IExtractedProtectedDetailAssemblyRepository extractedProtectedDetailAssemblyRepository;
+    private readonly IExtractedDimensionRepository extractedDimensionRepository;
     private readonly IUnitOfWork unitOfWork;
     private readonly IClock clock;
 
@@ -26,6 +28,7 @@ public sealed class ExtractWallCandidatesHandler
         IOpeningExtractor openingExtractor,
         IFixedPlanComponentExtractor fixedPlanComponentExtractor,
         IProtectedDetailAssemblyExtractor protectedDetailAssemblyExtractor,
+        IDimensionExtractor dimensionExtractor,
         IWallExtractionRunRepository wallExtractionRunRepository,
         IExtractedWallCandidateRepository extractedWallCandidateRepository,
         IExtractedRoomLabelRepository extractedRoomLabelRepository,
@@ -33,6 +36,7 @@ public sealed class ExtractWallCandidatesHandler
         IExtractedOpeningLabelRepository extractedOpeningLabelRepository,
         IExtractedFixedPlanComponentRepository extractedFixedPlanComponentRepository,
         IExtractedProtectedDetailAssemblyRepository extractedProtectedDetailAssemblyRepository,
+        IExtractedDimensionRepository extractedDimensionRepository,
         IUnitOfWork unitOfWork,
         IClock clock)
     {
@@ -41,6 +45,7 @@ public sealed class ExtractWallCandidatesHandler
         this.openingExtractor = openingExtractor;
         this.fixedPlanComponentExtractor = fixedPlanComponentExtractor;
         this.protectedDetailAssemblyExtractor = protectedDetailAssemblyExtractor;
+        this.dimensionExtractor = dimensionExtractor;
         this.wallExtractionRunRepository = wallExtractionRunRepository;
         this.extractedWallCandidateRepository = extractedWallCandidateRepository;
         this.extractedRoomLabelRepository = extractedRoomLabelRepository;
@@ -48,6 +53,7 @@ public sealed class ExtractWallCandidatesHandler
         this.extractedOpeningLabelRepository = extractedOpeningLabelRepository;
         this.extractedFixedPlanComponentRepository = extractedFixedPlanComponentRepository;
         this.extractedProtectedDetailAssemblyRepository = extractedProtectedDetailAssemblyRepository;
+        this.extractedDimensionRepository = extractedDimensionRepository;
         this.unitOfWork = unitOfWork;
         this.clock = clock;
     }
@@ -74,6 +80,7 @@ public sealed class ExtractWallCandidatesHandler
         var detectedOpenings = await openingExtractor.ExtractAsync(managedFilePath, cancellationToken);
         var detectedFixedComponents = await fixedPlanComponentExtractor.ExtractAsync(managedFilePath, cancellationToken);
         var detectedProtectedDetails = await protectedDetailAssemblyExtractor.ExtractAsync(managedFilePath, cancellationToken);
+        var detectedDimensions = await dimensionExtractor.ExtractAsync(managedFilePath, cancellationToken);
         var domainCandidates = detectedCandidates
             .Select((item, index) => new ExtractedWallCandidate(
                 Guid.NewGuid(),
@@ -170,6 +177,139 @@ public sealed class ExtractWallCandidatesHandler
                 sortOrder: index + 1,
                 colorArgb: item.ColorArgb))
             .ToArray();
+        var dimensions = detectedDimensions
+            .Select((item, index) => new ExtractedDimension(
+                Guid.NewGuid(),
+                run.Id,
+                item.SourceEntityRef,
+                item.SourceLayer,
+                item.SourceEntityKind,
+                item.GeometryBlockName,
+                item.DisplayText,
+                item.DisplayTextSource,
+                item.RawTextOverride,
+                item.MeasurementSourceUnits,
+                item.MeasurementMillimeters,
+                item.SourceUnit,
+                item.DimType,
+                item.Angle,
+                item.ObliqueAngle,
+                item.DefPointX,
+                item.DefPointY,
+                item.DefPointZ,
+                item.DefPoint2X,
+                item.DefPoint2Y,
+                item.DefPoint2Z,
+                item.DefPoint3X,
+                item.DefPoint3Y,
+                item.DefPoint3Z,
+                item.Confidence,
+                item.DetectionNotes,
+                sortOrder: index + 1,
+                renderTextX: item.RenderTextX,
+                renderTextY: item.RenderTextY,
+                renderTextHeight: item.RenderTextHeight,
+                renderTextRotationDegrees: item.RenderTextRotationDegrees,
+                renderTextStyleName: item.RenderTextStyleName,
+                renderTextHorizontalAlignment: item.RenderTextHorizontalAlignment,
+                renderTextVerticalAlignment: item.RenderTextVerticalAlignment,
+                renderTextAttachmentPoint: item.RenderTextAttachmentPoint,
+                sourceHandle: item.SourceHandle,
+                lineSegments: item.LineSegments
+                    .Select(segment => new ExtractedDimensionLineSegment(segment.StartX, segment.StartY, segment.EndX, segment.EndY))
+                    .ToArray(),
+                linePrimitives: item.LinePrimitives
+                    .Select(primitive => new ExtractedDimensionLinePrimitive(
+                        primitive.PrimitiveKey,
+                        primitive.SortOrder,
+                        primitive.StartX,
+                        primitive.StartY,
+                        primitive.EndX,
+                        primitive.EndY)
+                    {
+                        SourceHandle = primitive.SourceHandle,
+                        SourceLayer = primitive.SourceLayer
+                    })
+                    .ToArray(),
+                textPrimitives: item.TextPrimitives
+                    .Select(primitive => new ExtractedDimensionTextPrimitive(
+                        primitive.PrimitiveKey,
+                        primitive.SortOrder,
+                        primitive.Text,
+                        primitive.X,
+                        primitive.Y,
+                        primitive.Height,
+                        primitive.RotationDegrees)
+                    {
+                        SourceHandle = primitive.SourceHandle,
+                        SourceLayer = primitive.SourceLayer,
+                        StyleName = primitive.StyleName,
+                        HorizontalAlignment = primitive.HorizontalAlignment,
+                        VerticalAlignment = primitive.VerticalAlignment,
+                        AttachmentPoint = primitive.AttachmentPoint
+                    })
+                    .ToArray(),
+                insertPrimitives: item.InsertPrimitives
+                    .Select(primitive => new ExtractedDimensionInsertPrimitive(
+                        primitive.PrimitiveKey,
+                        primitive.SortOrder,
+                        primitive.Name,
+                        primitive.X,
+                        primitive.Y,
+                        primitive.Z)
+                    {
+                        SourceHandle = primitive.SourceHandle,
+                        SourceLayer = primitive.SourceLayer,
+                        RotationDegrees = primitive.RotationDegrees,
+                        ScaleX = primitive.ScaleX,
+                        ScaleY = primitive.ScaleY,
+                        ScaleZ = primitive.ScaleZ
+                    })
+                    .ToArray(),
+                circlePrimitives: item.CirclePrimitives
+                    .Select(primitive => new ExtractedDimensionCirclePrimitive(
+                        primitive.PrimitiveKey,
+                        primitive.SortOrder,
+                        primitive.CenterX,
+                        primitive.CenterY,
+                        primitive.Radius)
+                    {
+                        SourceHandle = primitive.SourceHandle,
+                        SourceLayer = primitive.SourceLayer
+                    })
+                    .ToArray(),
+                arcPrimitives: item.ArcPrimitives
+                    .Select(primitive => new ExtractedDimensionArcPrimitive(
+                        primitive.PrimitiveKey,
+                        primitive.SortOrder,
+                        primitive.CenterX,
+                        primitive.CenterY,
+                        primitive.Radius,
+                        primitive.StartAngleDegrees,
+                        primitive.EndAngleDegrees)
+                    {
+                        SourceHandle = primitive.SourceHandle,
+                        SourceLayer = primitive.SourceLayer
+                    })
+                    .ToArray(),
+                solidPrimitives: item.SolidPrimitives
+                    .Select(primitive => new ExtractedDimensionSolidPrimitive(
+                        primitive.PrimitiveKey,
+                        primitive.SortOrder,
+                        primitive.Point1X,
+                        primitive.Point1Y,
+                        primitive.Point2X,
+                        primitive.Point2Y,
+                        primitive.Point3X,
+                        primitive.Point3Y,
+                        primitive.Point4X,
+                        primitive.Point4Y)
+                    {
+                        SourceHandle = primitive.SourceHandle,
+                        SourceLayer = primitive.SourceLayer
+                    })
+                    .ToArray()))
+            .ToArray();
 
         await wallExtractionRunRepository.AddAsync(run, cancellationToken);
         await extractedWallCandidateRepository.AddRangeAsync(domainCandidates, detectedCandidates, cancellationToken);
@@ -178,6 +318,7 @@ public sealed class ExtractWallCandidatesHandler
         await extractedOpeningLabelRepository.AddRangeAsync(openingLabels, cancellationToken);
         await extractedFixedPlanComponentRepository.AddRangeAsync(fixedComponents, detectedFixedComponents, cancellationToken);
         await extractedProtectedDetailAssemblyRepository.AddRangeAsync(protectedDetails, detectedProtectedDetails, cancellationToken);
+        await extractedDimensionRepository.AddRangeAsync(dimensions, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return (run.Id, "Extracted");

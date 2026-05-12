@@ -34,17 +34,17 @@ public sealed class OpenFloorPlanReviewSessionHandlerTests
             "santa-barbara",
             "SANTA-BARBARA",
             "Curated Draft",
-            ActiveVersionNumber: 1,
-            ActivePublishedCurationId: null,
-            GeometryPaths: [],
-            RoomLabels: [],
-            OpeningCandidates: [],
-            OpeningLabels: [],
-            FixedPlanComponents: [],
-            ProtectedDetailAssemblies: [],
-            WallCandidates: [],
-            PinchGroups: [],
-            PinchMarkers: []);
+            1,
+            null,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
         var reviewReader = new FakeFloorPlanReviewSessionReader(expectedSession);
         var handler = new OpenFloorPlanReviewSessionHandler(templateRepository, versionRepository, reviewReader, startOrResumeHandler);
 

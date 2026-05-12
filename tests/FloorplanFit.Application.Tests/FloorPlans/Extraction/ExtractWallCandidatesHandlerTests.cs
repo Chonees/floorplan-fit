@@ -27,6 +27,7 @@ public sealed class ExtractWallCandidatesHandlerTests
         var openingLabels = new InMemoryExtractedOpeningLabelRepository();
         var fixedComponents = new InMemoryExtractedFixedPlanComponentRepository();
         var protectedDetails = new InMemoryExtractedProtectedDetailAssemblyRepository();
+        var dimensions = new InMemoryExtractedDimensionRepository();
         var unitOfWork = new FakeUnitOfWork();
 
         var handler = new ExtractWallCandidatesHandler(
@@ -99,6 +100,48 @@ public sealed class ExtractWallCandidatesHandlerTests
                     "Detected from MISC protected detail geometry.",
                     "#FF00FF00")
             ]),
+            new FakeDimensionExtractor(
+            [
+                new DetectedDimension(
+                    "DIMENSION:1",
+                    "DIMS",
+                    "DIMENSION",
+                    "*D169",
+                    "10'-4\"",
+                    "GeometryBlock",
+                    string.Empty,
+                    123.810387305188m,
+                    3144.7838375517752m,
+                    "Inch",
+                    0,
+                    0m,
+                    0m,
+                    94.5741888255622m,
+                    516.95664946623m,
+                    0m,
+                    218.38457613075m,
+                    524.795084103958m,
+                    0m,
+                    94.5741888255622m,
+                    537.195356591169m,
+                    0.0000000000000074m,
+                    0.99m,
+                    "Detected native DIMENSION on layer DIMS.")
+                {
+                    RenderTextX = 408.8391899621098m,
+                    RenderTextY = 518.9677806582538m,
+                    RenderTextHeight = 3.5m,
+                    RenderTextRotationDegrees = 0m,
+                    RenderTextStyleName = "ARCH",
+                    RenderTextAttachmentPoint = "MiddleCenter",
+                    LineSegments =
+                    [
+                        new DetectedDimensionLineSegment(440.5741888255912m, 519.7784891962231m, 440.5741888255912m, 512.9566494662152m),
+                        new DetectedDimensionLineSegment(372.5741888256203m, 524.9408070879156m, 372.5741888256203m, 512.9566494662152m),
+                        new DetectedDimensionLineSegment(437.0741888255913m, 516.9566494662152m, 376.0741888256204m, 516.9566494662152m)
+                    ]
+                }
+            ]),
             runs,
             candidates,
             roomLabels,
@@ -106,6 +149,7 @@ public sealed class ExtractWallCandidatesHandlerTests
             openingLabels,
             fixedComponents,
             protectedDetails,
+            dimensions,
             unitOfWork,
             new FakeClock(new DateTime(2026, 4, 30, 20, 0, 0, DateTimeKind.Utc)));
 
@@ -136,6 +180,17 @@ public sealed class ExtractWallCandidatesHandlerTests
         Assert.Equal("WetAreaDetail", protectedDetail.Kind);
         Assert.Equal("DETAIL-GROUP", protectedDetail.SourceEntityKind);
         Assert.Equal("#FF00FF00", protectedDetail.ColorArgb);
+        var dimension = Assert.Single(dimensions.Items);
+        Assert.Equal(run.Id, dimension.WallExtractionRunId);
+        Assert.Equal("10'-4\"", dimension.DisplayText);
+        Assert.Equal("GeometryBlock", dimension.DisplayTextSource);
+        Assert.Equal(123.810387305188m, dimension.MeasurementSourceUnits);
+        Assert.Equal(3144.7838375517752m, dimension.MeasurementMillimeters);
+        Assert.Equal(408.8391899621098m, dimension.RenderTextX);
+        Assert.Equal(518.9677806582538m, dimension.RenderTextY);
+        Assert.Equal(3.5m, dimension.RenderTextHeight);
+        Assert.Equal("MiddleCenter", dimension.RenderTextAttachmentPoint);
+        Assert.Equal(3, dimension.LineSegments.Count);
         Assert.True(unitOfWork.SaveChangesCalled);
     }
 
@@ -211,6 +266,21 @@ public sealed class ExtractWallCandidatesHandlerTests
         public Task<IReadOnlyList<DetectedProtectedDetailAssembly>> ExtractAsync(string managedFilePath, CancellationToken cancellationToken)
         {
             return Task.FromResult(assemblies);
+        }
+    }
+
+    private sealed class FakeDimensionExtractor : IDimensionExtractor
+    {
+        private readonly IReadOnlyList<DetectedDimension> dimensions;
+
+        public FakeDimensionExtractor(IReadOnlyList<DetectedDimension> dimensions)
+        {
+            this.dimensions = dimensions;
+        }
+
+        public Task<IReadOnlyList<DetectedDimension>> ExtractAsync(string managedFilePath, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(dimensions);
         }
     }
 
@@ -346,6 +416,23 @@ public sealed class ExtractWallCandidatesHandlerTests
         {
             Items.RemoveAll(item => item.Id == protectedDetailAssemblyId);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryExtractedDimensionRepository : IExtractedDimensionRepository
+    {
+        public List<ExtractedDimension> Items { get; } = [];
+
+        public Task AddRangeAsync(IReadOnlyList<ExtractedDimension> dimensions, CancellationToken cancellationToken)
+        {
+            Items.AddRange(dimensions);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ExtractedDimension>> ListByExtractionRunAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<ExtractedDimension>>(
+                Items.Where(item => item.WallExtractionRunId == wallExtractionRunId).ToArray());
         }
     }
 

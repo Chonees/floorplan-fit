@@ -91,6 +91,15 @@ public sealed partial class LibraryViewModel : ObservableObject
 
         var reviewViewModel = new FloorPlanReviewViewModel(scopeFactory, templateId, versionId);
         await reviewViewModel.LoadAsync(cancellationToken);
+
+        if (RequiresDimensionPrecisionRefresh(reviewViewModel))
+        {
+            StatusMessage = $"Refreshing native dimensions for {SelectedItem.Name} v{SelectedVersion.VersionNumber}...";
+            await ExtractByVersionAsync(versionId, cancellationToken);
+            await reviewViewModel.LoadAsync(cancellationToken);
+            StatusMessage = $"Refreshed native dimensions for {SelectedItem.Name} v{SelectedVersion.VersionNumber}";
+        }
+
         return reviewViewModel;
     }
 
@@ -176,6 +185,19 @@ public sealed partial class LibraryViewModel : ObservableObject
 
         var handler = scope.ServiceProvider.GetRequiredService<ExtractWallCandidatesHandler>();
         await handler.HandleAsync(source.FloorPlanVersionId, source.ManagedFilePath, cancellationToken);
+    }
+
+    private static bool RequiresDimensionPrecisionRefresh(FloorPlanReviewViewModel reviewViewModel)
+    {
+        if (reviewViewModel.Dimensions.Count == 0)
+        {
+            return false;
+        }
+
+        return reviewViewModel.Dimensions.All(dimension =>
+            dimension.LineSegments.Count == 0 &&
+            dimension.RenderTextX is null &&
+            dimension.RenderTextY is null);
     }
 
     partial void OnSelectedItemChanged(FloorPlanLibraryItemDto? value)

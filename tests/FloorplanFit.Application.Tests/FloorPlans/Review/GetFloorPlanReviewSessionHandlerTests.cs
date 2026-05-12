@@ -15,18 +15,16 @@ public sealed class GetFloorPlanReviewSessionHandlerTests
             "santa-barbara",
             "SANTA-BARBARA",
             "Extracted",
-            ActiveVersionNumber: 2,
-            ActivePublishedCurationId: null,
-            GeometryPaths: [],
-            RoomLabels:
+            2,
+            null,
+            [],
             [
                 new RoomLabelDto(Guid.NewGuid(), "TEXT:1", "ROOM LBLS", "KITCHEN", 125m, 784m, 0.95m, null, 1)
             ],
-            OpeningCandidates: [],
-            OpeningLabels: [],
-            FixedPlanComponents: [],
-            ProtectedDetailAssemblies: [],
-            WallCandidates:
+            [],
+            [],
+            [],
+            [],
             [
                 new WallCandidateDto(
                     Guid.NewGuid(),
@@ -39,8 +37,8 @@ public sealed class GetFloorPlanReviewSessionHandlerTests
                     Guid.NewGuid(),
                     1)
             ],
-            PinchGroups: [],
-            PinchMarkers: []);
+            [],
+            []);
         var reader = new FakeFloorPlanReviewSessionReader(expected);
         var handler = new GetFloorPlanReviewSessionHandler(reader);
 

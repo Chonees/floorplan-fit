@@ -58,6 +58,48 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void Preview_control_exposes_dimensions_for_canvas_overlay()
+    {
+        DimensionDto[] dimensions =
+        [
+            new(
+                Guid.NewGuid(),
+                "DIMENSION:1",
+                "DIMS",
+                "DIMENSION",
+                "*D169",
+                "10'-4\"",
+                "GeometryBlock",
+                string.Empty,
+                123.81m,
+                3144.78m,
+                "Inch",
+                0,
+                0m,
+                0m,
+                0m,
+                0m,
+                0m,
+                100m,
+                0m,
+                0m,
+                0m,
+                20m,
+                0m,
+                0.99m,
+                null,
+                1)
+        ];
+
+        var control = new FloorPlanPreviewControl
+        {
+            Dimensions = dimensions
+        };
+
+        Assert.Same(dimensions, control.Dimensions);
+    }
+
+    [Fact]
     public void Preview_control_exposes_fixed_plan_components_for_canvas_overlay()
     {
         var pathId = Guid.NewGuid();
@@ -573,6 +615,171 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void CreateDimensionRenderPlan_projects_dimension_text_to_the_dimension_line_midpoint()
+    {
+        var pathId = Guid.NewGuid();
+        GeometryPathDto[] geometryPaths =
+        [
+            new GeometryPathDto(
+                pathId,
+                IsClosed: false,
+                [new GeometrySegmentDto(pathId, 1, 0m, 0m, 100m, 100m)])
+        ];
+        var viewport = FloorPlanPreviewGeometry.CalculateViewport(geometryPaths, new Rect(0, 0, 500, 500), 48d);
+        Assert.NotNull(viewport);
+        var dimension = new DimensionDto(
+            Guid.NewGuid(),
+            "DIMENSION:1",
+            "DIMS",
+            "DIMENSION",
+            "*D169",
+            "10'-4\"",
+            "GeometryBlock",
+            string.Empty,
+            123.81m,
+            3144.78m,
+            "Inch",
+            0,
+            0m,
+            0m,
+            0m,
+            0m,
+            0m,
+            100m,
+            0m,
+            0m,
+            0m,
+            20m,
+            0m,
+            0.99m,
+            null,
+            1);
+
+        var plan = CadTextPreviewLayerRenderer.CreateDimensionRenderPlan(dimension, viewport.Value);
+
+        Assert.Equal("10'-4\"", plan.Text);
+        Assert.Equal(viewport.Value.Project(50m, 20m), plan.Anchor);
+        Assert.Equal(0d, plan.RotationDegrees);
+    }
+
+    [Fact]
+    public void CreateDimensionRenderPlan_uses_precise_geometry_block_text_position_when_available()
+    {
+        var pathId = Guid.NewGuid();
+        GeometryPathDto[] geometryPaths =
+        [
+            new GeometryPathDto(
+                pathId,
+                IsClosed: false,
+                [new GeometrySegmentDto(pathId, 1, 0m, 0m, 100m, 100m)])
+        ];
+        var viewport = FloorPlanPreviewGeometry.CalculateViewport(geometryPaths, new Rect(0, 0, 500, 500), 48d);
+        Assert.NotNull(viewport);
+        var dimension = new DimensionDto(
+            Guid.NewGuid(),
+            "DIMENSION:1",
+            "DIMS",
+            "DIMENSION",
+            "*D169",
+            "5'-8\"",
+            "GeometryBlock",
+            string.Empty,
+            68m,
+            1727.2m,
+            "Inch",
+            160,
+            0m,
+            0m,
+            440.5741888255912m,
+            521.7784891962232m,
+            0m,
+            372.5741888256203m,
+            526.9408070879157m,
+            0m,
+            372.5741888256203m,
+            516.9566494662152m,
+            0m,
+            0.99m,
+            null,
+            1)
+        {
+            RenderTextX = 408.8391899621098m,
+            RenderTextY = 518.9677806582538m,
+            RenderTextHeight = 3.5m,
+            RenderTextRotationDegrees = 0m,
+            RenderTextStyleName = "ARCH",
+            RenderTextAttachmentPoint = "MiddleCenter"
+        };
+
+        var plan = CadTextPreviewLayerRenderer.CreateDimensionRenderPlan(dimension, viewport.Value);
+        var expectedAnchor = viewport.Value.Project(408.8391899621098m, 518.9677806582538m);
+
+        Assert.InRange(Math.Abs(expectedAnchor.X - plan.Anchor.X), 0d, 0.000001d);
+        Assert.InRange(Math.Abs(expectedAnchor.Y - plan.Anchor.Y), 0d, 0.000001d);
+        Assert.Equal(3.5d * viewport.Value.Scale, plan.FontSize);
+        Assert.Equal(0d, plan.RotationDegrees);
+        Assert.Equal("MiddleCenter", plan.AttachmentPoint);
+    }
+
+    [Fact]
+    public void DimensionPreviewLayerRenderer_projects_exact_dimension_segments_to_preview_lines()
+    {
+        var pathId = Guid.NewGuid();
+        GeometryPathDto[] geometryPaths =
+        [
+            new GeometryPathDto(
+                pathId,
+                IsClosed: false,
+                [new GeometrySegmentDto(pathId, 1, 0m, 0m, 100m, 100m)])
+        ];
+        var viewport = FloorPlanPreviewGeometry.CalculateViewport(geometryPaths, new Rect(0, 0, 500, 500), 48d);
+        Assert.NotNull(viewport);
+        var dimension = new DimensionDto(
+            Guid.NewGuid(),
+            "DIMENSION:1",
+            "DIMS",
+            "DIMENSION",
+            "*D169",
+            "5'-8\"",
+            "GeometryBlock",
+            string.Empty,
+            68m,
+            1727.2m,
+            "Inch",
+            160,
+            0m,
+            0m,
+            440.5741888255912m,
+            521.7784891962232m,
+            0m,
+            372.5741888256203m,
+            526.9408070879157m,
+            0m,
+            372.5741888256203m,
+            516.9566494662152m,
+            0m,
+            0.99m,
+            null,
+            1)
+        {
+            LineSegments =
+            [
+                new DimensionLineSegmentDto(440.5741888255912m, 519.7784891962231m, 440.5741888255912m, 512.9566494662152m),
+                new DimensionLineSegmentDto(372.5741888256203m, 524.9408070879156m, 372.5741888256203m, 512.9566494662152m),
+                new DimensionLineSegmentDto(437.0741888255913m, 516.9566494662152m, 376.0741888256204m, 516.9566494662152m)
+            ]
+        };
+
+        var projected = DimensionPreviewLayerRenderer.CreateProjectedSegments(dimension, viewport.Value);
+
+        Assert.Equal(3, projected.Count);
+        Assert.Equal(viewport.Value.Project(440.5741888255912m, 519.7784891962231m), projected[0].Start);
+        Assert.Equal(viewport.Value.Project(440.5741888255912m, 512.9566494662152m), projected[0].End);
+        Assert.Equal(viewport.Value.Project(437.0741888255913m, 516.9566494662152m), projected[2].Start);
+        Assert.Equal(viewport.Value.Project(376.0741888256204m, 516.9566494662152m), projected[2].End);
+    }
+
+    [Fact]
     public void ResolveRoomLabelTextOrigin_uses_baseline_for_default_dxf_text()
     {
         var plan = new CadTextPreviewLayerRenderer.TextRenderPlan(
@@ -718,6 +925,33 @@ public sealed class FloorPlanPreviewControlTests
         Assert.Equal(
             [new Point(10d, 10d), new Point(30d, 10d), new Point(10d, 30d), new Point(30d, 30d)],
             dots);
+    }
+
+    [Fact]
+    public void CadViewportContext_create_reports_world_units_per_pixel_and_1_2_5_grid_spacing()
+    {
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0, 0, 800, 600),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 2d,
+            OffsetX: 100d,
+            OffsetY: 80d);
+
+        var context = CadViewportContext.Create(viewport);
+
+        Assert.Equal(0.5d, context.WorldUnitsPerPixel);
+        Assert.Equal(20d, context.MinorGridSpacingWorld);
+        Assert.Equal(100d, context.MajorGridSpacingWorld);
+        Assert.Equal(4d, context.SnappingToleranceWorld);
+    }
+
+    [Fact]
+    public void GetWorldLinePositions_returns_origin_anchored_grid_coordinates()
+    {
+        var positions = PreviewWorkspaceRenderer.GetWorldLinePositions(minWorld: -12d, maxWorld: 27d, spacingWorld: 10d);
+
+        Assert.Equal([-10d, 0d, 10d, 20d], positions);
     }
 
     [Fact]

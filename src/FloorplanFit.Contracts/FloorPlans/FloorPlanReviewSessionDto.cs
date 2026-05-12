@@ -15,4 +15,50 @@ public sealed record FloorPlanReviewSessionDto(
     IReadOnlyList<ProtectedDetailAssemblyDto> ProtectedDetailAssemblies,
     IReadOnlyList<WallCandidateDto> WallCandidates,
     IReadOnlyList<PinchGroupDto> PinchGroups,
-    IReadOnlyList<PinchMarkerDto> PinchMarkers);
+    IReadOnlyList<PinchMarkerDto> PinchMarkers,
+    IReadOnlyList<CuratedPlanArtifactDto> CuratedPlanArtifacts)
+{
+    public IReadOnlyList<DimensionDto> Dimensions { get; init; } = [];
+
+    public MeasurementContextDto? MeasurementContext { get; init; }
+
+    public IReadOnlyList<MeasurableEdgeDto> MeasurableEdges { get; init; } = [];
+
+    public IReadOnlyList<DimensionAssociationDto> DimensionAssociations { get; init; } = [];
+
+    public FloorPlanReviewSessionDto(
+        Guid templateId,
+        string code,
+        string name,
+        string status,
+        int activeVersionNumber,
+        Guid? activePublishedCurationId,
+        IReadOnlyList<GeometryPathDto> geometryPaths,
+        IReadOnlyList<RoomLabelDto> roomLabels,
+        IReadOnlyList<OpeningCandidateDto> openingCandidates,
+        IReadOnlyList<OpeningLabelDto> openingLabels,
+        IReadOnlyList<FixedPlanComponentDto> fixedPlanComponents,
+        IReadOnlyList<ProtectedDetailAssemblyDto> protectedDetailAssemblies,
+        IReadOnlyList<WallCandidateDto> wallCandidates,
+        IReadOnlyList<PinchGroupDto> pinchGroups,
+        IReadOnlyList<PinchMarkerDto> pinchMarkers)
+        : this(
+            templateId,
+            code,
+            name,
+            status,
+            activeVersionNumber,
+            activePublishedCurationId,
+            geometryPaths,
+            roomLabels,
+            openingCandidates,
+            openingLabels,
+            fixedPlanComponents,
+            protectedDetailAssemblies,
+            wallCandidates,
+            pinchGroups,
+            pinchMarkers,
+            [])
+    {
+    }
+}

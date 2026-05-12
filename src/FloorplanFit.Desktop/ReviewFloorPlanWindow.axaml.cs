@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using FloorplanFit.Desktop.Controls;
 using FloorplanFit.Desktop.ViewModels;
 
@@ -51,6 +52,26 @@ public partial class ReviewFloorPlanWindow : Window
         await viewModel.AddPinchGroupAsync(CancellationToken.None);
     }
 
+    private async void SaveClassificationButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.SaveSelectedCuratedArtifactClassificationAsync(CancellationToken.None);
+    }
+
+    private async void RestoreClassificationButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RestoreSelectedCuratedArtifactClassificationAsync(CancellationToken.None);
+    }
+
     private async void RemovePinchButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is not FloorPlanReviewViewModel viewModel)
@@ -69,5 +90,89 @@ public partial class ReviewFloorPlanWindow : Window
         }
 
         await viewModel.HandlePreviewInteractionAsync(e.GeometryPathId, e.PositionRatio, CancellationToken.None);
+    }
+
+    private void PreviewControl_OnRoomLabelClicked(object? sender, FloorPlanPreviewControl.RoomLabelClickedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            viewModel.SelectRoomLabel(e.RoomLabelId);
+        }
+    }
+
+    private void PreviewControl_OnOpeningLabelClicked(object? sender, FloorPlanPreviewControl.OpeningLabelClickedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            viewModel.SelectOpeningLabel(e.OpeningLabelId);
+        }
+    }
+
+    private async void PreviewControl_OnMovableArtifactMoved(object? sender, FloorPlanPreviewControl.MovableArtifactMovedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            await viewModel.SaveMovedArtifactPositionAsync(e, CancellationToken.None);
+        }
+    }
+
+    private void PreviewControl_OnDimensionClicked(object? sender, FloorPlanPreviewControl.DimensionClickedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            viewModel.SelectDimension(e.DimensionId);
+        }
+    }
+
+    private async void PreviewControl_OnDimensionEdited(object? sender, FloorPlanPreviewControl.DimensionEditedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            await viewModel.SaveEditedDimensionAsync(e, CancellationToken.None);
+        }
+    }
+
+    private async void RestorePositionButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            await viewModel.RestoreSelectedArtifactPositionAsync(CancellationToken.None);
+        }
+    }
+
+    private async void SaveLabelSizeButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            await viewModel.SaveSelectedLabelTextHeightAsync(CancellationToken.None);
+        }
+    }
+
+    private async void RestoreLabelSizeButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            await viewModel.RestoreSelectedLabelTextHeightAsync(CancellationToken.None);
+        }
+    }
+
+    private async void ExportAdjustedDxfButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            await viewModel.ExportAdjustedDxfAsync(CancellationToken.None);
+        }
+    }
+
+    private void InspectorToolButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel ||
+            sender is not Button button ||
+            button.Tag is not string tool)
+        {
+            return;
+        }
+
+        viewModel.SelectInspectorTool(tool);
     }
 }

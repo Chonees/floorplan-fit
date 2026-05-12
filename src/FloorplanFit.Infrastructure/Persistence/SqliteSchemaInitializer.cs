@@ -194,6 +194,87 @@ public static class SqliteSchemaInitializer
                 PRIMARY KEY (protected_detail_assembly_id, geometry_path_id)
             );
 
+            CREATE TABLE IF NOT EXISTS extracted_dimensions (
+                id TEXT PRIMARY KEY,
+                wall_extraction_run_id TEXT NOT NULL,
+                source_entity_ref TEXT NOT NULL,
+                source_layer TEXT NULL,
+                source_entity_kind TEXT NOT NULL,
+                geometry_block_name TEXT NULL,
+                display_text TEXT NOT NULL,
+                display_text_source TEXT NOT NULL,
+                raw_text_override TEXT NOT NULL,
+                measurement_source_units TEXT NOT NULL,
+                measurement_millimeters TEXT NOT NULL,
+                source_unit TEXT NOT NULL,
+                dim_type INTEGER NOT NULL,
+                angle TEXT NOT NULL,
+                oblique_angle TEXT NOT NULL,
+                def_point_x TEXT NOT NULL,
+                def_point_y TEXT NOT NULL,
+                def_point_z TEXT NOT NULL,
+                def_point2_x TEXT NOT NULL,
+                def_point2_y TEXT NOT NULL,
+                def_point2_z TEXT NOT NULL,
+                def_point3_x TEXT NOT NULL,
+                def_point3_y TEXT NOT NULL,
+                def_point3_z TEXT NOT NULL,
+                confidence TEXT NOT NULL,
+                detection_notes TEXT NULL,
+                sort_order INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS extracted_dimension_line_segments (
+                dimension_id TEXT NOT NULL,
+                sort_order INTEGER NOT NULL,
+                start_x TEXT NOT NULL,
+                start_y TEXT NOT NULL,
+                end_x TEXT NOT NULL,
+                end_y TEXT NOT NULL,
+                PRIMARY KEY (dimension_id, sort_order)
+            );
+
+            CREATE TABLE IF NOT EXISTS extracted_dimension_primitives (
+                dimension_id TEXT NOT NULL,
+                primitive_key TEXT NOT NULL,
+                primitive_kind TEXT NOT NULL,
+                sort_order INTEGER NOT NULL,
+                source_handle TEXT NULL,
+                source_layer TEXT NULL,
+                start_x TEXT NULL,
+                start_y TEXT NULL,
+                end_x TEXT NULL,
+                end_y TEXT NULL,
+                text_value TEXT NULL,
+                x TEXT NULL,
+                y TEXT NULL,
+                z TEXT NULL,
+                height TEXT NULL,
+                rotation_degrees TEXT NULL,
+                style_name TEXT NULL,
+                horizontal_alignment TEXT NULL,
+                vertical_alignment TEXT NULL,
+                attachment_point TEXT NULL,
+                insert_name TEXT NULL,
+                scale_x TEXT NULL,
+                scale_y TEXT NULL,
+                scale_z TEXT NULL,
+                center_x TEXT NULL,
+                center_y TEXT NULL,
+                radius TEXT NULL,
+                start_angle_degrees TEXT NULL,
+                end_angle_degrees TEXT NULL,
+                point1_x TEXT NULL,
+                point1_y TEXT NULL,
+                point2_x TEXT NULL,
+                point2_y TEXT NULL,
+                point3_x TEXT NULL,
+                point3_y TEXT NULL,
+                point4_x TEXT NULL,
+                point4_y TEXT NULL,
+                PRIMARY KEY (dimension_id, primitive_key)
+            );
+
             CREATE TABLE IF NOT EXISTS floorplan_curations (
                 id TEXT PRIMARY KEY,
                 floorplan_version_id TEXT NOT NULL,
@@ -224,12 +305,121 @@ public static class SqliteSchemaInitializer
                 max_trim_mm TEXT NOT NULL,
                 sort_order INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS floorplan_artifact_classifications (
+                floorplan_curation_id TEXT NOT NULL,
+                source_artifact_kind TEXT NOT NULL,
+                source_artifact_id TEXT NOT NULL,
+                resolved_family TEXT NOT NULL,
+                resolved_category TEXT NOT NULL,
+                resolved_type TEXT NOT NULL,
+                decision_state INTEGER NOT NULL,
+                updated_at_utc TEXT NOT NULL,
+                PRIMARY KEY (floorplan_curation_id, source_artifact_kind, source_artifact_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS floorplan_artifact_positions (
+                floorplan_curation_id TEXT NOT NULL,
+                source_artifact_kind TEXT NOT NULL,
+                source_artifact_id TEXT NOT NULL,
+                position_mode INTEGER NOT NULL,
+                resolved_x TEXT NULL,
+                resolved_y TEXT NULL,
+                translation_dx TEXT NULL,
+                translation_dy TEXT NULL,
+                updated_at_utc TEXT NOT NULL,
+                PRIMARY KEY (floorplan_curation_id, source_artifact_kind, source_artifact_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS floorplan_label_overrides (
+                floorplan_curation_id TEXT NOT NULL,
+                source_artifact_kind TEXT NOT NULL,
+                source_artifact_id TEXT NOT NULL,
+                resolved_text_height TEXT NULL,
+                updated_at_utc TEXT NOT NULL,
+                PRIMARY KEY (floorplan_curation_id, source_artifact_kind, source_artifact_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS floorplan_dimension_overrides (
+                floorplan_curation_id TEXT NOT NULL,
+                source_dimension_key TEXT NOT NULL,
+                source_entity_ref TEXT NOT NULL,
+                source_handle TEXT NULL,
+                display_text TEXT NOT NULL,
+                def_point_x TEXT NOT NULL,
+                def_point_y TEXT NOT NULL,
+                def_point_z TEXT NOT NULL,
+                def_point2_x TEXT NOT NULL,
+                def_point2_y TEXT NOT NULL,
+                def_point2_z TEXT NOT NULL,
+                def_point3_x TEXT NOT NULL,
+                def_point3_y TEXT NOT NULL,
+                def_point3_z TEXT NOT NULL,
+                render_text_x TEXT NULL,
+                render_text_y TEXT NULL,
+                render_text_height TEXT NULL,
+                render_text_rotation_degrees TEXT NULL,
+                render_text_style_name TEXT NULL,
+                render_text_horizontal_alignment TEXT NULL,
+                render_text_vertical_alignment TEXT NULL,
+                render_text_attachment_point TEXT NULL,
+                updated_at_utc TEXT NOT NULL,
+                last_exported_at_utc TEXT NULL,
+                PRIMARY KEY (floorplan_curation_id, source_dimension_key)
+            );
+
+            CREATE TABLE IF NOT EXISTS floorplan_dimension_override_primitives (
+                floorplan_curation_id TEXT NOT NULL,
+                source_dimension_key TEXT NOT NULL,
+                primitive_key TEXT NOT NULL,
+                primitive_kind TEXT NOT NULL,
+                sort_order INTEGER NOT NULL,
+                source_handle TEXT NULL,
+                source_layer TEXT NULL,
+                start_x TEXT NULL,
+                start_y TEXT NULL,
+                end_x TEXT NULL,
+                end_y TEXT NULL,
+                text_value TEXT NULL,
+                x TEXT NULL,
+                y TEXT NULL,
+                z TEXT NULL,
+                height TEXT NULL,
+                rotation_degrees TEXT NULL,
+                style_name TEXT NULL,
+                horizontal_alignment TEXT NULL,
+                vertical_alignment TEXT NULL,
+                attachment_point TEXT NULL,
+                insert_name TEXT NULL,
+                scale_x TEXT NULL,
+                scale_y TEXT NULL,
+                scale_z TEXT NULL,
+                center_x TEXT NULL,
+                center_y TEXT NULL,
+                radius TEXT NULL,
+                start_angle_degrees TEXT NULL,
+                end_angle_degrees TEXT NULL,
+                point1_x TEXT NULL,
+                point1_y TEXT NULL,
+                point2_x TEXT NULL,
+                point2_y TEXT NULL,
+                point3_x TEXT NULL,
+                point3_y TEXT NULL,
+                point4_x TEXT NULL,
+                point4_y TEXT NULL,
+                PRIMARY KEY (floorplan_curation_id, source_dimension_key, primitive_key)
+            );
             """;
 
         command.ExecuteNonQuery();
         EnsureColumnExists(connection, "floorplan_templates", "active_published_curation_id", "TEXT NULL");
         EnsureRoomLabelsSchema(connection);
         EnsureFixedPlanComponentsSchema(connection);
+        EnsureDimensionsSchema(connection);
+        EnsureArtifactClassificationSchema(connection);
+        EnsureArtifactPositionSchema(connection);
+        EnsureLabelOverrideSchema(connection);
+        EnsureDimensionOverrideSchema(connection);
         EnsurePinchMarkersSchema(connection);
         return Task.CompletedTask;
     }
@@ -249,6 +439,242 @@ public static class SqliteSchemaInitializer
     private static void EnsureFixedPlanComponentsSchema(SqliteConnection connection)
     {
         EnsureColumnExists(connection, "extracted_fixed_plan_components", "color_argb", "TEXT NULL");
+    }
+
+    private static void EnsureDimensionsSchema(SqliteConnection connection)
+    {
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS extracted_dimension_line_segments (
+                    dimension_id TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL,
+                    start_x TEXT NOT NULL,
+                    start_y TEXT NOT NULL,
+                    end_x TEXT NOT NULL,
+                    end_y TEXT NOT NULL,
+                    PRIMARY KEY (dimension_id, sort_order)
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        using (var primitiveCommand = connection.CreateCommand())
+        {
+            primitiveCommand.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS extracted_dimension_primitives (
+                    dimension_id TEXT NOT NULL,
+                    primitive_key TEXT NOT NULL,
+                    primitive_kind TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL,
+                    source_handle TEXT NULL,
+                    source_layer TEXT NULL,
+                    start_x TEXT NULL,
+                    start_y TEXT NULL,
+                    end_x TEXT NULL,
+                    end_y TEXT NULL,
+                    text_value TEXT NULL,
+                    x TEXT NULL,
+                    y TEXT NULL,
+                    z TEXT NULL,
+                    height TEXT NULL,
+                    rotation_degrees TEXT NULL,
+                    style_name TEXT NULL,
+                    horizontal_alignment TEXT NULL,
+                    vertical_alignment TEXT NULL,
+                    attachment_point TEXT NULL,
+                    insert_name TEXT NULL,
+                    scale_x TEXT NULL,
+                    scale_y TEXT NULL,
+                    scale_z TEXT NULL,
+                    center_x TEXT NULL,
+                    center_y TEXT NULL,
+                    radius TEXT NULL,
+                    start_angle_degrees TEXT NULL,
+                    end_angle_degrees TEXT NULL,
+                    point1_x TEXT NULL,
+                    point1_y TEXT NULL,
+                    point2_x TEXT NULL,
+                    point2_y TEXT NULL,
+                    point3_x TEXT NULL,
+                    point3_y TEXT NULL,
+                    point4_x TEXT NULL,
+                    point4_y TEXT NULL,
+                    PRIMARY KEY (dimension_id, primitive_key)
+                );
+                """;
+            primitiveCommand.ExecuteNonQuery();
+        }
+
+        EnsureColumnExists(connection, "extracted_dimensions", "source_handle", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "source_entity_kind", "TEXT NOT NULL DEFAULT 'DIMENSION'");
+        EnsureColumnExists(connection, "extracted_dimensions", "geometry_block_name", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "display_text", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "extracted_dimensions", "display_text_source", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "extracted_dimensions", "raw_text_override", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "extracted_dimensions", "measurement_source_units", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "measurement_millimeters", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "source_unit", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "extracted_dimensions", "dim_type", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(connection, "extracted_dimensions", "angle", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "oblique_angle", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "def_point_x", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "def_point_y", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "def_point_z", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "def_point2_x", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "def_point2_y", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "def_point2_z", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "def_point3_x", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "def_point3_y", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "def_point3_z", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "render_text_x", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "render_text_y", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "render_text_height", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "render_text_rotation_degrees", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "render_text_style_name", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "render_text_horizontal_alignment", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "render_text_vertical_alignment", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "render_text_attachment_point", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "confidence", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "extracted_dimensions", "detection_notes", "TEXT NULL");
+        EnsureColumnExists(connection, "extracted_dimensions", "sort_order", "INTEGER NOT NULL DEFAULT 1");
+    }
+
+    private static void EnsureArtifactClassificationSchema(SqliteConnection connection)
+    {
+        EnsureColumnExists(connection, "floorplan_artifact_classifications", "resolved_family", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_artifact_classifications", "resolved_category", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_artifact_classifications", "resolved_type", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_artifact_classifications", "decision_state", "INTEGER NOT NULL DEFAULT 1");
+        EnsureColumnExists(connection, "floorplan_artifact_classifications", "updated_at_utc", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    private static void EnsureArtifactPositionSchema(SqliteConnection connection)
+    {
+        EnsureColumnExists(connection, "floorplan_artifact_positions", "position_mode", "INTEGER NOT NULL DEFAULT 1");
+        EnsureColumnExists(connection, "floorplan_artifact_positions", "resolved_x", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_artifact_positions", "resolved_y", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_artifact_positions", "translation_dx", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_artifact_positions", "translation_dy", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_artifact_positions", "updated_at_utc", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    private static void EnsureLabelOverrideSchema(SqliteConnection connection)
+    {
+        EnsureColumnExists(connection, "floorplan_label_overrides", "resolved_text_height", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_label_overrides", "updated_at_utc", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    private static void EnsureDimensionOverrideSchema(SqliteConnection connection)
+    {
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS floorplan_dimension_overrides (
+                    floorplan_curation_id TEXT NOT NULL,
+                    source_dimension_key TEXT NOT NULL,
+                    source_entity_ref TEXT NOT NULL,
+                    source_handle TEXT NULL,
+                    display_text TEXT NOT NULL,
+                    def_point_x TEXT NOT NULL,
+                    def_point_y TEXT NOT NULL,
+                    def_point_z TEXT NOT NULL,
+                    def_point2_x TEXT NOT NULL,
+                    def_point2_y TEXT NOT NULL,
+                    def_point2_z TEXT NOT NULL,
+                    def_point3_x TEXT NOT NULL,
+                    def_point3_y TEXT NOT NULL,
+                    def_point3_z TEXT NOT NULL,
+                    render_text_x TEXT NULL,
+                    render_text_y TEXT NULL,
+                    render_text_height TEXT NULL,
+                    render_text_rotation_degrees TEXT NULL,
+                    render_text_style_name TEXT NULL,
+                    render_text_horizontal_alignment TEXT NULL,
+                    render_text_vertical_alignment TEXT NULL,
+                    render_text_attachment_point TEXT NULL,
+                    updated_at_utc TEXT NOT NULL,
+                    last_exported_at_utc TEXT NULL,
+                    PRIMARY KEY (floorplan_curation_id, source_dimension_key)
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS floorplan_dimension_override_primitives (
+                    floorplan_curation_id TEXT NOT NULL,
+                    source_dimension_key TEXT NOT NULL,
+                    primitive_key TEXT NOT NULL,
+                    primitive_kind TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL,
+                    source_handle TEXT NULL,
+                    source_layer TEXT NULL,
+                    start_x TEXT NULL,
+                    start_y TEXT NULL,
+                    end_x TEXT NULL,
+                    end_y TEXT NULL,
+                    text_value TEXT NULL,
+                    x TEXT NULL,
+                    y TEXT NULL,
+                    z TEXT NULL,
+                    height TEXT NULL,
+                    rotation_degrees TEXT NULL,
+                    style_name TEXT NULL,
+                    horizontal_alignment TEXT NULL,
+                    vertical_alignment TEXT NULL,
+                    attachment_point TEXT NULL,
+                    insert_name TEXT NULL,
+                    scale_x TEXT NULL,
+                    scale_y TEXT NULL,
+                    scale_z TEXT NULL,
+                    center_x TEXT NULL,
+                    center_y TEXT NULL,
+                    radius TEXT NULL,
+                    start_angle_degrees TEXT NULL,
+                    end_angle_degrees TEXT NULL,
+                    point1_x TEXT NULL,
+                    point1_y TEXT NULL,
+                    point2_x TEXT NULL,
+                    point2_y TEXT NULL,
+                    point3_x TEXT NULL,
+                    point3_y TEXT NULL,
+                    point4_x TEXT NULL,
+                    point4_y TEXT NULL,
+                    PRIMARY KEY (floorplan_curation_id, source_dimension_key, primitive_key)
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "source_entity_ref", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "source_handle", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "display_text", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "def_point_x", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "def_point_y", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "def_point_z", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "def_point2_x", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "def_point2_y", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "def_point2_z", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "def_point3_x", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "def_point3_y", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "def_point3_z", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "render_text_x", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "render_text_y", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "render_text_height", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "render_text_rotation_degrees", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "render_text_style_name", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "render_text_horizontal_alignment", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "render_text_vertical_alignment", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "render_text_attachment_point", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "updated_at_utc", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_overrides", "last_exported_at_utc", "TEXT NULL");
     }
 
     private static void EnsureColumnExists(SqliteConnection connection, string tableName, string columnName, string columnDefinition)

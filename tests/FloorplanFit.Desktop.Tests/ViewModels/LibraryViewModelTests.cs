@@ -46,6 +46,7 @@ public sealed class LibraryViewModelTests
         var roomLabelRepository = new InMemoryExtractedRoomLabelRepository();
         var fixedPlanComponentRepository = new InMemoryExtractedFixedPlanComponentRepository();
         var protectedDetailRepository = new InMemoryExtractedProtectedDetailAssemblyRepository();
+        var dimensionRepository = new InMemoryExtractedDimensionRepository();
 
         var services = new ServiceCollection();
         services.AddSingleton<IFloorPlanExtractionSourceReader>(new FakeFloorPlanExtractionSourceReader(extractionSource));
@@ -84,6 +85,34 @@ public sealed class LibraryViewModelTests
                 null)
         ]));
         services.AddSingleton<IProtectedDetailAssemblyExtractor>(new FakeProtectedDetailAssemblyExtractor([]));
+        services.AddSingleton<IDimensionExtractor>(new FakeDimensionExtractor(
+        [
+            new DetectedDimension(
+                "DIMENSION:1",
+                "DIMS",
+                "DIMENSION",
+                "*D169",
+                "10'-4\"",
+                "GeometryBlock",
+                string.Empty,
+                123.810387305188m,
+                3144.7838375517752m,
+                "Inch",
+                0,
+                0m,
+                0m,
+                94.5741888255622m,
+                516.95664946623m,
+                0m,
+                218.38457613075m,
+                524.795084103958m,
+                0m,
+                94.5741888255622m,
+                537.195356591169m,
+                0.0000000000000074m,
+                0.99m,
+                null)
+        ]));
         services.AddSingleton<IWallExtractionRunRepository>(runRepository);
         services.AddSingleton<IExtractedWallCandidateRepository>(candidateRepository);
         services.AddSingleton<IExtractedRoomLabelRepository>(roomLabelRepository);
@@ -91,6 +120,7 @@ public sealed class LibraryViewModelTests
         services.AddSingleton<IExtractedOpeningLabelRepository>(new InMemoryExtractedOpeningLabelRepository());
         services.AddSingleton<IExtractedFixedPlanComponentRepository>(fixedPlanComponentRepository);
         services.AddSingleton<IExtractedProtectedDetailAssemblyRepository>(protectedDetailRepository);
+        services.AddSingleton<IExtractedDimensionRepository>(dimensionRepository);
         services.AddSingleton<IUnitOfWork>(unitOfWork);
         services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 4, 30, 19, 30, 0, DateTimeKind.Utc)));
         services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader(
@@ -113,6 +143,7 @@ public sealed class LibraryViewModelTests
         Assert.Single(candidateRepository.Items);
         Assert.Single(roomLabelRepository.Items);
         Assert.Single(fixedPlanComponentRepository.Items);
+        Assert.Single(dimensionRepository.Items);
         Assert.Single(viewModel.Items);
         Assert.Equal("Extracted", viewModel.Items[0].Status);
     }
@@ -177,6 +208,21 @@ public sealed class LibraryViewModelTests
         }
     }
 
+    private sealed class FakeDimensionExtractor : IDimensionExtractor
+    {
+        private readonly IReadOnlyList<DetectedDimension> items;
+
+        public FakeDimensionExtractor(IReadOnlyList<DetectedDimension> items)
+        {
+            this.items = items;
+        }
+
+        public Task<IReadOnlyList<DetectedDimension>> ExtractAsync(string managedFilePath, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(items);
+        }
+    }
+
     [Fact]
     public async Task OpenSelectedReviewAsync_returns_a_loaded_review_view_model()
     {
@@ -230,6 +276,180 @@ public sealed class LibraryViewModelTests
         Assert.NotNull(reviewViewModel);
         Assert.Equal("santa-barbara", reviewViewModel.Code);
         Assert.Equal("SANTA-BARBARA", reviewViewModel.Name);
+    }
+
+    [Fact]
+    public async Task OpenSelectedReviewAsync_reextracts_when_loaded_review_has_stale_dimension_payload()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var extractionSource = new FloorPlanExtractionSource(templateId, versionId, @"C:\workspace\library\raw-dxf\SEMINOLE2000.dxf");
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var runRepository = new InMemoryWallExtractionRunRepository();
+        var unitOfWork = new FakeUnitOfWork();
+
+        var staleSession = new FloorPlanReviewSessionDto(
+            templateId,
+            "seminole2000",
+            "SEMINOLE2000",
+            "Extracted",
+            1,
+            null,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [])
+        {
+            Dimensions =
+            [
+                new DimensionDto(
+                    Guid.NewGuid(),
+                    "DIMENSION:1",
+                    "DIMS",
+                    "DIMENSION",
+                    "*D169",
+                    "5'-8\"",
+                    "GeometryBlock",
+                    string.Empty,
+                    68m,
+                    1727.2m,
+                    "Inch",
+                    160,
+                    0m,
+                    0m,
+                    440m,
+                    520m,
+                    0m,
+                    372m,
+                    526m,
+                    0m,
+                    372m,
+                    516m,
+                    0m,
+                    0.99m,
+                    null,
+                    1)
+            ]
+        };
+
+        var refreshedSession = staleSession with
+        {
+            Dimensions =
+            [
+                staleSession.Dimensions[0] with
+                {
+                    RenderTextX = 408.8m,
+                    RenderTextY = 518.9m,
+                    RenderTextHeight = 3.5m,
+                    RenderTextAttachmentPoint = "MiddleCenter",
+                    LineSegments =
+                    [
+                        new DimensionLineSegmentDto(440m, 520m, 440m, 513m),
+                        new DimensionLineSegmentDto(372m, 525m, 372m, 513m),
+                        new DimensionLineSegmentDto(437m, 517m, 376m, 517m)
+                    ]
+                }
+            ]
+        };
+
+        var reviewReader = new SequencedFloorPlanReviewSessionReader(staleSession, refreshedSession);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanVersionRepository>(new InMemoryFloorPlanVersionRepository(
+            new FloorPlanVersion(
+                versionId,
+                templateId,
+                Guid.NewGuid(),
+                "fingerprint",
+                1,
+                new DateTime(2026, 4, 30, 17, 0, 0, DateTimeKind.Utc))));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IFloorPlanExtractionSourceReader>(new FakeFloorPlanExtractionSourceReader(extractionSource));
+        services.AddSingleton<IWallExtractor>(new FakeWallExtractor(
+        [
+            new DetectedWallCandidate("LINE:1", "WALLS", [new GeometryPoint(0m, 0m), new GeometryPoint(120m, 0m)], null, 0.95m, null)
+        ]));
+        services.AddSingleton<IRoomLabelExtractor>(new FakeRoomLabelExtractor([]));
+        services.AddSingleton<IOpeningExtractor>(new FakeOpeningExtractor(new DetectedOpeningExtraction([], [])));
+        services.AddSingleton<IFixedPlanComponentExtractor>(new FakeFixedPlanComponentExtractor([]));
+        services.AddSingleton<IProtectedDetailAssemblyExtractor>(new FakeProtectedDetailAssemblyExtractor([]));
+        services.AddSingleton<IDimensionExtractor>(new FakeDimensionExtractor(
+        [
+            new DetectedDimension(
+                "DIMENSION:1",
+                "DIMS",
+                "DIMENSION",
+                "*D169",
+                "5'-8\"",
+                "GeometryBlock",
+                string.Empty,
+                68m,
+                1727.2m,
+                "Inch",
+                160,
+                0m,
+                0m,
+                440m,
+                520m,
+                0m,
+                372m,
+                526m,
+                0m,
+                372m,
+                516m,
+                0m,
+                0.99m,
+                null)
+            {
+                RenderTextX = 408.8m,
+                RenderTextY = 518.9m,
+                RenderTextHeight = 3.5m,
+                RenderTextAttachmentPoint = "MiddleCenter",
+                LineSegments =
+                [
+                    new DetectedDimensionLineSegment(440m, 520m, 440m, 513m),
+                    new DetectedDimensionLineSegment(372m, 525m, 372m, 513m),
+                    new DetectedDimensionLineSegment(437m, 517m, 376m, 517m)
+                ]
+            }
+        ]));
+        services.AddSingleton<IWallExtractionRunRepository>(runRepository);
+        services.AddSingleton<IExtractedWallCandidateRepository>(new InMemoryExtractedWallCandidateRepository());
+        services.AddSingleton<IExtractedRoomLabelRepository>(new InMemoryExtractedRoomLabelRepository());
+        services.AddSingleton<IExtractedOpeningCandidateRepository>(new InMemoryExtractedOpeningCandidateRepository());
+        services.AddSingleton<IExtractedOpeningLabelRepository>(new InMemoryExtractedOpeningLabelRepository());
+        services.AddSingleton<IExtractedFixedPlanComponentRepository>(new InMemoryExtractedFixedPlanComponentRepository());
+        services.AddSingleton<IExtractedProtectedDetailAssemblyRepository>(new InMemoryExtractedProtectedDetailAssemblyRepository());
+        services.AddSingleton<IExtractedDimensionRepository>(new InMemoryExtractedDimensionRepository());
+        services.AddSingleton<IUnitOfWork>(unitOfWork);
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 4, 30, 20, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(reviewReader);
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<ExtractWallCandidatesHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
+        {
+            SelectedItem = CreateLibraryItem(templateId, versionId, "Extracted")
+        };
+
+        var reviewViewModel = await viewModel.OpenSelectedReviewAsync(CancellationToken.None);
+
+        Assert.NotNull(reviewViewModel);
+        Assert.Equal(2, reviewReader.CallCount);
+        Assert.Single(runRepository.Items);
+        var dimension = Assert.Single(reviewViewModel.Dimensions);
+        Assert.Equal(3, dimension.LineSegments.Count);
+        Assert.Equal(408.8m, dimension.RenderTextX);
     }
 
     [Fact]
@@ -394,6 +614,23 @@ public sealed class LibraryViewModelTests
         }
     }
 
+    private sealed class InMemoryExtractedDimensionRepository : IExtractedDimensionRepository
+    {
+        public List<ExtractedDimension> Items { get; } = [];
+
+        public Task AddRangeAsync(IReadOnlyList<ExtractedDimension> dimensions, CancellationToken cancellationToken)
+        {
+            Items.AddRange(dimensions);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ExtractedDimension>> ListByExtractionRunAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<ExtractedDimension>>(
+                Items.Where(item => item.WallExtractionRunId == wallExtractionRunId).ToArray());
+        }
+    }
+
     private sealed class FakeFloorPlanExtractionSourceReader : IFloorPlanExtractionSourceReader
     {
         private readonly FloorPlanExtractionSource source;
@@ -497,6 +734,33 @@ public sealed class LibraryViewModelTests
             CancellationToken cancellationToken)
         {
             return Task.FromResult<FloorPlanReviewSessionDto?>(session);
+        }
+    }
+
+    private sealed class SequencedFloorPlanReviewSessionReader : IFloorPlanReviewSessionReader
+    {
+        private readonly Queue<FloorPlanReviewSessionDto> sessions;
+
+        public SequencedFloorPlanReviewSessionReader(params FloorPlanReviewSessionDto[] sessions)
+        {
+            this.sessions = new Queue<FloorPlanReviewSessionDto>(sessions);
+        }
+
+        public int CallCount { get; private set; }
+
+        public Task<FloorPlanReviewSessionDto?> GetByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
+        {
+            CallCount++;
+            return Task.FromResult<FloorPlanReviewSessionDto?>(sessions.Count > 1 ? sessions.Dequeue() : sessions.Peek());
+        }
+
+        public Task<FloorPlanReviewSessionDto?> GetByVersionAsync(
+            Guid templateId,
+            Guid floorPlanVersionId,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            return Task.FromResult<FloorPlanReviewSessionDto?>(sessions.Count > 1 ? sessions.Dequeue() : sessions.Peek());
         }
     }
 

@@ -1,4 +1,5 @@
 using FloorplanFit.Contracts.FloorPlans;
+using FloorplanFit.Domain.FloorPlans;
 
 namespace FloorplanFit.Desktop.Controls.Preview;
 
@@ -19,6 +20,13 @@ internal sealed class PreviewArtifactGeometryIndex
     public IReadOnlySet<Guid> FixedPlanComponentGeometryPathIds { get; }
 
     public IReadOnlySet<Guid> ProtectedDetailGeometryPathIds { get; }
+
+    public bool Contains(Guid geometryPathId)
+    {
+        return OpeningGeometryPathIds.Contains(geometryPathId) ||
+               FixedPlanComponentGeometryPathIds.Contains(geometryPathId) ||
+               ProtectedDetailGeometryPathIds.Contains(geometryPathId);
+    }
 
     public static PreviewArtifactGeometryIndex Create(
         IReadOnlyList<OpeningCandidateDto>? openingCandidates,
@@ -43,6 +51,42 @@ internal sealed class PreviewArtifactGeometryIndex
                 .SelectMany(item => item.GeometryPathIds)
                 .ToHashSet()
             : new HashSet<Guid>();
+
+        return new PreviewArtifactGeometryIndex(
+            openingGeometryPathIds,
+            fixedPlanComponentGeometryPathIds,
+            protectedDetailGeometryPathIds);
+    }
+
+    public static PreviewArtifactGeometryIndex Create(IReadOnlyList<CuratedPlanArtifactDto>? curatedPlanArtifacts)
+    {
+        var openingGeometryPathIds = new HashSet<Guid>();
+        var fixedPlanComponentGeometryPathIds = new HashSet<Guid>();
+        var protectedDetailGeometryPathIds = new HashSet<Guid>();
+
+        if (curatedPlanArtifacts is not { Count: > 0 })
+        {
+            return new PreviewArtifactGeometryIndex(
+                openingGeometryPathIds,
+                fixedPlanComponentGeometryPathIds,
+                protectedDetailGeometryPathIds);
+        }
+
+        foreach (var artifact in curatedPlanArtifacts)
+        {
+            switch (artifact.ResolvedFamily)
+            {
+                case var family when string.Equals(family, FloorPlanArtifactTaxonomy.ProtectedFamily, StringComparison.Ordinal):
+                    protectedDetailGeometryPathIds.UnionWith(artifact.GeometryPathIds);
+                    break;
+                case var family when string.Equals(family, FloorPlanArtifactTaxonomy.FixedFamily, StringComparison.Ordinal):
+                    fixedPlanComponentGeometryPathIds.UnionWith(artifact.GeometryPathIds);
+                    break;
+                default:
+                    openingGeometryPathIds.UnionWith(artifact.GeometryPathIds);
+                    break;
+            }
+        }
 
         return new PreviewArtifactGeometryIndex(
             openingGeometryPathIds,

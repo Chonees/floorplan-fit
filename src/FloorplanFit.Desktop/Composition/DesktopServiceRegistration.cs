@@ -27,6 +27,8 @@ public static class DesktopServiceRegistration
         services.AddSingleton<IOpeningExtractor, IxMiliaOpeningExtractor>();
         services.AddSingleton<IFixedPlanComponentExtractor, IxMiliaFixedPlanComponentExtractor>();
         services.AddSingleton<IProtectedDetailAssemblyExtractor, IxMiliaProtectedDetailAssemblyExtractor>();
+        services.AddSingleton<IDimensionExtractor, IxMiliaDimensionExtractor>();
+        services.AddSingleton<IAdjustedDxfExporter, IxMiliaAdjustedDxfExporter>();
         services.AddSingleton<IFileHashService, Sha256FileHashService>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<ImportFloorPlanResultFactory>();
@@ -48,6 +50,11 @@ public static class DesktopServiceRegistration
         services.AddScoped<IExtractedOpeningLabelRepository, SqliteExtractedOpeningLabelRepository>();
         services.AddScoped<IExtractedFixedPlanComponentRepository, SqliteExtractedFixedPlanComponentRepository>();
         services.AddScoped<IExtractedProtectedDetailAssemblyRepository, SqliteExtractedProtectedDetailAssemblyRepository>();
+        services.AddScoped<IExtractedDimensionRepository, SqliteExtractedDimensionRepository>();
+        services.AddScoped<IFloorPlanArtifactClassificationRepository, SqliteFloorPlanArtifactClassificationRepository>();
+        services.AddScoped<IFloorPlanArtifactPositionRepository, SqliteFloorPlanArtifactPositionRepository>();
+        services.AddScoped<IFloorPlanLabelOverrideRepository, SqliteFloorPlanLabelOverrideRepository>();
+        services.AddScoped<IFloorPlanDimensionOverrideRepository, SqliteFloorPlanDimensionOverrideRepository>();
         services.AddScoped<IFloorPlanCurationRepository, SqliteFloorPlanCurationRepository>();
         services.AddScoped<IPinchGroupRepository, SqlitePinchGroupRepository>();
         services.AddScoped<IPinchMarkerRepository, SqlitePinchMarkerRepository>();
@@ -70,6 +77,16 @@ public static class DesktopServiceRegistration
         services.AddScoped<RemoveOpeningLabelHandler>();
         services.AddScoped<RemoveFixedPlanComponentHandler>();
         services.AddScoped<RemoveProtectedDetailAssemblyHandler>();
+        services.AddScoped<SaveCuratedArtifactClassificationHandler>();
+        services.AddScoped<ExcludeCuratedArtifactHandler>();
+        services.AddScoped<RestoreCuratedArtifactClassificationHandler>();
+        services.AddScoped<SaveFloorPlanArtifactPositionHandler>();
+        services.AddScoped<RestoreFloorPlanArtifactPositionHandler>();
+        services.AddScoped<SaveFloorPlanLabelTextHeightHandler>();
+        services.AddScoped<RestoreFloorPlanLabelTextHeightHandler>();
+        services.AddScoped<SaveFloorPlanDimensionOverrideHandler>();
+        services.AddScoped<RestoreFloorPlanDimensionOverrideHandler>();
+        services.AddScoped<ExportAdjustedDxfHandler>();
         services.AddScoped<RejectWallCandidateHandler>();
         services.AddScoped<PublishFloorPlanCurationHandler>();
 
