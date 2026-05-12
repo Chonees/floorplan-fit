@@ -2,7 +2,8 @@
 type: Implementation
 date: 2026-05-12
 project: floorplan-fit
-status: current
+status: superseded
+replaced_by: [[Implementation/2026-05-12 - Architecture map refreshed after native dimension milestone]]
 tags:
   - architecture
   - modularization
