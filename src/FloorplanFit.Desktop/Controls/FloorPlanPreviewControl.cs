@@ -414,116 +414,99 @@ public sealed class FloorPlanPreviewControl : Control
 
         var pointerPosition = e.GetPosition(this);
         var axisTag = ParseAxisTag();
-        if (!IsPinchPlacementArmed && axisTag is not null)
-        {
-            var edge = ResolveEdgeDrag(pointerPosition, axisTag.Value);
-            if (edge is not null)
-            {
-                activeDragEdge = edge;
-                dragStartPoint = pointerPosition;
-                activePreviewTrimMm = 0m;
-                e.Pointer.Capture(this);
-                e.Handled = true;
-                return;
-            }
-        }
-
         var viewport = GetPreviewViewport(axisTag);
         if (viewport is null)
         {
             return;
         }
-
-        if (!IsPinchPlacementArmed &&
-            TryResolveDimensionHandleHit(Dimensions, HighlightDimensionId, viewport.Value, pointerPosition, out var selectedHandleHit))
-        {
-            DimensionClicked?.Invoke(this, new DimensionClickedEventArgs(selectedHandleHit.Dimension.DimensionId));
-            activeDimensionEdit = PreviewDimensionEditState.Start(
-                selectedHandleHit.Dimension,
-                selectedHandleHit.HandleKind,
-                pointerPosition);
-            e.Pointer.Capture(this);
-            e.Handled = true;
-            InvalidateVisual();
-            return;
-        }
-
-        var dimensionHit = !IsPinchPlacementArmed
-            ? TryResolveDimensionHit(Dimensions, viewport.Value, pointerPosition, HitTestTolerance)
-            : null;
-        if (dimensionHit is not null)
-        {
-            DimensionClicked?.Invoke(this, new DimensionClickedEventArgs(dimensionHit.Value.Dimension.DimensionId));
-            activeDimensionEdit = PreviewDimensionEditState.Start(
-                dimensionHit.Value.Dimension,
-                dimensionHit.Value.SuggestedHandle,
-                pointerPosition);
-            e.Pointer.Capture(this);
-            e.Handled = true;
-            InvalidateVisual();
-            return;
-        }
-
-        if (!IsPinchPlacementArmed &&
-            TryResolveRoomLabelHit(viewport.Value, pointerPosition, out var roomLabel))
-        {
-            RoomLabelClicked?.Invoke(this, new RoomLabelClickedEventArgs(roomLabel.RoomLabelId));
-            activeArtifactMove = PreviewArtifactMoveState.ForAbsolutePoint(
-                FloorPlanArtifactPositionSourceKinds.RoomLabel,
-                roomLabel.RoomLabelId,
+        var pressOutcome = PreviewInteractionCoordinator.HandleLeftButtonPressed(
+            new PreviewInteractionCoordinator.LeftButtonPressRequest(
                 pointerPosition,
-                roomLabel.X,
-                roomLabel.Y);
-            e.Pointer.Capture(this);
-            e.Handled = true;
-            InvalidateVisual();
+                axisTag,
+                IsPinchPlacementArmed,
+                ResolveEdgeDrag,
+                point => TryResolveDimensionHandleHit(Dimensions, HighlightDimensionId, viewport.Value, point, out var handleHit)
+                    ? handleHit
+                    : null,
+                point => !IsPinchPlacementArmed
+                    ? TryResolveDimensionHit(Dimensions, viewport.Value, point, HitTestTolerance)
+                    : null,
+                point => TryResolveRoomLabelHit(viewport.Value, point, out var roomLabel)
+                    ? roomLabel
+                    : null,
+                point => TryResolveOpeningLabelHit(viewport.Value, point, out var openingLabel)
+                    ? openingLabel
+                    : null,
+                point =>
+                {
+                    var hitTestGeometry = BuildHitTestGeometry(
+                        GeometryPaths,
+                        OpeningCandidates,
+                        FixedPlanComponents,
+                        ProtectedDetailAssemblies,
+                        CuratedPlanArtifacts);
+                    var hit = FloorPlanPreviewGeometry.HitTestPathDetail(hitTestGeometry, viewport.Value, point, HitTestTolerance);
+                    return hit is null
+                        ? null
+                        : new PreviewInteractionCoordinator.GeometryHit(hit.Value.GeometryPathId, hit.Value.PositionRatio);
+                },
+                geometryPathId => TryResolveMovableArtifact(geometryPathId, out var movableArtifact)
+                    ? movableArtifact
+                    : null));
+
+        if (!pressOutcome.Handled)
+        {
             return;
         }
 
-        if (!IsPinchPlacementArmed &&
-            TryResolveOpeningLabelHit(viewport.Value, pointerPosition, out var openingLabel))
+        if (pressOutcome.DimensionClickedId is { } dimensionId)
         {
-            OpeningLabelClicked?.Invoke(this, new OpeningLabelClickedEventArgs(openingLabel.OpeningLabelId));
-            activeArtifactMove = PreviewArtifactMoveState.ForAbsolutePoint(
-                FloorPlanArtifactPositionSourceKinds.OpeningLabel,
-                openingLabel.OpeningLabelId,
-                pointerPosition,
-                openingLabel.X,
-                openingLabel.Y);
+            DimensionClicked?.Invoke(this, new DimensionClickedEventArgs(dimensionId));
+        }
+
+        if (pressOutcome.RoomLabelClickedId is { } roomLabelId)
+        {
+            RoomLabelClicked?.Invoke(this, new RoomLabelClickedEventArgs(roomLabelId));
+        }
+
+        if (pressOutcome.OpeningLabelClickedId is { } openingLabelId)
+        {
+            OpeningLabelClicked?.Invoke(this, new OpeningLabelClickedEventArgs(openingLabelId));
+        }
+
+        if (pressOutcome.GeometryClick is { } geometryClick)
+        {
+            GeometryPathClicked?.Invoke(this, new GeometryPathClickedEventArgs(geometryClick.GeometryPathId, geometryClick.PositionRatio));
+        }
+
+        if (pressOutcome.StartedEdgeDrag is { } edge)
+        {
+            activeDragEdge = edge;
+            dragStartPoint = pointerPosition;
+            activePreviewTrimMm = 0m;
+        }
+
+        if (pressOutcome.StartedDimensionEdit is { } dimensionEdit)
+        {
+            activeDimensionEdit = dimensionEdit;
+        }
+
+        if (pressOutcome.StartedArtifactMove is { } artifactMove)
+        {
+            activeArtifactMove = artifactMove;
+        }
+
+        if (pressOutcome.CapturePointer)
+        {
             e.Pointer.Capture(this);
-            e.Handled = true;
-            InvalidateVisual();
-            return;
         }
 
-        var hitTestGeometry = BuildHitTestGeometry(
-            GeometryPaths,
-            OpeningCandidates,
-            FixedPlanComponents,
-            ProtectedDetailAssemblies,
-            CuratedPlanArtifacts);
-        var hit = FloorPlanPreviewGeometry.HitTestPathDetail(hitTestGeometry, viewport.Value, pointerPosition, HitTestTolerance);
-
-        if (hit is null)
+        if (pressOutcome.InvalidateVisual)
         {
-            return;
-        }
-
-        GeometryPathClicked?.Invoke(this, new GeometryPathClickedEventArgs(hit.Value.GeometryPathId, hit.Value.PositionRatio));
-        if (!IsPinchPlacementArmed &&
-            TryResolveMovableArtifact(hit.Value.GeometryPathId, out var movableArtifact))
-        {
-            activeArtifactMove = PreviewArtifactMoveState.ForTranslation(
-                movableArtifact.SourceArtifactKind,
-                movableArtifact.SourceArtifactId,
-                pointerPosition,
-                movableArtifact.BaseDx,
-                movableArtifact.BaseDy);
-            e.Pointer.Capture(this);
             InvalidateVisual();
         }
 
-        e.Handled = true;
+        e.Handled = pressOutcome.Handled;
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -1776,9 +1759,9 @@ public sealed class FloorPlanPreviewControl : Control
 
     internal readonly record struct DimensionHit(DimensionDto Dimension, DimensionHandleKind SuggestedHandle);
 
-    private readonly record struct DimensionHandleHit(DimensionDto Dimension, DimensionHandleKind HandleKind);
+    internal readonly record struct DimensionHandleHit(DimensionDto Dimension, DimensionHandleKind HandleKind);
 
-    private readonly record struct PreviewArtifactMoveState(
+    internal readonly record struct PreviewArtifactMoveState(
         string SourceArtifactKind,
         Guid SourceArtifactId,
         FloorPlanArtifactPositionMode PositionMode,
@@ -1827,7 +1810,7 @@ public sealed class FloorPlanPreviewControl : Control
                 0m);
     }
 
-    private readonly record struct PreviewMovableArtifactDescriptor(
+    internal readonly record struct PreviewMovableArtifactDescriptor(
         string SourceArtifactKind,
         Guid SourceArtifactId,
         FloorPlanArtifactPositionMode PositionMode,
@@ -1837,7 +1820,7 @@ public sealed class FloorPlanPreviewControl : Control
         decimal BaseDy,
         IReadOnlyList<Guid> GeometryPathIds);
 
-    private readonly record struct PreviewDimensionEditState(
+    internal readonly record struct PreviewDimensionEditState(
         DimensionDto BaseDimension,
         DimensionHandleKind HandleKind,
         Point PointerStart,

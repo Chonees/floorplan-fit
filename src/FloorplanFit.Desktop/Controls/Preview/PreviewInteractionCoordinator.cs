@@ -1,4 +1,6 @@
 using Avalonia;
+using FloorplanFit.Contracts.FloorPlans;
+using FloorplanFit.Domain.FloorPlans;
 
 namespace FloorplanFit.Desktop.Controls.Preview;
 
@@ -17,6 +19,32 @@ internal static class PreviewInteractionCoordinator
         bool IsPanningPreview,
         Point PanStartPoint,
         FloorPlanPreviewControl.PreviewZoomState PanStartZoomState);
+
+    internal readonly record struct GeometryHit(Guid GeometryPathId, decimal PositionRatio);
+
+    internal readonly record struct LeftButtonPressRequest(
+        Point PointerPosition,
+        PinchAxisTag? AxisTag,
+        bool IsPinchPlacementArmed,
+        Func<Point, PinchAxisTag, FloorPlanPreviewGeometry.PreviewCompressionEdge?> ResolveEdgeDrag,
+        Func<Point, FloorPlanPreviewControl.DimensionHandleHit?> ResolveDimensionHandleHit,
+        Func<Point, FloorPlanPreviewControl.DimensionHit?> ResolveDimensionHit,
+        Func<Point, RoomLabelDto?> ResolveRoomLabelHit,
+        Func<Point, OpeningLabelDto?> ResolveOpeningLabelHit,
+        Func<Point, GeometryHit?> ResolveGeometryHit,
+        Func<Guid, FloorPlanPreviewControl.PreviewMovableArtifactDescriptor?> ResolveMovableArtifact);
+
+    internal readonly record struct LeftButtonPressOutcome(
+        bool Handled,
+        bool CapturePointer,
+        bool InvalidateVisual,
+        Guid? DimensionClickedId,
+        Guid? RoomLabelClickedId,
+        Guid? OpeningLabelClickedId,
+        GeometryHit? GeometryClick,
+        FloorPlanPreviewGeometry.PreviewCompressionEdge? StartedEdgeDrag,
+        FloorPlanPreviewControl.PreviewArtifactMoveState? StartedArtifactMove,
+        FloorPlanPreviewControl.PreviewDimensionEditState? StartedDimensionEdit);
 
     public static double CalculateWheelZoomFactor(double currentZoomFactor, double wheelDeltaY)
     {
@@ -76,4 +104,142 @@ internal static class PreviewInteractionCoordinator
             IsPanningPreview: true,
             PanStartPoint: request.PointerPosition,
             PanStartZoomState: request.CurrentZoomState);
+
+    public static LeftButtonPressOutcome HandleLeftButtonPressed(LeftButtonPressRequest request)
+    {
+        if (!request.IsPinchPlacementArmed && request.AxisTag is { } axisTag)
+        {
+            var edge = request.ResolveEdgeDrag(request.PointerPosition, axisTag);
+            if (edge is not null)
+            {
+                return new LeftButtonPressOutcome(
+                    Handled: true,
+                    CapturePointer: true,
+                    InvalidateVisual: false,
+                    DimensionClickedId: null,
+                    RoomLabelClickedId: null,
+                    OpeningLabelClickedId: null,
+                    GeometryClick: null,
+                    StartedEdgeDrag: edge,
+                    StartedArtifactMove: null,
+                    StartedDimensionEdit: null);
+            }
+        }
+
+        if (!request.IsPinchPlacementArmed &&
+            request.ResolveDimensionHandleHit(request.PointerPosition) is { } dimensionHandleHit)
+        {
+            return new LeftButtonPressOutcome(
+                Handled: true,
+                CapturePointer: true,
+                InvalidateVisual: true,
+                DimensionClickedId: dimensionHandleHit.Dimension.DimensionId,
+                RoomLabelClickedId: null,
+                OpeningLabelClickedId: null,
+                GeometryClick: null,
+                StartedEdgeDrag: null,
+                StartedArtifactMove: null,
+                StartedDimensionEdit: FloorPlanPreviewControl.PreviewDimensionEditState.Start(
+                    dimensionHandleHit.Dimension,
+                    dimensionHandleHit.HandleKind,
+                    request.PointerPosition));
+        }
+
+        if (!request.IsPinchPlacementArmed &&
+            request.ResolveDimensionHit(request.PointerPosition) is { } dimensionHit)
+        {
+            return new LeftButtonPressOutcome(
+                Handled: true,
+                CapturePointer: true,
+                InvalidateVisual: true,
+                DimensionClickedId: dimensionHit.Dimension.DimensionId,
+                RoomLabelClickedId: null,
+                OpeningLabelClickedId: null,
+                GeometryClick: null,
+                StartedEdgeDrag: null,
+                StartedArtifactMove: null,
+                StartedDimensionEdit: FloorPlanPreviewControl.PreviewDimensionEditState.Start(
+                    dimensionHit.Dimension,
+                    dimensionHit.SuggestedHandle,
+                    request.PointerPosition));
+        }
+
+        if (!request.IsPinchPlacementArmed &&
+            request.ResolveRoomLabelHit(request.PointerPosition) is { } roomLabel)
+        {
+            return new LeftButtonPressOutcome(
+                Handled: true,
+                CapturePointer: true,
+                InvalidateVisual: true,
+                DimensionClickedId: null,
+                RoomLabelClickedId: roomLabel.RoomLabelId,
+                OpeningLabelClickedId: null,
+                GeometryClick: null,
+                StartedEdgeDrag: null,
+                StartedArtifactMove: FloorPlanPreviewControl.PreviewArtifactMoveState.ForAbsolutePoint(
+                    FloorPlanArtifactPositionSourceKinds.RoomLabel,
+                    roomLabel.RoomLabelId,
+                    request.PointerPosition,
+                    roomLabel.X,
+                    roomLabel.Y),
+                StartedDimensionEdit: null);
+        }
+
+        if (!request.IsPinchPlacementArmed &&
+            request.ResolveOpeningLabelHit(request.PointerPosition) is { } openingLabel)
+        {
+            return new LeftButtonPressOutcome(
+                Handled: true,
+                CapturePointer: true,
+                InvalidateVisual: true,
+                DimensionClickedId: null,
+                RoomLabelClickedId: null,
+                OpeningLabelClickedId: openingLabel.OpeningLabelId,
+                GeometryClick: null,
+                StartedEdgeDrag: null,
+                StartedArtifactMove: FloorPlanPreviewControl.PreviewArtifactMoveState.ForAbsolutePoint(
+                    FloorPlanArtifactPositionSourceKinds.OpeningLabel,
+                    openingLabel.OpeningLabelId,
+                    request.PointerPosition,
+                    openingLabel.X,
+                    openingLabel.Y),
+                StartedDimensionEdit: null);
+        }
+
+        if (request.ResolveGeometryHit(request.PointerPosition) is not { } geometryHit)
+        {
+            return default;
+        }
+
+        var movableArtifact = !request.IsPinchPlacementArmed
+            ? request.ResolveMovableArtifact(geometryHit.GeometryPathId)
+            : null;
+        FloorPlanPreviewControl.PreviewArtifactMoveState? startedArtifactMove = movableArtifact is { } descriptor
+            ? descriptor.PositionMode == FloorPlanArtifactPositionMode.AbsolutePoint
+                ? FloorPlanPreviewControl.PreviewArtifactMoveState.ForAbsolutePoint(
+                    descriptor.SourceArtifactKind,
+                    descriptor.SourceArtifactId,
+                    request.PointerPosition,
+                    descriptor.BaseX,
+                    descriptor.BaseY)
+                : FloorPlanPreviewControl.PreviewArtifactMoveState.ForTranslation(
+                    descriptor.SourceArtifactKind,
+                    descriptor.SourceArtifactId,
+                    request.PointerPosition,
+                    descriptor.BaseDx,
+                    descriptor.BaseDy)
+            : null;
+
+        return new LeftButtonPressOutcome(
+            Handled: true,
+            CapturePointer: startedArtifactMove is not null,
+            InvalidateVisual: startedArtifactMove is not null,
+            DimensionClickedId: null,
+            RoomLabelClickedId: null,
+            OpeningLabelClickedId: null,
+            GeometryClick: geometryHit,
+            StartedEdgeDrag: null,
+            StartedArtifactMove: startedArtifactMove,
+            StartedDimensionEdit: null);
+    }
 }

@@ -1,6 +1,8 @@
 using Avalonia;
+using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.Controls;
 using FloorplanFit.Desktop.Controls.Preview;
+using FloorplanFit.Domain.FloorPlans;
 using Xunit;
 
 namespace FloorplanFit.Desktop.Tests.Controls;
@@ -53,4 +55,86 @@ public sealed class PreviewInteractionCoordinatorTests
         Assert.Equal(new Point(120d, 80d), outcome.PanStartPoint);
         Assert.Equal(FloorPlanPreviewControl.PreviewZoomState.Default, outcome.PanStartZoomState);
     }
+
+    [Fact]
+    public void HandleLeftButtonPressed_prefers_dimension_handle_before_dimension_body()
+    {
+        var handleDimension = CreateDimension("DIM-HANDLE");
+        var bodyDimension = CreateDimension("DIM-BODY");
+        var outcome = PreviewInteractionCoordinator.HandleLeftButtonPressed(
+            new PreviewInteractionCoordinator.LeftButtonPressRequest(
+                PointerPosition: new Point(320d, 160d),
+                AxisTag: PinchAxisTag.Width,
+                IsPinchPlacementArmed: false,
+                ResolveEdgeDrag: (_, _) => null,
+                ResolveDimensionHandleHit: _ => new FloorPlanPreviewControl.DimensionHandleHit(
+                    handleDimension,
+                    FloorPlanPreviewControl.DimensionHandleKind.TextAnchor),
+                ResolveDimensionHit: _ => new FloorPlanPreviewControl.DimensionHit(
+                    bodyDimension,
+                    FloorPlanPreviewControl.DimensionHandleKind.DimensionLinePoint),
+                ResolveRoomLabelHit: _ => null,
+                ResolveOpeningLabelHit: _ => null,
+                ResolveGeometryHit: _ => null,
+                ResolveMovableArtifact: _ => null));
+
+        Assert.True(outcome.Handled);
+        Assert.True(outcome.CapturePointer);
+        Assert.Equal(handleDimension.DimensionId, outcome.DimensionClickedId);
+        Assert.NotNull(outcome.StartedDimensionEdit);
+        Assert.Equal("DIM-HANDLE", outcome.StartedDimensionEdit.Value.BaseDimension.SourceEntityRef);
+        Assert.Null(outcome.StartedArtifactMove);
+    }
+
+    [Fact]
+    public void HandleLeftButtonPressed_starts_room_label_absolute_move_before_generic_geometry_hit()
+    {
+        var roomLabel = new RoomLabelDto(Guid.NewGuid(), "TEXT:1", "ROOM LBLS", "KITCHEN", 40m, 75m, 0.95m, null, 1);
+        var outcome = PreviewInteractionCoordinator.HandleLeftButtonPressed(
+            new PreviewInteractionCoordinator.LeftButtonPressRequest(
+                PointerPosition: new Point(100d, 140d),
+                AxisTag: PinchAxisTag.Width,
+                IsPinchPlacementArmed: false,
+                ResolveEdgeDrag: (_, _) => null,
+                ResolveDimensionHandleHit: _ => null,
+                ResolveDimensionHit: _ => null,
+                ResolveRoomLabelHit: _ => roomLabel,
+                ResolveOpeningLabelHit: _ => null,
+                ResolveGeometryHit: _ => new PreviewInteractionCoordinator.GeometryHit(Guid.NewGuid(), 0.4m),
+                ResolveMovableArtifact: _ => null));
+
+        Assert.True(outcome.Handled);
+        Assert.NotNull(outcome.StartedArtifactMove);
+        Assert.Equal(FloorPlanArtifactPositionMode.AbsolutePoint, outcome.StartedArtifactMove.Value.PositionMode);
+        Assert.Equal(roomLabel.RoomLabelId, outcome.RoomLabelClickedId);
+    }
+
+    private static DimensionDto CreateDimension(string sourceKey)
+        => new(
+            Guid.NewGuid(),
+            sourceKey,
+            "DIMS",
+            "DIMENSION",
+            "*D1",
+            "8'-0\"",
+            "GeometryBlock",
+            string.Empty,
+            96m,
+            2438.4m,
+            "Inch",
+            0,
+            0m,
+            0m,
+            0m,
+            0m,
+            0m,
+            100m,
+            0m,
+            0m,
+            0m,
+            20m,
+            0m,
+            0.99m,
+            null,
+            1);
 }
