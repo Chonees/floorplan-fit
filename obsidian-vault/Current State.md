@@ -46,7 +46,7 @@ status: active
 
 
 
-updated: 2026-05-10
+updated: 2026-05-12
 
 
 
@@ -668,6 +668,12 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 - Auditoria de 2026-05-11 sobre colores Desktop/Review: la app NO tiene un sistema 100% tokenizado. El chrome general si centraliza varios brushes en `src/FloorplanFit.Desktop/App.axaml` (`AppBackgroundBrush`, `PanelBrush`, `SectionBrush`, `TextPrimaryBrush`, etc.), pero varios estilos siguen con hex inline dentro del mismo `App.axaml` (`Border.metric-chip`, `Button`, `Button.danger`, `Button.tool-active`, `TextBox`, `ComboBox`). En preview tambien hay modularizacion parcial: `PreviewSemanticPalette` concentra colores de overlays y `FloorPlanArtifactTaxonomy` concentra ARGB de artifacts curados, pero `PreviewWorkspaceRenderer` y `CompressionHandlePreviewLayerRenderer` todavia usan brushes locales hardcodeados.
+
+- Auditoria de 2026-05-12 sobre modularizacion: la separacion mejoro mucho en `src/FloorplanFit.Desktop/Controls/Preview/*`, pero el criterio **un archivo = una responsabilidad** todavia NO esta cerrado. `FloorPlanPreviewControl.cs` sigue en **1610 lineas** y `FloorPlanReviewViewModel.cs` en **1851 lineas**, senal de que la orquestacion visual y de interaccion todavia esta demasiado concentrada.
+
+- Auditoria de 2026-05-12 sobre documentacion de arquitectura: el mapa exhaustivo `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` quedo desactualizado despues de la ola `native dimensions` del **2026-05-11**. Su frontmatter sigue en `last_verified: 2026-05-09`, todavia afirma que "las dimensiones CAD siguen pendientes", y no cubre archivos nuevos ya presentes como `IxMiliaAdjustedDxfExporter.cs`, `SaveFloorPlanDimensionOverrideHandler.cs`, `SqliteFloorPlanDimensionOverrideRepository.cs` y `NativeDimensionEditor.cs`.
+
+- Decision de arquitectura tomada el **2026-05-12**: la limpieza senior del repo avanza como **modularizacion por loops** con **doc-first order**. Secuencia aprobada: **Loop 0 verdad canonica -> Loop 1 sistema visual -> Loop 2 preview composition/interactions -> Loop 3 review orchestration -> Loop 4 cleanup final**.
 
 
 
@@ -2336,6 +2342,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 ## Immediate Next Steps
+
+0. Ejecutar **Loop 0** del programa de modularizacion: refrescar el mapa canonico de arquitectura y alinear la documentacion con la realidad post-`native dimensions` antes de seguir partiendo codigo.
 
 
 
