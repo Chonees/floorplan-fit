@@ -691,6 +691,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Estado de hotspot post-Loop 2B: `FloorPlanPreviewControl.cs` bajo de **1747** a **1363 lineas** al sacar la repeticion mecanica de observers. El siguiente corte sano ya no es wiring; es **Loop 2C** sobre render composition / layer orchestration del preview antes de pasar a `FloorPlanReviewViewModel`.
 
+- Decision de arquitectura tomada el **2026-05-12** para **Loop 2C**: el siguiente slice del preview va a extraer la composicion de render a una dupla `PreviewRenderScene` + `PreviewRenderComposer`. Objetivo: sacar de `FloorPlanPreviewControl.Render(...)` el orden de layers, el branch curated-vs-detected artifacts y el loop de dibujo base, sin rediseñar todavia los helpers de scene preparation.
+
 
 
 
@@ -2359,7 +2361,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 2C** del programa de modularizacion: limpiar render composition / layer orchestration del preview para seguir consolidando `FloorPlanPreviewControl` como shell antes de entrar en `FloorPlanReviewViewModel`.
+0. Ejecutar **Loop 2C** del programa de modularizacion: introducir `PreviewRenderScene` + `PreviewRenderComposer`, mover ahi la composicion de layers del preview y seguir adelgazando `FloorPlanPreviewControl` antes de entrar en `FloorPlanReviewViewModel`.
 
 
 
@@ -2614,6 +2616,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-12 - Loop 2B preview collection observer cleanup]]
 
 - [[Decisions/2026-05-12 - Loop 2B targets preview observer wiring via collection hub]]
+
+- [[Decisions/2026-05-12 - Loop 2C targets preview render composition via scene and composer]]
 
 
 
