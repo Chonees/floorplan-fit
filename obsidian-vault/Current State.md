@@ -725,6 +725,12 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Estado de hotspot post-**Loop 4A**: `FloorPlanReviewViewModel.cs` bajo a **1421 lineas**. El siguiente corte sano de Loop 4 ya no es presentation text; pasa al bloque de **session apply / refresh shell** (`RefreshSessionAsync`, `ApplySession`, `ResolveCuratedArtifacts`, `RefreshVisibleCuratedArtifacts`) antes del cleanup cosmetico final.
 
+- Cierre de **Loop 4B / session query and projection cleanup** el **2026-05-12**: `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewSessionCoordinator.cs` ahora concentra las queries de review session (`OpenFloorPlanReviewSessionHandler`, `GetFloorPlanReviewSessionHandler`) y la proyeccion derivada de session (`CuratedPlanArtifacts`, `VisibleCuratedPlanArtifacts`, `DimensionAssociationsById`). `FloorPlanReviewViewModel.cs` ya no mantiene inline los handlers de query ni `ResolveCuratedArtifacts` / `RefreshVisibleCuratedArtifacts`.
+
+- Verificacion de **Loop 4B** el **2026-05-12**: el focused session slice `FloorPlanReviewViewModelArchitectureTests|FloorPlanReviewViewModelTests|CuratedArtifactFloorPlanReviewViewModelTests` paso **34/34**, y la suite completa `FloorplanFit.Desktop.Tests` quedo en **130/130 PASS**. Sigue apareciendo el warning `CS8625` en `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs`, pero sigue fuera de alcance.
+
+- Estado de hotspot post-**Loop 4B**: `FloorPlanReviewViewModel.cs` bajo a **1307 lineas**. El siguiente corte sano ya no es query/projection; pasa al shell residual de **apply/notify orchestration** (`ApplySessionProjection`, `ApplySelectionPresentationOutcome`, `NotifyReviewQueueStateChanged`, `NotifyUxStateChanged`) antes del cleanup cosmetico/documental final.
+
 
 
 
@@ -2393,7 +2399,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 4B** sobre el shell de refresh/session apply: sacar de `FloorPlanReviewViewModel` la orquestacion de `ApplySession`, `ResolveCuratedArtifacts` y `RefreshVisibleCuratedArtifacts` a un coordinator/helper dedicado.
+0. Ejecutar **Loop 4C** sobre el shell residual de apply/notify orchestration: bajar el peso de `ApplySessionProjection`, `ApplySelectionPresentationOutcome`, `NotifyReviewQueueStateChanged` y `NotifyUxStateChanged`.
 
 
 
@@ -2411,7 +2417,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-1. Despues de **Loop 4B**, cerrar **Loop 4C** con cleanup final de naming/ownership/document drift y auditoria final de \"un archivo = una responsabilidad\".
+1. Despues de **Loop 4C**, cerrar **Loop 4D/final cleanup** con naming/ownership consistency, drift documental final y auditoria final de \"un archivo = una responsabilidad\".
 
 
 
@@ -2664,6 +2670,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-12 - Loop 3C review queue orchestration]]
 
 - [[Implementation/2026-05-12 - Loop 4A inspector presentation cleanup]]
+
+- [[Implementation/2026-05-12 - Loop 4B review session shell cleanup]]
 
 
 

@@ -94,4 +94,22 @@ public sealed class FloorPlanReviewViewModelArchitectureTests
         Assert.DoesNotContain("private string ResolveSelectedDimensionAssociationSummary()", source, StringComparison.Ordinal);
         Assert.DoesNotContain("private string ResolveSelectedDimensionAssociationDebugSummary()", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void FloorPlanReviewViewModel_sources_session_query_and_projection_through_the_session_coordinator()
+    {
+        var viewModelPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "FloorplanFit.Desktop", "ViewModels", "FloorPlanReviewViewModel.cs");
+        var source = File.ReadAllText(viewModelPath);
+
+        Assert.Contains("FloorPlanReviewSessionCoordinator", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<OpenFloorPlanReviewSessionHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<GetFloorPlanReviewSessionHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private IReadOnlyList<CuratedPlanArtifactDto> ResolveCuratedArtifacts(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private void RefreshVisibleCuratedArtifacts()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("DraftCurationId = response.DraftCurationId;", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("DraftCurationId = string.Equals(session.Status, \"Published\"", source, StringComparison.Ordinal);
+    }
 }

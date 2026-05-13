@@ -1,13 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
-using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.FloorPlans.Curation;
-using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.Controls;
 using FloorplanFit.Domain.FloorPlans;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace FloorplanFit.Desktop.ViewModels;
 
@@ -20,28 +17,28 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private const string InspectorToolActions = "Actions";
     private const string InspectorToolFit = "Fit";
 
-    private readonly IServiceScopeFactory scopeFactory;
     private readonly FloorPlanReviewMutationCoordinator mutationCoordinator;
     private readonly FloorPlanReviewSelectionCoordinator selectionCoordinator;
     private readonly FloorPlanReviewQueueCoordinator queueCoordinator;
     private readonly FloorPlanReviewInspectorCoordinator inspectorCoordinator;
+    private readonly FloorPlanReviewSessionCoordinator sessionCoordinator;
     private readonly Guid templateId;
     private readonly Guid? floorPlanVersionId;
     private IReadOnlyDictionary<Guid, DimensionAssociationDto> dimensionAssociationsById = new Dictionary<Guid, DimensionAssociationDto>();
     private bool isUpdatingCuratedArtifactEditors;
 
-    public FloorPlanReviewViewModel(IServiceScopeFactory scopeFactory, Guid templateId)
+    public FloorPlanReviewViewModel(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory, Guid templateId)
         : this(scopeFactory, templateId, floorPlanVersionId: null)
     {
     }
 
-    public FloorPlanReviewViewModel(IServiceScopeFactory scopeFactory, Guid templateId, Guid? floorPlanVersionId)
+    public FloorPlanReviewViewModel(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory, Guid templateId, Guid? floorPlanVersionId)
     {
-        this.scopeFactory = scopeFactory;
         mutationCoordinator = new FloorPlanReviewMutationCoordinator(scopeFactory);
         selectionCoordinator = new FloorPlanReviewSelectionCoordinator();
         queueCoordinator = new FloorPlanReviewQueueCoordinator();
         inspectorCoordinator = new FloorPlanReviewInspectorCoordinator();
+        sessionCoordinator = new FloorPlanReviewSessionCoordinator(scopeFactory);
         this.templateId = templateId;
         this.floorPlanVersionId = floorPlanVersionId;
     }
@@ -371,14 +368,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         StatusMessage = "Loading review session...";
 
-        using var scope = scopeFactory.CreateScope();
-        var handler = scope.ServiceProvider.GetRequiredService<OpenFloorPlanReviewSessionHandler>();
-        var response = floorPlanVersionId is null
-            ? await handler.HandleAsync(templateId, cancellationToken)
-            : await handler.HandleAsync(templateId, floorPlanVersionId.Value, cancellationToken);
-
-        DraftCurationId = response.DraftCurationId;
-        ApplySession(response.Session, ReviewSelectionSnapshot.Empty);
+        var loadResult = await sessionCoordinator.OpenAsync(templateId, floorPlanVersionId, cancellationToken);
+        DraftCurationId = loadResult.DraftCurationId;
+        ApplySessionProjection(loadResult.Projection, ReviewSelectionSnapshot.Empty);
         StatusMessage = $"Loaded review session for {Name}";
     }
 
@@ -1183,24 +1175,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     private async Task RefreshSessionAsync(ReviewSelectionSnapshot selection, CancellationToken cancellationToken)
     {
-        using var scope = scopeFactory.CreateScope();
-        var handler = scope.ServiceProvider.GetRequiredService<GetFloorPlanReviewSessionHandler>();
-        FloorPlanReviewSessionDto? session = floorPlanVersionId is null
-            ? await handler.HandleAsync(templateId, cancellationToken)
-            : await handler.HandleAsync(templateId, floorPlanVersionId.Value, cancellationToken);
-
-        if (session is null)
-        {
-            throw new InvalidOperationException("Floor plan review session was not found.");
-        }
-
-        DraftCurationId = string.Equals(session.Status, "Published", StringComparison.OrdinalIgnoreCase)
-            ? Guid.Empty
-            : DraftCurationId;
-        ApplySession(session, selection);
+        var loadResult = await sessionCoordinator.RefreshAsync(templateId, floorPlanVersionId, DraftCurationId, cancellationToken);
+        DraftCurationId = loadResult.DraftCurationId;
+        ApplySessionProjection(loadResult.Projection, selection);
     }
 
-    private void ApplySession(FloorPlanReviewSessionDto session, ReviewSelectionSnapshot selection)
+    private void ApplySessionProjection(ReviewSessionProjection session, ReviewSelectionSnapshot selection)
     {
         Code = session.Code;
         Name = session.Name;
@@ -1219,9 +1199,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         ReplaceItems(WallCandidates, session.WallCandidates);
         ReplaceItems(PinchGroups, session.PinchGroups);
         ReplaceItems(PinchMarkers, session.PinchMarkers);
-        ReplaceItems(CuratedPlanArtifacts, ResolveCuratedArtifacts(session));
-        dimensionAssociationsById = session.DimensionAssociations.ToDictionary(item => item.DimensionId);
-        RefreshVisibleCuratedArtifacts();
+        ReplaceItems(CuratedPlanArtifacts, session.CuratedPlanArtifacts);
+        dimensionAssociationsById = session.DimensionAssociationsById;
+        ReplaceItems(VisibleCuratedPlanArtifacts, session.VisibleCuratedPlanArtifacts);
         RefreshReviewQueue();
 
         OnPropertyChanged(nameof(DoorOpeningCount));
@@ -1295,28 +1275,6 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         await RefreshSessionAsync(null, null, SelectedPinchGroup?.PinchGroupId, selection, cancellationToken);
         StatusMessage = $"Excluded curated object {displayName}";
-    }
-
-    private IReadOnlyList<CuratedPlanArtifactDto> ResolveCuratedArtifacts(FloorPlanReviewSessionDto session)
-    {
-        if (session.CuratedPlanArtifacts.Count > 0)
-        {
-            return SortCuratedArtifacts(session.CuratedPlanArtifacts);
-        }
-
-        var items = new List<CuratedPlanArtifactDto>();
-        items.AddRange(session.OpeningCandidates.Select(CreateDetectedCuratedArtifact));
-        items.AddRange(session.FixedPlanComponents.Select(CreateDetectedCuratedArtifact));
-        items.AddRange(session.ProtectedDetailAssemblies.Select(CreateDetectedCuratedArtifact));
-        return SortCuratedArtifacts(items);
-    }
-
-    private void RefreshVisibleCuratedArtifacts()
-    {
-        var visible = CuratedPlanArtifacts
-            .Where(item => !string.Equals(item.DecisionState, FloorPlanArtifactDecisionState.Excluded.ToString(), StringComparison.Ordinal))
-            .ToArray();
-        ReplaceItems(VisibleCuratedPlanArtifacts, visible);
     }
 
     private void RefreshReviewQueue()
@@ -1512,88 +1470,6 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         return SelectedCuratedArtifact is null
             ? null
             : new CuratedArtifactSelection(SelectedCuratedArtifact.SourceArtifactKind, SelectedCuratedArtifact.SourceArtifactId);
-    }
-
-    private static CuratedPlanArtifactDto CreateDetectedCuratedArtifact(OpeningCandidateDto artifact)
-    {
-        var detected = FloorPlanArtifactTaxonomy.ResolveDetectedOpeningClassification(artifact.Kind);
-        return new CuratedPlanArtifactDto(
-            artifact.OpeningCandidateId,
-            FloorPlanArtifactSourceKinds.OpeningCandidate,
-            artifact.SourceEntityRef,
-            artifact.SourceLayer,
-            artifact.SourceEntityKind,
-            null,
-            artifact.GeometryPathId is null ? [] : [artifact.GeometryPathId.Value],
-            artifact.Confidence,
-            artifact.DetectionNotes,
-            artifact.SortOrder,
-            detected.Family,
-            detected.Category,
-            detected.Type,
-            detected.Family,
-            detected.Category,
-            detected.Type,
-            FloorPlanArtifactDecisionState.DetectedDefault.ToString(),
-            FloorPlanArtifactTaxonomy.ResolveColorArgb(detected.Family, detected.Category, detected.Type));
-    }
-
-    private static CuratedPlanArtifactDto CreateDetectedCuratedArtifact(FixedPlanComponentDto artifact)
-    {
-        var detected = FloorPlanArtifactTaxonomy.ResolveDetectedFixedClassification(artifact.Kind);
-        return new CuratedPlanArtifactDto(
-            artifact.FixedPlanComponentId,
-            FloorPlanArtifactSourceKinds.FixedPlanComponent,
-            artifact.SourceEntityRef,
-            artifact.SourceLayer,
-            artifact.SourceEntityKind,
-            artifact.SourceBlockName,
-            artifact.GeometryPathIds,
-            artifact.Confidence,
-            artifact.DetectionNotes,
-            artifact.SortOrder,
-            detected.Family,
-            detected.Category,
-            detected.Type,
-            detected.Family,
-            detected.Category,
-            detected.Type,
-            FloorPlanArtifactDecisionState.DetectedDefault.ToString(),
-            FloorPlanArtifactTaxonomy.ResolveColorArgb(detected.Family, detected.Category, detected.Type));
-    }
-
-    private static CuratedPlanArtifactDto CreateDetectedCuratedArtifact(ProtectedDetailAssemblyDto artifact)
-    {
-        var detected = FloorPlanArtifactTaxonomy.ResolveDetectedProtectedClassification(artifact.Kind);
-        return new CuratedPlanArtifactDto(
-            artifact.ProtectedDetailAssemblyId,
-            FloorPlanArtifactSourceKinds.ProtectedDetailAssembly,
-            artifact.SourceEntityRef,
-            artifact.SourceLayer,
-            artifact.SourceEntityKind,
-            null,
-            artifact.GeometryPathIds,
-            artifact.Confidence,
-            artifact.DetectionNotes,
-            artifact.SortOrder,
-            detected.Family,
-            detected.Category,
-            detected.Type,
-            detected.Family,
-            detected.Category,
-            detected.Type,
-            FloorPlanArtifactDecisionState.DetectedDefault.ToString(),
-            FloorPlanArtifactTaxonomy.ResolveColorArgb(detected.Family, detected.Category, detected.Type));
-    }
-
-    private static IReadOnlyList<CuratedPlanArtifactDto> SortCuratedArtifacts(IEnumerable<CuratedPlanArtifactDto> artifacts)
-    {
-        return artifacts
-            .OrderBy(item => FloorPlanArtifactTaxonomy.ResolveFamilySortOrder(item.ResolvedFamily))
-            .ThenBy(item => FloorPlanArtifactTaxonomy.ResolveCategorySortOrder(item.ResolvedFamily, item.ResolvedCategory))
-            .ThenBy(item => item.SortOrder)
-            .ThenBy(item => item.SourceEntityRef, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
     }
 
     private static void ReplaceItems<T>(ObservableCollection<T> target, IEnumerable<T> source)
