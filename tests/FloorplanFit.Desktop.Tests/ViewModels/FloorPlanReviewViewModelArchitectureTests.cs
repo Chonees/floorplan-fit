@@ -72,4 +72,26 @@ public sealed class FloorPlanReviewViewModelArchitectureTests
         Assert.DoesNotContain("CuratedArtifactGroups.Add(new CuratedArtifactGroupViewModel(", source, StringComparison.Ordinal);
         Assert.DoesNotContain(".GroupBy(item => (item.ResolvedFamily, item.ResolvedCategory))", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void FloorPlanReviewViewModel_sources_inspector_presentation_through_the_inspector_coordinator()
+    {
+        var viewModelPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "FloorplanFit.Desktop", "ViewModels", "FloorPlanReviewViewModel.cs");
+        var source = File.ReadAllText(viewModelPath);
+
+        Assert.Contains("FloorPlanReviewInspectorCoordinator", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("return \"Everything is included by default. Exclude only false positives before publishing.\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("return string.Empty;", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("return $\"Selected {SelectedCandidate.SourceEntityRef}. Group: {SelectedPinchGroup.Name}. Press '{AddPinchButtonLabel}' to place a pinch, drag the green {GetHandleHint()} handle to preview, or use '{ExcludeSelectedArtifactLabel}' if this line is a false positive.\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("return $\"Select a line to place a {SelectedPinchGroup.Name} pinch. To preview only this group, drag the green {GetHandleHint()} handle.\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("return $\"Click the preview to place a {SelectedPinchGroup.Name} pinch on {SelectedCandidate.SourceEntityRef}.\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private void NormalizeSelectedInspectorTool()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private string GetHandleHint()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private static string FormatTextHeight(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private string ResolveSelectedDimensionAssociationSummary()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private string ResolveSelectedDimensionAssociationDebugSummary()", source, StringComparison.Ordinal);
+    }
 }

@@ -25,10 +25,12 @@ public sealed class PreviewSemanticPaletteTests
         var workspaceRendererPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "Controls", "Preview", "PreviewWorkspaceRenderer.cs");
         var compressionRendererPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "Controls", "Preview", "CompressionHandlePreviewLayerRenderer.cs");
         var reviewViewModelPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ViewModels", "FloorPlanReviewViewModel.cs");
+        var inspectorCoordinatorPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ViewModels", "Review", "FloorPlanReviewInspectorCoordinator.cs");
 
         var workspaceRenderer = File.ReadAllText(workspaceRendererPath);
         var compressionRenderer = File.ReadAllText(compressionRendererPath);
         var reviewViewModel = File.ReadAllText(reviewViewModelPath);
+        var inspectorCoordinator = File.ReadAllText(inspectorCoordinatorPath);
 
         Assert.Contains("PreviewSemanticPalette.WorkspaceBackground", workspaceRenderer, StringComparison.Ordinal);
         Assert.Contains("PreviewSemanticPalette.WorkspaceDot", workspaceRenderer, StringComparison.Ordinal);
@@ -44,8 +46,9 @@ public sealed class PreviewSemanticPaletteTests
         Assert.DoesNotContain("Color.FromArgb(32, 0, 0, 0)", compressionRenderer, StringComparison.Ordinal);
         Assert.DoesNotContain("Color.FromArgb(220, 0, 0, 0)", compressionRenderer, StringComparison.Ordinal);
 
-        Assert.Contains("PreviewSemanticPalette.TransparentArgb", reviewViewModel, StringComparison.Ordinal);
         Assert.DoesNotContain("?? \"#00000000\"", reviewViewModel, StringComparison.Ordinal);
+        Assert.Contains("PreviewSemanticPalette.TransparentArgb", inspectorCoordinator, StringComparison.Ordinal);
+        Assert.DoesNotContain("?? \"#00000000\"", inspectorCoordinator, StringComparison.Ordinal);
     }
 
     private static string FindSolutionRoot()

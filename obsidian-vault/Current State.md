@@ -719,6 +719,12 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Estado de cierre de **Loop 3 / review orchestration**: `FloorPlanReviewViewModel.cs` bajo a **1563 lineas** y ya no concentra mutaciones, selection state ni review queue orchestration. El siguiente paso sano deja de ser Loop 3 y pasa a **Loop 4 cleanup final**, con foco en naming/ownership consistency, drift documental final y auditoria de los restos de shell/UI state.
 
+- Inicio de **Loop 4A / inspector presentation cleanup** el **2026-05-12**: `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewInspectorCoordinator.cs` ahora concentra la presentacion derivada del inspector (`SelectedArtifact*`, summaries, curated color, interaction hints y normalizacion del inspector tool). `FloorPlanReviewViewModel.cs` ya no mantiene inline `InteractionHint`, `SelectedArtifactSubtitle/Details`, los summaries de dimension/text height ni `NormalizeSelectedInspectorTool()`.
+
+- Verificacion de **Loop 4A** el **2026-05-12**: el focused inspector slice `FloorPlanReviewViewModelArchitectureTests|FloorPlanReviewViewModelTests|DimensionEditingFloorPlanReviewViewModelTests` paso **33/33**, y la suite completa `FloorplanFit.Desktop.Tests` quedo en **129/129 PASS**. Sigue apareciendo el warning `CS8625` en `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs`, pero sigue fuera de alcance.
+
+- Estado de hotspot post-**Loop 4A**: `FloorPlanReviewViewModel.cs` bajo a **1421 lineas**. El siguiente corte sano de Loop 4 ya no es presentation text; pasa al bloque de **session apply / refresh shell** (`RefreshSessionAsync`, `ApplySession`, `ResolveCuratedArtifacts`, `RefreshVisibleCuratedArtifacts`) antes del cleanup cosmetico final.
+
 
 
 
@@ -2387,7 +2393,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Arrancar **Loop 4 cleanup final**: auditar naming, ownership residual y consistencia documental ahora que preview y review ya quedaron particionados en coordinators claros.
+0. Ejecutar **Loop 4B** sobre el shell de refresh/session apply: sacar de `FloorPlanReviewViewModel` la orquestacion de `ApplySession`, `ResolveCuratedArtifacts` y `RefreshVisibleCuratedArtifacts` a un coordinator/helper dedicado.
 
 
 
@@ -2405,7 +2411,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-1. Dentro de **Loop 4**, priorizar primero los restos del Desktop shell (`SelectedInspectorTool`, summaries/labels derivados, hints y helpers UI) antes de hacer cleanup cosmetico de nombres o carpetas.
+1. Despues de **Loop 4B**, cerrar **Loop 4C** con cleanup final de naming/ownership/document drift y auditoria final de \"un archivo = una responsabilidad\".
 
 
 
@@ -2656,6 +2662,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-12 - Loop 3B selection state extraction]]
 
 - [[Implementation/2026-05-12 - Loop 3C review queue orchestration]]
+
+- [[Implementation/2026-05-12 - Loop 4A inspector presentation cleanup]]
 
 
 

@@ -6,7 +6,6 @@ using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.Controls;
-using FloorplanFit.Desktop.Controls.Preview;
 using FloorplanFit.Domain.FloorPlans;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -25,6 +24,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private readonly FloorPlanReviewMutationCoordinator mutationCoordinator;
     private readonly FloorPlanReviewSelectionCoordinator selectionCoordinator;
     private readonly FloorPlanReviewQueueCoordinator queueCoordinator;
+    private readonly FloorPlanReviewInspectorCoordinator inspectorCoordinator;
     private readonly Guid templateId;
     private readonly Guid? floorPlanVersionId;
     private IReadOnlyDictionary<Guid, DimensionAssociationDto> dimensionAssociationsById = new Dictionary<Guid, DimensionAssociationDto>();
@@ -41,6 +41,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         mutationCoordinator = new FloorPlanReviewMutationCoordinator(scopeFactory);
         selectionCoordinator = new FloorPlanReviewSelectionCoordinator();
         queueCoordinator = new FloorPlanReviewQueueCoordinator();
+        inspectorCoordinator = new FloorPlanReviewInspectorCoordinator();
         this.templateId = templateId;
         this.floorPlanVersionId = floorPlanVersionId;
     }
@@ -344,162 +345,27 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         SelectedOpeningLabel is not null ||
         SelectedDimension is not null;
 
-    public string SelectedArtifactTypeLabel =>
-        SelectedCuratedArtifact is not null ? "Curated Object" :
-        SelectedCandidate is not null ? "Wall Candidate" :
-        SelectedRoomLabel is not null ? "Room Name" :
-        SelectedOpeningLabel is not null ? "Door / Window Code" :
-        SelectedDimension is not null ? "Dimension" :
-        "Nothing selected";
+    public string SelectedArtifactTypeLabel => GetInspectorPresentation().ArtifactTypeLabel;
 
-    public string SelectedArtifactTitle =>
-        SelectedCuratedArtifact?.SourceEntityRef ??
-        SelectedCandidate?.SourceEntityRef ??
-        SelectedRoomLabel?.Text ??
-        SelectedOpeningLabel?.Text ??
-        SelectedDimension?.DisplayText ??
-        "Select something from the review queue or preview.";
+    public string SelectedArtifactTitle => GetInspectorPresentation().ArtifactTitle;
 
-    public string SelectedArtifactSubtitle
-    {
-        get
-        {
-            if (SelectedCuratedArtifact is not null)
-            {
-                return $"Layer: {SelectedCuratedArtifact.SourceLayer} • {SelectedCuratedArtifact.ResolvedFamily} > {SelectedCuratedArtifact.ResolvedCategory} > {SelectedCuratedArtifact.ResolvedType}";
-            }
+    public string SelectedArtifactSubtitle => GetInspectorPresentation().ArtifactSubtitle;
 
-            if (SelectedCandidate is not null)
-            {
-                return $"Layer: {SelectedCandidate.SourceLayer} • {SelectedCandidate.AssemblyHint}";
-            }
+    public string SelectedArtifactDetails => GetInspectorPresentation().ArtifactDetails;
 
-            if (SelectedRoomLabel is not null)
-            {
-                return $"Layer: {SelectedRoomLabel.SourceLayer} • Ref: {SelectedRoomLabel.SourceEntityRef}";
-            }
+    public string SelectedCuratedArtifactDetectedSummary => GetInspectorPresentation().CuratedArtifactDetectedSummary;
 
-            if (SelectedOpeningLabel is not null)
-            {
-                return $"Layer: {SelectedOpeningLabel.SourceLayer} • {SelectedOpeningLabel.Kind}";
-            }
+    public string SelectedCuratedArtifactResolvedSummary => GetInspectorPresentation().CuratedArtifactResolvedSummary;
 
-            if (SelectedDimension is not null)
-            {
-                return $"Layer: {SelectedDimension.SourceLayer} • Ref: {SelectedDimension.SourceEntityRef}";
-            }
+    public string SelectedCuratedArtifactDecisionSummary => GetInspectorPresentation().CuratedArtifactDecisionSummary;
 
-            return "Everything is included by default. Exclude only false positives before publishing.";
-        }
-    }
+    public string SelectedCuratedArtifactColorArgb => GetInspectorPresentation().CuratedArtifactColorArgb;
 
-    public string SelectedArtifactDetails
-    {
-        get
-        {
-            if (SelectedCuratedArtifact is not null)
-            {
-                return $"Detected: {SelectedCuratedArtifact.DetectedFamily} > {SelectedCuratedArtifact.DetectedCategory} > {SelectedCuratedArtifact.DetectedType} • Decision: {SelectedCuratedArtifact.DecisionState} • Confidence: {SelectedCuratedArtifact.Confidence:P0}";
-            }
+    public string SelectedArtifactPositionSummary => GetInspectorPresentation().ArtifactPositionSummary;
 
-            if (SelectedCandidate is not null)
-            {
-                return $"Confidence: {SelectedCandidate.Confidence:P0}";
-            }
+    public string SelectedLabelTextHeightSummary => GetInspectorPresentation().LabelTextHeightSummary;
 
-            if (SelectedRoomLabel is not null)
-            {
-                return $"Confidence: {SelectedRoomLabel.Confidence:P0}";
-            }
-
-            if (SelectedOpeningLabel is not null)
-            {
-                return $"Confidence: {SelectedOpeningLabel.Confidence:P0}";
-            }
-
-            if (SelectedDimension is not null)
-            {
-                return $"Confidence: {SelectedDimension.Confidence:P0} • {SelectedDimension.SourceUnit} • {ResolveSelectedDimensionAssociationSummary()}";
-            }
-
-            return string.Empty;
-        }
-    }
-
-    public string SelectedCuratedArtifactDetectedSummary => SelectedCuratedArtifact is null
-        ? string.Empty
-        : $"Detected: {SelectedCuratedArtifact.DetectedFamily} > {SelectedCuratedArtifact.DetectedCategory} > {SelectedCuratedArtifact.DetectedType}";
-
-    public string SelectedCuratedArtifactResolvedSummary => SelectedCuratedArtifact is null
-        ? string.Empty
-        : $"Resolved: {SelectedCuratedArtifact.ResolvedFamily} > {SelectedCuratedArtifact.ResolvedCategory} > {SelectedCuratedArtifact.ResolvedType}";
-
-    public string SelectedCuratedArtifactDecisionSummary => SelectedCuratedArtifact is null
-        ? string.Empty
-        : $"Decision: {SelectedCuratedArtifact.DecisionState}";
-
-    public string SelectedCuratedArtifactColorArgb => SelectedCuratedArtifact?.ResolvedColorArgb ?? PreviewSemanticPalette.TransparentArgb;
-
-    public string SelectedArtifactPositionSummary =>
-        SelectedRoomLabel is not null
-            ? $"Room label at ({SelectedRoomLabel.X}, {SelectedRoomLabel.Y}) mm. Detected: ({SelectedRoomLabel.DetectedX ?? SelectedRoomLabel.X}, {SelectedRoomLabel.DetectedY ?? SelectedRoomLabel.Y}) mm."
-            : SelectedOpeningLabel is not null
-                ? $"Opening label at ({SelectedOpeningLabel.X}, {SelectedOpeningLabel.Y}) mm. Detected: ({SelectedOpeningLabel.DetectedX ?? SelectedOpeningLabel.X}, {SelectedOpeningLabel.DetectedY ?? SelectedOpeningLabel.Y}) mm."
-                : SelectedDimension is not null
-                    ? $"Dimension defpoints: ({SelectedDimension.DefPointX}, {SelectedDimension.DefPointY}) -> ({SelectedDimension.DefPoint2X}, {SelectedDimension.DefPoint2Y}) • text anchor: ({SelectedDimension.RenderTextX ?? 0m}, {SelectedDimension.RenderTextY ?? 0m}) • {ResolveSelectedDimensionAssociationDebugSummary()} • dirty: {SelectedDimension.IsDirty}."
-                : SelectedCuratedArtifact is not null
-                    ? $"Curated translation dx/dy: ({SelectedCuratedArtifact.TranslationDx}, {SelectedCuratedArtifact.TranslationDy}) mm."
-                    : string.Empty;
-
-    public string SelectedLabelTextHeightSummary =>
-        SelectedRoomLabel is not null
-            ? $"Room label text height: {FormatTextHeight(SelectedRoomLabel.TextHeight)} mm. Detected: {FormatTextHeight(SelectedRoomLabel.DetectedTextHeight)} mm."
-            : SelectedOpeningLabel is not null
-                ? $"Opening label text height: {FormatTextHeight(SelectedOpeningLabel.TextHeight)} mm. Detected: {FormatTextHeight(SelectedOpeningLabel.DetectedTextHeight)} mm."
-                : string.Empty;
-
-    public string InteractionHint
-    {
-        get
-        {
-            if (SelectedCuratedArtifact is not null)
-            {
-                return string.Equals(
-                    SelectedCuratedArtifact.DecisionState,
-                    FloorPlanArtifactDecisionState.Excluded.ToString(),
-                    StringComparison.Ordinal)
-                    ? "This curated object is excluded from the active preview. Restore detected classification or save a new classification to bring it back into the curation set."
-                    : $"Selected curated object {SelectedCuratedArtifact.SourceEntityRef}. Adjust Family, Category, and Type, then use 'Save Classification' to persist the correction or '{ExcludeSelectedArtifactLabel}' if this is a false positive.";
-            }
-
-            if (SelectedRoomLabel is not null)
-            {
-                return $"Selected room label {SelectedRoomLabel.Text}. Press '{ExcludeSelectedArtifactLabel}' if this label should not persist.";
-            }
-
-            if (SelectedOpeningLabel is not null)
-            {
-                return $"Selected opening label {SelectedOpeningLabel.Text}. Press '{ExcludeSelectedArtifactLabel}' if this label should not persist.";
-            }
-
-            if (SelectedPinchGroup is null)
-            {
-                return "Select an artifact to inspect it, or create/select a pinch group before placing pinches. Groups tell the fit engine which area may shrink together.";
-            }
-
-            if (SelectedCandidate is null)
-            {
-                return $"Select a line to place a {SelectedPinchGroup.Name} pinch. To preview only this group, drag the green {GetHandleHint()} handle.";
-            }
-
-            if (IsPinchPlacementArmed)
-            {
-                return $"Click on the preview to place a {SelectedPinchGroup.Name} pinch on {SelectedCandidate.SourceEntityRef}.";
-            }
-
-            return $"Selected {SelectedCandidate.SourceEntityRef}. Group: {SelectedPinchGroup.Name}. Press '{AddPinchButtonLabel}' to place a pinch, drag the green {GetHandleHint()} handle to preview, or use '{ExcludeSelectedArtifactLabel}' if this line is a false positive.";
-        }
-    }
+    public string InteractionHint => GetInspectorPresentation().InteractionHint;
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
@@ -1756,6 +1622,30 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
                textHeight > 0m;
     }
 
+    private ReviewInspectorPresentation GetInspectorPresentation()
+    {
+        return inspectorCoordinator.BuildPresentation(
+            SelectedCuratedArtifact,
+            SelectedCandidate,
+            SelectedRoomLabel,
+            SelectedOpeningLabel,
+            SelectedDimension,
+            SelectedPinchGroup,
+            SelectedPinchAxis,
+            IsPinchPlacementArmed,
+            AddPinchButtonLabel,
+            ExcludeSelectedArtifactLabel,
+            GetSelectedDimensionAssociation());
+    }
+
+    private DimensionAssociationDto? GetSelectedDimensionAssociation()
+    {
+        return SelectedDimension is not null &&
+               dimensionAssociationsById.TryGetValue(SelectedDimension.DimensionId, out var association)
+            ? association
+            : null;
+    }
+
     private static string ResolveSelectedDimensionSourceKey(DimensionDto dimension)
     {
         return !string.IsNullOrWhiteSpace(dimension.SourceHandle)
@@ -1763,46 +1653,23 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             : dimension.SourceEntityRef;
     }
 
-    private string ResolveSelectedDimensionAssociationSummary()
-    {
-        if (SelectedDimension is null ||
-            !dimensionAssociationsById.TryGetValue(SelectedDimension.DimensionId, out var association))
-        {
-            return "Association: unresolved";
-        }
-
-        var start = association.StartAnchor?.SourceArtifactKind ?? "?";
-        var end = association.EndAnchor?.SourceArtifactKind ?? "?";
-        return association.IsFullyResolved
-            ? $"Association: {start} -> {end} ({association.Confidence:P0})"
-            : $"Association: partial ({association.Confidence:P0})";
-    }
-
-    private string ResolveSelectedDimensionAssociationDebugSummary()
-    {
-        if (SelectedDimension is null ||
-            !dimensionAssociationsById.TryGetValue(SelectedDimension.DimensionId, out var association))
-        {
-            return "assoc: unresolved";
-        }
-
-        var start = association.StartAnchor is null
-            ? "start=?"
-            : $"start={association.StartAnchor.EdgeKey}/{association.StartAnchor.EdgeAnchorKind}";
-        var end = association.EndAnchor is null
-            ? "end=?"
-            : $"end={association.EndAnchor.EdgeKey}/{association.EndAnchor.EdgeAnchorKind}";
-        return $"assoc: {start} • {end}";
-    }
-
-    private static string FormatTextHeight(decimal? textHeight)
-    {
-        return textHeight?.ToString(CultureInfo.InvariantCulture) ?? "Auto";
-    }
-
     private void NotifyUxStateChanged()
     {
-        NormalizeSelectedInspectorTool();
+        var normalizedInspectorTool = inspectorCoordinator.NormalizeSelectedInspectorTool(
+            SelectedInspectorTool,
+            CanUsePositionTool,
+            CanUseTextTool,
+            CanUseClassificationTool,
+            CanUseActionsTool,
+            InspectorToolOverview,
+            InspectorToolPosition,
+            InspectorToolText,
+            InspectorToolClassification,
+            InspectorToolActions);
+        if (!string.Equals(SelectedInspectorTool, normalizedInspectorTool, StringComparison.Ordinal))
+        {
+            SelectedInspectorTool = normalizedInspectorTool;
+        }
         OnPropertyChanged(nameof(AddPinchButtonLabel));
         OnPropertyChanged(nameof(SelectedPinchGroupId));
         OnPropertyChanged(nameof(InteractionHint));
@@ -1838,39 +1705,6 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedOpeningLabelId));
         OnPropertyChanged(nameof(SelectedDimensionId));
         OnPropertyChanged(nameof(ExcludeSelectedArtifactLabel));
-    }
-
-    private void NormalizeSelectedInspectorTool()
-    {
-        if (IsPositionToolSelected && !CanUsePositionTool)
-        {
-            SelectedInspectorTool = InspectorToolOverview;
-            return;
-        }
-
-        if (IsTextToolSelected && !CanUseTextTool)
-        {
-            SelectedInspectorTool = InspectorToolOverview;
-            return;
-        }
-
-        if (IsClassificationToolSelected && !CanUseClassificationTool)
-        {
-            SelectedInspectorTool = InspectorToolOverview;
-            return;
-        }
-
-        if (IsActionsToolSelected && !CanUseActionsTool)
-        {
-            SelectedInspectorTool = InspectorToolOverview;
-        }
-    }
-
-    private string GetHandleHint()
-    {
-        return string.Equals(SelectedPinchAxis, nameof(PinchAxisTag.Height), StringComparison.OrdinalIgnoreCase)
-            ? "top or bottom"
-            : "left or right";
     }
 
     private readonly record struct CuratedArtifactSelection(string SourceArtifactKind, Guid SourceArtifactId);
