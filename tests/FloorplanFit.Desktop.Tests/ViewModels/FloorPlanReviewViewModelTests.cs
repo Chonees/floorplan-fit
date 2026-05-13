@@ -699,6 +699,137 @@ public sealed class FloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task RemoveSelectedOpeningLabelAsync_removes_selected_opening_label()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var openingLabel = new ExtractedOpeningLabel(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "TEXT:9",
+            "DOORTEXT",
+            "Door",
+            "24\"DR.",
+            100m,
+            200m,
+            0.95m,
+            null,
+            1);
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var openingLabelRepository = new InMemoryExtractedOpeningLabelRepository(openingLabel);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IExtractedOpeningLabelRepository>(openingLabelRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 10, 18, 45, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "seminole2000",
+                "SEMINOLE2000",
+                "Curated Draft",
+                1,
+                null,
+                [],
+                [],
+                [],
+                [
+                    new OpeningLabelDto(openingLabel.Id, "TEXT:9", "DOORTEXT", "Door", "24\"DR.", 100m, 200m, 0.95m, null, 1)
+                ],
+                [],
+                [],
+                [],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<RemoveOpeningLabelHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedOpeningLabel = viewModel.OpeningLabels.Single();
+
+        await viewModel.RemoveSelectedOpeningLabelAsync(CancellationToken.None);
+
+        Assert.False(openingLabelRepository.Items.Any());
+        Assert.Null(viewModel.SelectedOpeningLabel);
+    }
+
+    [Fact]
+    public async Task RemoveSelectedPinchAsync_removes_selected_pinch_marker()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var candidateId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var pinchGroupId = Guid.NewGuid();
+        var pinchMarker = new PinchMarker(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            pinchGroupId,
+            candidateId,
+            geometryPathId,
+            0.55m,
+            120m,
+            1);
+        var template = new FloorPlanTemplate(templateId, "santa-barbara", "SANTA-BARBARA", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var pinchMarkerRepository = new InMemoryPinchMarkerRepository([pinchMarker]);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IPinchMarkerRepository>(pinchMarkerRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 10, 19, 10, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "santa-barbara",
+                "SANTA-BARBARA",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 120m, 0m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new WallCandidateDto(candidateId, "LINE:68", "WALLS", "Accepted", 0.95m, 101.6m, null, geometryPathId, 1)
+                ],
+                [
+                    new PinchGroupDto(pinchGroupId, "Patio", nameof(PinchAxisTag.Width), 1)
+                ],
+                [
+                    new PinchMarkerDto(pinchMarker.Id, pinchGroupId, "Patio", candidateId, geometryPathId, nameof(PinchAxisTag.Width), 0.55m, 120m, 1)
+                ])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<RemovePinchMarkerHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedPinchMarker = viewModel.PinchMarkers.Single();
+
+        await viewModel.RemoveSelectedPinchAsync(CancellationToken.None);
+
+        Assert.False(pinchMarkerRepository.Items.Any());
+    }
+
+    [Fact]
     public async Task ExcludeSelectedArtifactAsync_rejects_selected_wall_candidate()
     {
         var templateId = Guid.NewGuid();
@@ -991,6 +1122,33 @@ public sealed class FloorPlanReviewViewModelTests
         public Task RemoveAsync(Guid roomLabelId, CancellationToken cancellationToken)
         {
             Items.RemoveAll(item => item.Id == roomLabelId);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryExtractedOpeningLabelRepository : IExtractedOpeningLabelRepository
+    {
+        public InMemoryExtractedOpeningLabelRepository(params ExtractedOpeningLabel[] seed)
+        {
+            Items = [.. seed];
+        }
+
+        public List<ExtractedOpeningLabel> Items { get; }
+
+        public Task AddRangeAsync(IReadOnlyList<ExtractedOpeningLabel> labels, CancellationToken cancellationToken)
+        {
+            Items.AddRange(labels);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ExtractedOpeningLabel>> ListByExtractionRunAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<ExtractedOpeningLabel>>(Items.Where(item => item.WallExtractionRunId == wallExtractionRunId).ToArray());
+        }
+
+        public Task RemoveAsync(Guid openingLabelId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == openingLabelId);
             return Task.CompletedTask;
         }
     }

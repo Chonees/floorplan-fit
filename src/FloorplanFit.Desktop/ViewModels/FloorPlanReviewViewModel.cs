@@ -521,12 +521,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = $"Rejecting {rejected.SourceEntityRef}...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<RejectWallCandidateHandler>();
-            await handler.HandleAsync(DraftCurationId, rejected.CandidateId, cancellationToken);
-        }
+        await mutationCoordinator.RejectWallCandidateAsync(DraftCurationId, rejected.CandidateId, cancellationToken);
 
         await RefreshSessionAsync(null, null, SelectedPinchGroup?.PinchGroupId, preferredCuratedArtifact: null, cancellationToken);
         StatusMessage = $"Rejected {rejected.SourceEntityRef}";
@@ -540,12 +535,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = "Publishing curation...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<PublishFloorPlanCurationHandler>();
-            await handler.HandleAsync(templateId, DraftCurationId, cancellationToken);
-        }
+        await mutationCoordinator.PublishCurationAsync(templateId, DraftCurationId, cancellationToken);
 
         await RefreshSessionAsync(SelectedCandidate?.CandidateId, SelectedPinchMarker?.PinchMarkerId, SelectedPinchGroup?.PinchGroupId, GetSelectedCuratedArtifactSelection(), cancellationToken);
         StatusMessage = $"Published curation for {Name}";
@@ -566,17 +556,11 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = $"Creating {groupName} pinch group...";
-        Guid groupId;
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<AddPinchGroupHandler>();
-            groupId = await handler.HandleAsync(
-                DraftCurationId,
-                groupName,
-                Enum.Parse<PinchAxisTag>(SelectedPinchAxis),
-                cancellationToken);
-        }
+        var groupId = await mutationCoordinator.AddPinchGroupAsync(
+            DraftCurationId,
+            groupName,
+            Enum.Parse<PinchAxisTag>(SelectedPinchAxis),
+            cancellationToken);
 
         NewPinchGroupName = string.Empty;
         await RefreshSessionAsync(SelectedCandidate?.CandidateId, null, groupId, GetSelectedCuratedArtifactSelection(), cancellationToken);
@@ -622,18 +606,13 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = $"Adding {SelectedPinchGroup.Name} pinch to {SelectedCandidate.SourceEntityRef}...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<AddPinchMarkerHandler>();
-            await handler.HandleAsync(
-                DraftCurationId,
-                SelectedCandidate.CandidateId,
-                SelectedPinchGroup.PinchGroupId,
-                positionRatio,
-                maxTrimMm,
-                cancellationToken);
-        }
+        await mutationCoordinator.AddPinchMarkerAsync(
+            DraftCurationId,
+            SelectedCandidate.CandidateId,
+            SelectedPinchGroup.PinchGroupId,
+            positionRatio,
+            maxTrimMm,
+            cancellationToken);
 
         IsPinchPlacementArmed = false;
         await RefreshSessionAsync(SelectedCandidate.CandidateId, null, SelectedPinchGroup.PinchGroupId, preferredCuratedArtifact: null, cancellationToken);
@@ -750,13 +729,10 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
         else if (SelectedDimension is not null)
         {
-            using var scope = scopeFactory.CreateScope();
-            await scope.ServiceProvider
-                .GetRequiredService<RestoreFloorPlanDimensionOverrideHandler>()
-                .HandleAsync(
-                    DraftCurationId,
-                    ResolveSelectedDimensionSourceKey(SelectedDimension),
-                    cancellationToken);
+            await mutationCoordinator.RestoreDimensionOverrideAsync(
+                DraftCurationId,
+                ResolveSelectedDimensionSourceKey(SelectedDimension),
+                cancellationToken);
         }
 
         if (request is { } restoreRequest)
@@ -834,12 +810,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = "Removing pinch...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<RemovePinchMarkerHandler>();
-            await handler.HandleAsync(SelectedPinchMarker.PinchMarkerId, cancellationToken);
-        }
+        await mutationCoordinator.RemovePinchMarkerAsync(SelectedPinchMarker.PinchMarkerId, cancellationToken);
 
         await RefreshSessionAsync(SelectedCandidate?.CandidateId, null, SelectedPinchGroup?.PinchGroupId, GetSelectedCuratedArtifactSelection(), cancellationToken);
         StatusMessage = "Removed pinch";
@@ -854,12 +825,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         var removed = SelectedRoomLabel;
         StatusMessage = $"Excluding room label {removed.Text}...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<RemoveRoomLabelHandler>();
-            await handler.HandleAsync(removed.RoomLabelId, cancellationToken);
-        }
+        await mutationCoordinator.RemoveRoomLabelAsync(removed.RoomLabelId, cancellationToken);
 
         await RefreshSessionAsync(SelectedCandidate?.CandidateId, SelectedPinchMarker?.PinchMarkerId, SelectedPinchGroup?.PinchGroupId, preferredCuratedArtifact: null, cancellationToken);
         SelectedRoomLabel = null;
@@ -893,12 +859,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         var removed = SelectedOpeningLabel;
         StatusMessage = $"Removing opening label {removed.Text}...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<RemoveOpeningLabelHandler>();
-            await handler.HandleAsync(removed.OpeningLabelId, cancellationToken);
-        }
+        await mutationCoordinator.RemoveOpeningLabelAsync(removed.OpeningLabelId, cancellationToken);
 
         await RefreshSessionAsync(SelectedCandidate?.CandidateId, SelectedPinchMarker?.PinchMarkerId, SelectedPinchGroup?.PinchGroupId, preferredCuratedArtifact: null, cancellationToken);
         SelectedOpeningLabel = null;
@@ -949,19 +910,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = $"Saving classification for {SelectedCuratedArtifact.SourceEntityRef}...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<SaveCuratedArtifactClassificationHandler>();
-            await handler.HandleAsync(
-                DraftCurationId,
-                SelectedCuratedArtifact.SourceArtifactKind,
-                SelectedCuratedArtifact.SourceArtifactId,
-                EditableCuratedArtifactFamily,
-                EditableCuratedArtifactCategory,
-                EditableCuratedArtifactType,
-                cancellationToken);
-        }
+        await mutationCoordinator.SaveCuratedArtifactClassificationAsync(
+            DraftCurationId,
+            SelectedCuratedArtifact.SourceArtifactKind,
+            SelectedCuratedArtifact.SourceArtifactId,
+            EditableCuratedArtifactFamily,
+            EditableCuratedArtifactCategory,
+            EditableCuratedArtifactType,
+            cancellationToken);
 
         var selection = new CuratedArtifactSelection(SelectedCuratedArtifact.SourceArtifactKind, SelectedCuratedArtifact.SourceArtifactId);
         await RefreshSessionAsync(null, null, SelectedPinchGroup?.PinchGroupId, selection, cancellationToken);
@@ -976,19 +932,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = $"Restoring detected classification for {SelectedCuratedArtifact.SourceEntityRef}...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<RestoreCuratedArtifactClassificationHandler>();
-            await handler.HandleAsync(
-                DraftCurationId,
-                SelectedCuratedArtifact.SourceArtifactKind,
-                SelectedCuratedArtifact.SourceArtifactId,
-                SelectedCuratedArtifact.DetectedFamily,
-                SelectedCuratedArtifact.DetectedCategory,
-                SelectedCuratedArtifact.DetectedType,
-                cancellationToken);
-        }
+        await mutationCoordinator.RestoreCuratedArtifactClassificationAsync(
+            DraftCurationId,
+            SelectedCuratedArtifact.SourceArtifactKind,
+            SelectedCuratedArtifact.SourceArtifactId,
+            SelectedCuratedArtifact.DetectedFamily,
+            SelectedCuratedArtifact.DetectedCategory,
+            SelectedCuratedArtifact.DetectedType,
+            cancellationToken);
 
         var selection = new CuratedArtifactSelection(SelectedCuratedArtifact.SourceArtifactKind, SelectedCuratedArtifact.SourceArtifactId);
         await RefreshSessionAsync(null, null, SelectedPinchGroup?.PinchGroupId, selection, cancellationToken);
@@ -1613,19 +1564,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = $"Excluding curated object {displayName}...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<ExcludeCuratedArtifactHandler>();
-            await handler.HandleAsync(
-                DraftCurationId,
-                selection.SourceArtifactKind,
-                selection.SourceArtifactId,
-                resolvedFamily,
-                resolvedCategory,
-                resolvedType,
-                cancellationToken);
-        }
+        await mutationCoordinator.ExcludeCuratedArtifactAsync(
+            DraftCurationId,
+            selection.SourceArtifactKind,
+            selection.SourceArtifactId,
+            resolvedFamily,
+            resolvedCategory,
+            resolvedType,
+            cancellationToken);
 
         await RefreshSessionAsync(null, null, SelectedPinchGroup?.PinchGroupId, selection, cancellationToken);
         StatusMessage = $"Excluded curated object {displayName}";

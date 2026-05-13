@@ -166,7 +166,124 @@ public sealed class CuratedArtifactFloorPlanReviewViewModelTests
         Assert.Equal(FloorPlanArtifactTaxonomy.TubType, viewModel.EditableCuratedArtifactType);
     }
 
-    private static ServiceCollection BuildServices(FloorPlanTemplate template, FloorPlanReviewSessionDto session)
+    [Fact]
+    public async Task SaveSelectedCuratedArtifactClassificationAsync_persists_reclassified_overlay()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var curatedArtifactId = Guid.NewGuid();
+        var curatedPathId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var classificationRepository = new InMemoryFloorPlanArtifactClassificationRepository();
+
+        var services = BuildServices(
+            template,
+            CreateCuratedArtifactSession(templateId, curatedArtifactId, curatedPathId),
+            services =>
+            {
+                services.AddSingleton<IFloorPlanArtifactClassificationRepository>(classificationRepository);
+                services.AddTransient<SaveCuratedArtifactClassificationHandler>();
+            });
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedCuratedArtifact = viewModel.VisibleCuratedPlanArtifacts.Single();
+        viewModel.EditableCuratedArtifactFamily = FloorPlanArtifactTaxonomy.ProtectedFamily;
+        viewModel.EditableCuratedArtifactCategory = FloorPlanArtifactTaxonomy.WetAssemblyCategory;
+        viewModel.EditableCuratedArtifactType = FloorPlanArtifactTaxonomy.UnknownWetAssemblyType;
+
+        await viewModel.SaveSelectedCuratedArtifactClassificationAsync(CancellationToken.None);
+
+        var saved = Assert.Single(classificationRepository.Items);
+        Assert.Equal(viewModel.DraftCurationId, saved.FloorPlanCurationId);
+        Assert.Equal(curatedArtifactId, saved.SourceArtifactId);
+        Assert.Equal(FloorPlanArtifactTaxonomy.ProtectedFamily, saved.ResolvedFamily);
+        Assert.Equal(FloorPlanArtifactTaxonomy.WetAssemblyCategory, saved.ResolvedCategory);
+        Assert.Equal(FloorPlanArtifactTaxonomy.UnknownWetAssemblyType, saved.ResolvedType);
+        Assert.Equal(FloorPlanArtifactDecisionState.Reclassified, saved.DecisionState);
+    }
+
+    [Fact]
+    public async Task RestoreSelectedCuratedArtifactClassificationAsync_persists_detected_default_overlay()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var curatedArtifactId = Guid.NewGuid();
+        var curatedPathId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var classificationRepository = new InMemoryFloorPlanArtifactClassificationRepository();
+
+        var services = BuildServices(
+            template,
+            CreateCuratedArtifactSession(templateId, curatedArtifactId, curatedPathId),
+            services =>
+            {
+                services.AddSingleton<IFloorPlanArtifactClassificationRepository>(classificationRepository);
+                services.AddTransient<RestoreCuratedArtifactClassificationHandler>();
+            });
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedCuratedArtifact = viewModel.VisibleCuratedPlanArtifacts.Single();
+
+        await viewModel.RestoreSelectedCuratedArtifactClassificationAsync(CancellationToken.None);
+
+        var saved = Assert.Single(classificationRepository.Items);
+        Assert.Equal(viewModel.DraftCurationId, saved.FloorPlanCurationId);
+        Assert.Equal(curatedArtifactId, saved.SourceArtifactId);
+        Assert.Equal(FloorPlanArtifactTaxonomy.OpeningFamily, saved.ResolvedFamily);
+        Assert.Equal(FloorPlanArtifactTaxonomy.OpeningCategory, saved.ResolvedCategory);
+        Assert.Equal(FloorPlanArtifactTaxonomy.DoorType, saved.ResolvedType);
+        Assert.Equal(FloorPlanArtifactDecisionState.DetectedDefault, saved.DecisionState);
+    }
+
+    [Fact]
+    public async Task ExcludeSelectedCuratedArtifactAsync_persists_excluded_overlay()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var curatedArtifactId = Guid.NewGuid();
+        var curatedPathId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var classificationRepository = new InMemoryFloorPlanArtifactClassificationRepository();
+
+        var services = BuildServices(
+            template,
+            CreateCuratedArtifactSession(templateId, curatedArtifactId, curatedPathId),
+            services =>
+            {
+                services.AddSingleton<IFloorPlanArtifactClassificationRepository>(classificationRepository);
+                services.AddTransient<ExcludeCuratedArtifactHandler>();
+            });
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedCuratedArtifact = viewModel.VisibleCuratedPlanArtifacts.Single();
+
+        await viewModel.ExcludeSelectedCuratedArtifactAsync(CancellationToken.None);
+
+        var saved = Assert.Single(classificationRepository.Items);
+        Assert.Equal(viewModel.DraftCurationId, saved.FloorPlanCurationId);
+        Assert.Equal(curatedArtifactId, saved.SourceArtifactId);
+        Assert.Equal(FloorPlanArtifactTaxonomy.FixedFamily, saved.ResolvedFamily);
+        Assert.Equal(FloorPlanArtifactTaxonomy.WetFixtureCategory, saved.ResolvedCategory);
+        Assert.Equal(FloorPlanArtifactTaxonomy.TubType, saved.ResolvedType);
+        Assert.Equal(FloorPlanArtifactDecisionState.Excluded, saved.DecisionState);
+    }
+
+    private static ServiceCollection BuildServices(
+        FloorPlanTemplate template,
+        FloorPlanReviewSessionDto session,
+        Action<ServiceCollection>? configureExtraServices = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
@@ -177,8 +294,50 @@ public sealed class CuratedArtifactFloorPlanReviewViewModelTests
         services.AddTransient<StartOrResumeCurationHandler>();
         services.AddTransient<OpenFloorPlanReviewSessionHandler>();
         services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        configureExtraServices?.Invoke(services);
         return services;
     }
+
+    private static FloorPlanReviewSessionDto CreateCuratedArtifactSession(Guid templateId, Guid curatedArtifactId, Guid curatedPathId)
+        => new(
+            templateId,
+            "seminole2000",
+            "SEMINOLE2000",
+            "Curated Draft",
+            1,
+            null,
+            [
+                new GeometryPathDto(curatedPathId, false, [new GeometrySegmentDto(curatedPathId, 1, 40m, 0m, 76m, 0m)])
+            ],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [
+                new CuratedPlanArtifactDto(
+                    curatedArtifactId,
+                    FloorPlanArtifactSourceKinds.OpeningCandidate,
+                    "LINE:DOOR:1",
+                    "DOORS",
+                    "LINE",
+                    null,
+                    [curatedPathId],
+                    0.95m,
+                    null,
+                    1,
+                    FloorPlanArtifactTaxonomy.OpeningFamily,
+                    FloorPlanArtifactTaxonomy.OpeningCategory,
+                    FloorPlanArtifactTaxonomy.DoorType,
+                    FloorPlanArtifactTaxonomy.FixedFamily,
+                    FloorPlanArtifactTaxonomy.WetFixtureCategory,
+                    FloorPlanArtifactTaxonomy.TubType,
+                    FloorPlanArtifactDecisionState.Reclassified.ToString(),
+                    "#FFDC2626")
+            ]);
 
     private sealed class FakeFloorPlanReviewSessionReader : IFloorPlanReviewSessionReader
     {
@@ -244,6 +403,24 @@ public sealed class CuratedArtifactFloorPlanReviewViewModelTests
     private sealed class FakeUnitOfWork : IUnitOfWork
     {
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class InMemoryFloorPlanArtifactClassificationRepository : IFloorPlanArtifactClassificationRepository
+    {
+        public List<FloorPlanArtifactClassification> Items { get; } = [];
+
+        public Task<IReadOnlyList<FloorPlanArtifactClassification>> ListByCurationAsync(Guid floorPlanCurationId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<FloorPlanArtifactClassification>>(Items.Where(item => item.FloorPlanCurationId == floorPlanCurationId).ToArray());
+
+        public Task UpsertAsync(FloorPlanArtifactClassification classification, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item =>
+                item.FloorPlanCurationId == classification.FloorPlanCurationId &&
+                item.SourceArtifactKind == classification.SourceArtifactKind &&
+                item.SourceArtifactId == classification.SourceArtifactId);
+            Items.Add(classification);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeClock : IClock

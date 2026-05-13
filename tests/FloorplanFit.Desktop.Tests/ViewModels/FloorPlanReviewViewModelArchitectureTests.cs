@@ -20,5 +20,16 @@ public sealed class FloorPlanReviewViewModelArchitectureTests
         Assert.DoesNotContain("GetRequiredService<RestoreFloorPlanArtifactPositionHandler>()", source, StringComparison.Ordinal);
         Assert.DoesNotContain("GetRequiredService<SaveFloorPlanDimensionOverrideHandler>()", source, StringComparison.Ordinal);
         Assert.DoesNotContain("GetRequiredService<ExportAdjustedDxfHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<SaveCuratedArtifactClassificationHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<RestoreCuratedArtifactClassificationHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<ExcludeCuratedArtifactHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<RemoveRoomLabelHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<RemoveOpeningLabelHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<RemovePinchMarkerHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<RejectWallCandidateHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<PublishFloorPlanCurationHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<AddPinchGroupHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<AddPinchMarkerHandler>()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRequiredService<RestoreFloorPlanDimensionOverrideHandler>()", source, StringComparison.Ordinal);
     }
 }

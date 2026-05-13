@@ -67,6 +67,60 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task RestoreSelectedArtifactPositionAsync_deletes_dimension_override_and_keeps_dimension_selected()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var dimension = CreateDimension() with { IsEdited = true, IsDirty = true };
+        var session = CreateSession(templateId, dimension);
+        var repository = new InMemoryFloorPlanDimensionOverrideRepository();
+        var services = BuildServices(template, session, repository, new FakeExportAdjustedDxfHandler());
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+        await viewModel.LoadAsync(CancellationToken.None);
+        repository.Items.Add(FloorPlanDimensionOverride.CreateManualSnapshot(
+            viewModel.DraftCurationId,
+            "AB12",
+            dimension.SourceEntityRef,
+            dimension.SourceHandle,
+            "11'-0\"",
+            dimension.DefPointX,
+            dimension.DefPointY,
+            dimension.DefPointZ,
+            dimension.DefPoint2X,
+            dimension.DefPoint2Y,
+            dimension.DefPoint2Z,
+            dimension.DefPoint3X,
+            dimension.DefPoint3Y,
+            dimension.DefPoint3Z,
+            dimension.RenderTextX,
+            dimension.RenderTextY,
+            dimension.RenderTextHeight,
+            dimension.RenderTextRotationDegrees,
+            dimension.RenderTextStyleName,
+            dimension.RenderTextHorizontalAlignment,
+            dimension.RenderTextVerticalAlignment,
+            dimension.RenderTextAttachmentPoint,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            new DateTime(2026, 5, 11, 23, 5, 0, DateTimeKind.Utc),
+            lastExportedAtUtc: null));
+        viewModel.SelectDimension(dimension.DimensionId);
+
+        await viewModel.RestoreSelectedArtifactPositionAsync(CancellationToken.None);
+
+        Assert.Empty(repository.Items);
+        Assert.Equal(dimension.DimensionId, viewModel.SelectedDimension?.DimensionId);
+    }
+
+    [Fact]
     public async Task LoadAsync_surfaces_dimension_association_summary_for_selected_dimension()
     {
         var templateId = Guid.NewGuid();
