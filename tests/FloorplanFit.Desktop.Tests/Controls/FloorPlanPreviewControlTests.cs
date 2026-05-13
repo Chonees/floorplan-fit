@@ -148,6 +148,20 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void FloorPlanPreviewControl_sources_collection_observer_lifecycle_through_the_hub()
+    {
+        var controlPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "FloorplanFit.Desktop", "Controls", "FloorPlanPreviewControl.cs");
+        var source = File.ReadAllText(controlPath);
+
+        Assert.Contains("PreviewCollectionObserverHub", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private void GeometryPathsCollectionChanged(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private void RoomLabelsCollectionChanged(", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BuildHitTestGeometry_keeps_opening_paths_selectable_and_topmost()
     {
         var wallPathId = Guid.NewGuid();

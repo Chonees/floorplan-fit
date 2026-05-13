@@ -1,4 +1,3 @@
-using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -19,17 +18,7 @@ public sealed class FloorPlanPreviewControl : Control
     private const double DimensionHandleHitTolerance = 10d;
     internal const double MinimumUserZoomFactor = 0.35d;
     internal const double MaximumUserZoomFactor = 6d;
-    private INotifyCollectionChanged? observedGeometryPaths;
-    private INotifyCollectionChanged? observedPinchMarkers;
-    private INotifyCollectionChanged? observedRoomLabels;
-    private INotifyCollectionChanged? observedWallCandidates;
-    private INotifyCollectionChanged? observedOpeningCandidates;
-    private INotifyCollectionChanged? observedOpeningLabels;
-    private INotifyCollectionChanged? observedDimensions;
-    private INotifyCollectionChanged? observedDimensionAssociations;
-    private INotifyCollectionChanged? observedFixedPlanComponents;
-    private INotifyCollectionChanged? observedProtectedDetailAssemblies;
-    private INotifyCollectionChanged? observedCuratedPlanArtifacts;
+    private readonly PreviewCollectionObserverHub collectionObserverHub;
     private FloorPlanPreviewGeometry.PreviewCompressionEdge? activeDragEdge;
     private PreviewArtifactMoveState? activeArtifactMove;
     private Point dragStartPoint;
@@ -105,6 +94,11 @@ public sealed class FloorPlanPreviewControl : Control
             control.OnCuratedPlanArtifactsChanged(
                 args.GetOldValue<IReadOnlyList<CuratedPlanArtifactDto>?>(),
                 args.GetNewValue<IReadOnlyList<CuratedPlanArtifactDto>?>()));
+    }
+
+    public FloorPlanPreviewControl()
+    {
+        collectionObserverHub = new PreviewCollectionObserverHub(InvalidateVisual);
     }
 
     public static readonly StyledProperty<IReadOnlyList<GeometryPathDto>?> GeometryPathsProperty =
@@ -353,32 +347,12 @@ public sealed class FloorPlanPreviewControl : Control
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        AttachGeometryPathsCollectionObserver(GeometryPaths);
-        AttachPinchMarkersCollectionObserver(PinchMarkers);
-        AttachRoomLabelsCollectionObserver(RoomLabels);
-        AttachWallCandidatesCollectionObserver(WallCandidates);
-        AttachOpeningCandidatesCollectionObserver(OpeningCandidates);
-        AttachOpeningLabelsCollectionObserver(OpeningLabels);
-        AttachDimensionsCollectionObserver(Dimensions);
-        AttachDimensionAssociationsCollectionObserver(DimensionAssociations);
-        AttachFixedPlanComponentsCollectionObserver(FixedPlanComponents);
-        AttachProtectedDetailAssembliesCollectionObserver(ProtectedDetailAssemblies);
-        AttachCuratedPlanArtifactsCollectionObserver(CuratedPlanArtifacts);
+        collectionObserverHub.AttachAll(CaptureObservedCollections());
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        DetachRoomLabelsCollectionObserver();
-        DetachWallCandidatesCollectionObserver();
-        DetachOpeningLabelsCollectionObserver();
-        DetachOpeningCandidatesCollectionObserver();
-        DetachDimensionsCollectionObserver();
-        DetachDimensionAssociationsCollectionObserver();
-        DetachFixedPlanComponentsCollectionObserver();
-        DetachProtectedDetailAssembliesCollectionObserver();
-        DetachCuratedPlanArtifactsCollectionObserver();
-        DetachPinchMarkersCollectionObserver();
-        DetachGeometryPathsCollectionObserver();
+        collectionObserverHub.DetachAll();
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -1142,426 +1116,68 @@ public sealed class FloorPlanPreviewControl : Control
     }
 
     private void OnGeometryPathsChanged(IReadOnlyList<GeometryPathDto>? oldValue, IReadOnlyList<GeometryPathDto>? newValue)
-    {
-        if (!ReferenceEquals(oldValue, newValue))
-        {
-            DetachGeometryPathsCollectionObserver();
-            AttachGeometryPathsCollectionObserver(newValue);
-        }
-
-        InvalidateVisual();
-    }
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.GeometryPaths, oldValue, newValue);
 
     private void OnPinchMarkersChanged(IReadOnlyList<PinchMarkerDto>? oldValue, IReadOnlyList<PinchMarkerDto>? newValue)
-    {
-        if (!ReferenceEquals(oldValue, newValue))
-        {
-            DetachPinchMarkersCollectionObserver();
-            AttachPinchMarkersCollectionObserver(newValue);
-        }
-
-        InvalidateVisual();
-    }
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.PinchMarkers, oldValue, newValue);
 
     private void OnRoomLabelsChanged(IReadOnlyList<RoomLabelDto>? oldValue, IReadOnlyList<RoomLabelDto>? newValue)
-    {
-        if (!ReferenceEquals(oldValue, newValue))
-        {
-            DetachRoomLabelsCollectionObserver();
-            AttachRoomLabelsCollectionObserver(newValue);
-        }
-
-        InvalidateVisual();
-    }
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.RoomLabels, oldValue, newValue);
 
     private void OnOpeningCandidatesChanged(IReadOnlyList<OpeningCandidateDto>? oldValue, IReadOnlyList<OpeningCandidateDto>? newValue)
-    {
-        if (!ReferenceEquals(oldValue, newValue))
-        {
-            DetachOpeningCandidatesCollectionObserver();
-            AttachOpeningCandidatesCollectionObserver(newValue);
-        }
-
-        InvalidateVisual();
-    }
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.OpeningCandidates, oldValue, newValue);
 
     private void OnOpeningLabelsChanged(IReadOnlyList<OpeningLabelDto>? oldValue, IReadOnlyList<OpeningLabelDto>? newValue)
-    {
-        if (!ReferenceEquals(oldValue, newValue))
-        {
-            DetachOpeningLabelsCollectionObserver();
-            AttachOpeningLabelsCollectionObserver(newValue);
-        }
-
-        InvalidateVisual();
-    }
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.OpeningLabels, oldValue, newValue);
 
     private void OnDimensionsChanged(IReadOnlyList<DimensionDto>? oldValue, IReadOnlyList<DimensionDto>? newValue)
-    {
-        if (!ReferenceEquals(oldValue, newValue))
-        {
-            DetachDimensionsCollectionObserver();
-            AttachDimensionsCollectionObserver(newValue);
-        }
-
-        InvalidateVisual();
-    }
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.Dimensions, oldValue, newValue);
 
     private void OnWallCandidatesChanged(IReadOnlyList<WallCandidateDto>? oldValue, IReadOnlyList<WallCandidateDto>? newValue)
-    {
-        if (!ReferenceEquals(oldValue, newValue))
-        {
-            DetachWallCandidatesCollectionObserver();
-            AttachWallCandidatesCollectionObserver(newValue);
-        }
-
-        InvalidateVisual();
-    }
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.WallCandidates, oldValue, newValue);
 
     private void OnDimensionAssociationsChanged(
         IReadOnlyList<DimensionAssociationDto>? oldValue,
         IReadOnlyList<DimensionAssociationDto>? newValue)
-    {
-        if (!ReferenceEquals(oldValue, newValue))
-        {
-            DetachDimensionAssociationsCollectionObserver();
-            AttachDimensionAssociationsCollectionObserver(newValue);
-        }
-
-        InvalidateVisual();
-    }
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.DimensionAssociations, oldValue, newValue);
 
     private void OnFixedPlanComponentsChanged(IReadOnlyList<FixedPlanComponentDto>? oldValue, IReadOnlyList<FixedPlanComponentDto>? newValue)
-    {
-        if (!ReferenceEquals(oldValue, newValue))
-        {
-            DetachFixedPlanComponentsCollectionObserver();
-            AttachFixedPlanComponentsCollectionObserver(newValue);
-        }
-
-        InvalidateVisual();
-    }
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.FixedPlanComponents, oldValue, newValue);
 
     private void OnProtectedDetailAssembliesChanged(
         IReadOnlyList<ProtectedDetailAssemblyDto>? oldValue,
         IReadOnlyList<ProtectedDetailAssemblyDto>? newValue)
-    {
-        if (!ReferenceEquals(oldValue, newValue))
-        {
-            DetachProtectedDetailAssembliesCollectionObserver();
-            AttachProtectedDetailAssembliesCollectionObserver(newValue);
-        }
-
-        InvalidateVisual();
-    }
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.ProtectedDetailAssemblies, oldValue, newValue);
 
     private void OnCuratedPlanArtifactsChanged(
         IReadOnlyList<CuratedPlanArtifactDto>? oldValue,
         IReadOnlyList<CuratedPlanArtifactDto>? newValue)
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.CuratedPlanArtifacts, oldValue, newValue);
+
+    private PreviewCollectionObserverHub.PreviewObservedCollections CaptureObservedCollections()
+        => new(
+            GeometryPaths,
+            PinchMarkers,
+            RoomLabels,
+            WallCandidates,
+            OpeningCandidates,
+            OpeningLabels,
+            Dimensions,
+            DimensionAssociations,
+            FixedPlanComponents,
+            ProtectedDetailAssemblies,
+            CuratedPlanArtifacts);
+
+    private void ReplaceObservedCollection<T>(
+        PreviewCollectionObserverHub.PreviewObservedCollectionSlot slot,
+        IReadOnlyList<T>? oldValue,
+        IReadOnlyList<T>? newValue)
     {
         if (!ReferenceEquals(oldValue, newValue))
         {
-            DetachCuratedPlanArtifactsCollectionObserver();
-            AttachCuratedPlanArtifactsCollectionObserver(newValue);
+            collectionObserverHub.Replace(slot, newValue);
         }
 
-        InvalidateVisual();
-    }
-
-    private void AttachGeometryPathsCollectionObserver(IReadOnlyList<GeometryPathDto>? value)
-    {
-        if (ReferenceEquals(observedGeometryPaths, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedGeometryPaths = notifyCollectionChanged;
-        observedGeometryPaths.CollectionChanged += GeometryPathsCollectionChanged;
-    }
-
-    private void DetachGeometryPathsCollectionObserver()
-    {
-        if (observedGeometryPaths is null)
-        {
-            return;
-        }
-
-        observedGeometryPaths.CollectionChanged -= GeometryPathsCollectionChanged;
-        observedGeometryPaths = null;
-    }
-
-    private void AttachPinchMarkersCollectionObserver(IReadOnlyList<PinchMarkerDto>? value)
-    {
-        if (ReferenceEquals(observedPinchMarkers, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedPinchMarkers = notifyCollectionChanged;
-        observedPinchMarkers.CollectionChanged += PinchMarkersCollectionChanged;
-    }
-
-    private void DetachPinchMarkersCollectionObserver()
-    {
-        if (observedPinchMarkers is null)
-        {
-            return;
-        }
-
-        observedPinchMarkers.CollectionChanged -= PinchMarkersCollectionChanged;
-        observedPinchMarkers = null;
-    }
-
-    private void AttachRoomLabelsCollectionObserver(IReadOnlyList<RoomLabelDto>? value)
-    {
-        if (ReferenceEquals(observedRoomLabels, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedRoomLabels = notifyCollectionChanged;
-        observedRoomLabels.CollectionChanged += RoomLabelsCollectionChanged;
-    }
-
-    private void DetachRoomLabelsCollectionObserver()
-    {
-        if (observedRoomLabels is null)
-        {
-            return;
-        }
-
-        observedRoomLabels.CollectionChanged -= RoomLabelsCollectionChanged;
-        observedRoomLabels = null;
-    }
-
-    private void AttachOpeningCandidatesCollectionObserver(IReadOnlyList<OpeningCandidateDto>? value)
-    {
-        if (ReferenceEquals(observedOpeningCandidates, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedOpeningCandidates = notifyCollectionChanged;
-        observedOpeningCandidates.CollectionChanged += OpeningCandidatesCollectionChanged;
-    }
-
-    private void AttachWallCandidatesCollectionObserver(IReadOnlyList<WallCandidateDto>? value)
-    {
-        if (ReferenceEquals(observedWallCandidates, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedWallCandidates = notifyCollectionChanged;
-        observedWallCandidates.CollectionChanged += WallCandidatesCollectionChanged;
-    }
-
-    private void DetachOpeningCandidatesCollectionObserver()
-    {
-        if (observedOpeningCandidates is null)
-        {
-            return;
-        }
-
-        observedOpeningCandidates.CollectionChanged -= OpeningCandidatesCollectionChanged;
-        observedOpeningCandidates = null;
-    }
-
-    private void DetachWallCandidatesCollectionObserver()
-    {
-        if (observedWallCandidates is null)
-        {
-            return;
-        }
-
-        observedWallCandidates.CollectionChanged -= WallCandidatesCollectionChanged;
-        observedWallCandidates = null;
-    }
-
-    private void AttachOpeningLabelsCollectionObserver(IReadOnlyList<OpeningLabelDto>? value)
-    {
-        if (ReferenceEquals(observedOpeningLabels, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedOpeningLabels = notifyCollectionChanged;
-        observedOpeningLabels.CollectionChanged += OpeningLabelsCollectionChanged;
-    }
-
-    private void DetachOpeningLabelsCollectionObserver()
-    {
-        if (observedOpeningLabels is null)
-        {
-            return;
-        }
-
-        observedOpeningLabels.CollectionChanged -= OpeningLabelsCollectionChanged;
-        observedOpeningLabels = null;
-    }
-
-    private void AttachDimensionsCollectionObserver(IReadOnlyList<DimensionDto>? value)
-    {
-        if (ReferenceEquals(observedDimensions, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedDimensions = notifyCollectionChanged;
-        observedDimensions.CollectionChanged += DimensionsCollectionChanged;
-    }
-
-    private void AttachDimensionAssociationsCollectionObserver(IReadOnlyList<DimensionAssociationDto>? value)
-    {
-        if (ReferenceEquals(observedDimensionAssociations, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedDimensionAssociations = notifyCollectionChanged;
-        observedDimensionAssociations.CollectionChanged += DimensionAssociationsCollectionChanged;
-    }
-
-    private void AttachFixedPlanComponentsCollectionObserver(IReadOnlyList<FixedPlanComponentDto>? value)
-    {
-        if (ReferenceEquals(observedFixedPlanComponents, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedFixedPlanComponents = notifyCollectionChanged;
-        observedFixedPlanComponents.CollectionChanged += FixedPlanComponentsCollectionChanged;
-    }
-
-    private void AttachProtectedDetailAssembliesCollectionObserver(IReadOnlyList<ProtectedDetailAssemblyDto>? value)
-    {
-        if (ReferenceEquals(observedProtectedDetailAssemblies, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedProtectedDetailAssemblies = notifyCollectionChanged;
-        observedProtectedDetailAssemblies.CollectionChanged += ProtectedDetailAssembliesCollectionChanged;
-    }
-
-    private void AttachCuratedPlanArtifactsCollectionObserver(IReadOnlyList<CuratedPlanArtifactDto>? value)
-    {
-        if (ReferenceEquals(observedCuratedPlanArtifacts, value) || value is not INotifyCollectionChanged notifyCollectionChanged)
-        {
-            return;
-        }
-
-        observedCuratedPlanArtifacts = notifyCollectionChanged;
-        observedCuratedPlanArtifacts.CollectionChanged += CuratedPlanArtifactsCollectionChanged;
-    }
-
-    private void DetachFixedPlanComponentsCollectionObserver()
-    {
-        if (observedFixedPlanComponents is null)
-        {
-            return;
-        }
-
-        observedFixedPlanComponents.CollectionChanged -= FixedPlanComponentsCollectionChanged;
-        observedFixedPlanComponents = null;
-    }
-
-    private void DetachDimensionsCollectionObserver()
-    {
-        if (observedDimensions is null)
-        {
-            return;
-        }
-
-        observedDimensions.CollectionChanged -= DimensionsCollectionChanged;
-        observedDimensions = null;
-    }
-
-    private void DetachDimensionAssociationsCollectionObserver()
-    {
-        if (observedDimensionAssociations is null)
-        {
-            return;
-        }
-
-        observedDimensionAssociations.CollectionChanged -= DimensionAssociationsCollectionChanged;
-        observedDimensionAssociations = null;
-    }
-
-    private void DetachProtectedDetailAssembliesCollectionObserver()
-    {
-        if (observedProtectedDetailAssemblies is null)
-        {
-            return;
-        }
-
-        observedProtectedDetailAssemblies.CollectionChanged -= ProtectedDetailAssembliesCollectionChanged;
-        observedProtectedDetailAssemblies = null;
-    }
-
-    private void DetachCuratedPlanArtifactsCollectionObserver()
-    {
-        if (observedCuratedPlanArtifacts is null)
-        {
-            return;
-        }
-
-        observedCuratedPlanArtifacts.CollectionChanged -= CuratedPlanArtifactsCollectionChanged;
-        observedCuratedPlanArtifacts = null;
-    }
-
-    private void GeometryPathsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        InvalidateVisual();
-    }
-
-    private void PinchMarkersCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        InvalidateVisual();
-    }
-
-    private void RoomLabelsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        InvalidateVisual();
-    }
-
-    private void OpeningCandidatesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        InvalidateVisual();
-    }
-
-    private void WallCandidatesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        InvalidateVisual();
-    }
-
-    private void OpeningLabelsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        InvalidateVisual();
-    }
-
-    private void DimensionsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        InvalidateVisual();
-    }
-
-    private void DimensionAssociationsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        InvalidateVisual();
-    }
-
-    private void FixedPlanComponentsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        InvalidateVisual();
-    }
-
-    private void ProtectedDetailAssembliesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        InvalidateVisual();
-    }
-
-    private void CuratedPlanArtifactsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
         InvalidateVisual();
     }
 
