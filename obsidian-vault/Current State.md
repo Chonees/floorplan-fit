@@ -701,6 +701,10 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Decision de arquitectura tomada el **2026-05-12** para **Loop 3A**: el primer slice de review orchestration arranca por **review command orchestration**. Prioridad: sacar de `FloorPlanReviewViewModel` la ceremonia repetida de `StatusMessage + CreateScope + GetRequiredService<Handler> + HandleAsync + RefreshSessionAsync` antes de tocar selection state o queue logic.
 
+- Cierre de **Loop 3A / review command orchestration** el **2026-05-12**: `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewMutationCoordinator.cs` ya concentra TODAS las mutaciones del review shell (reject, publish, pinch groups/markers, position/text overrides, curated classification, exclusions, removals y adjusted DXF export). En `FloorPlanReviewViewModel.cs` ya solo quedan `GetRequiredService<OpenFloorPlanReviewSessionHandler>()` y `GetRequiredService<GetFloorPlanReviewSessionHandler>()`, o sea queries de load/refresh y no mas ceremonia mutante inline.
+
+- Verificacion de cierre de **Loop 3A** el **2026-05-12**: el focused mutation slice `FloorPlanReviewViewModelArchitectureTests|CuratedArtifactFloorPlanReviewViewModelTests|LabelTextHeightFloorPlanReviewViewModelTests|MovableArtifactFloorPlanReviewViewModelTests|DimensionEditingFloorPlanReviewViewModelTests|FloorPlanReviewViewModelTests` paso **29/29**, y la suite completa `FloorplanFit.Desktop.Tests` quedo en **125/125 PASS**. Sigue apareciendo el warning `CS8625` en `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs`, pero no pertenece al alcance de este loop.
+
 
 
 
@@ -2369,7 +2373,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 3A** del programa de modularizacion: extraer review command orchestration desde `FloorPlanReviewViewModel` a un colaborador dedicado.
+0. Ejecutar **Loop 3B** del programa de modularizacion: partir `selection state` de `FloorPlanReviewViewModel` ahora que la ceremonia mutante ya esta encapsulada en `FloorPlanReviewMutationCoordinator`.
 
 
 
@@ -2387,7 +2391,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-1. Despues de Loop 3A, ejecutar **Loop 3B** sobre `selection state`, con el ViewModel ya menos procedural y mas seguro de partir.
+1. Despues de Loop 3B, evaluar si conviene un **Loop 3C** chico para queue/filter orchestration o si ya alcanza con pasar directo a **Loop 4** de cleanup final.
 
 
 
@@ -2630,6 +2634,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Decisions/2026-05-12 - Loop 2C targets preview render composition via scene and composer]]
 
 - [[Decisions/2026-05-12 - Loop 3 starts with review command orchestration]]
+
+- [[Implementation/2026-05-12 - Loop 3A review command orchestration]]
 
 
 
@@ -3045,6 +3051,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-11 - Review preview now renders native dimension text]]
 
 - [[Implementation/2026-05-11 - Native dimension preview now renders exact lines and block-true text placement]]
+
+- [[Implementation/2026-05-12 - Loop 3A review command orchestration]]
 
 - [[Implementation/2026-05-11 - CAD-faithful native dimension editing and adjusted DXF export]]
 
