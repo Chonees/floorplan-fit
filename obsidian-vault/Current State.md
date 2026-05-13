@@ -705,6 +705,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Verificacion de cierre de **Loop 3A** el **2026-05-12**: el focused mutation slice `FloorPlanReviewViewModelArchitectureTests|CuratedArtifactFloorPlanReviewViewModelTests|LabelTextHeightFloorPlanReviewViewModelTests|MovableArtifactFloorPlanReviewViewModelTests|DimensionEditingFloorPlanReviewViewModelTests|FloorPlanReviewViewModelTests` paso **29/29**, y la suite completa `FloorplanFit.Desktop.Tests` quedo en **125/125 PASS**. Sigue apareciendo el warning `CS8625` en `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs`, pero no pertenece al alcance de este loop.
 
+- Decision de arquitectura tomada el **2026-05-12** para **Loop 3B**: selection state se parte en **dos sub-slices**. Primero **selection routing + snapshot truth**; despues **selection presentation side effects**. La prioridad es separar la verdad de seleccion antes de tocar los efectos repetidos de `HighlightGeometryPathId`, `PreviewSelectionLabel`, clears cruzados y sync de editors.
+
 
 
 
@@ -2373,7 +2375,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 3B** del programa de modularizacion: partir `selection state` de `FloorPlanReviewViewModel` ahora que la ceremonia mutante ya esta encapsulada en `FloorPlanReviewMutationCoordinator`.
+0. Ejecutar **Loop 3B1** del programa de modularizacion: extraer `selection routing + snapshot truth` desde `FloorPlanReviewViewModel` a un `FloorPlanReviewSelectionCoordinator`.
 
 
 
@@ -2391,7 +2393,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-1. Despues de Loop 3B, evaluar si conviene un **Loop 3C** chico para queue/filter orchestration o si ya alcanza con pasar directo a **Loop 4** de cleanup final.
+1. Despues de **Loop 3B1**, ejecutar **Loop 3B2** para sacar los selection side effects repetidos (`HighlightGeometryPathId`, `PreviewSelectionLabel`, clears cruzados y sync/clear de editors).
 
 
 
@@ -2634,6 +2636,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Decisions/2026-05-12 - Loop 2C targets preview render composition via scene and composer]]
 
 - [[Decisions/2026-05-12 - Loop 3 starts with review command orchestration]]
+
+- [[Decisions/2026-05-12 - Loop 3B starts with selection routing before selection presentation]]
 
 - [[Implementation/2026-05-12 - Loop 3A review command orchestration]]
 
