@@ -27,8 +27,10 @@ Cobertura revalidada el **2026-05-12** contra `git ls-files` y `git ls-files --o
 
 - El milestone de **native dimensions** ya es parte activa de la arquitectura real; no sigue pendiente.
 - Loop 1 ahora ya incluye extraccion, persistencia, preview fiel, override/editing groundwork y export `adjusted DXF` para dimensiones nativas.
-- `FloorPlanPreviewControl` y `FloorPlanReviewViewModel` siguen siendo hotspots grandes, por eso el repo entra en un programa de modularizacion por loops.
+- `FloorPlanPreviewControl` sigue siendo un shell grande pero ya modularizado por interactions / observers / render composition.
+- `FloorPlanReviewViewModel` ya no es el hotspot procedural original: la logica de mutations, selection, queue, inspector, session query/projection, apply y notifications quedo repartida en coordinators dedicados bajo `src/FloorplanFit.Desktop/ViewModels/Review/`.
 - El orden activo del saneamiento es: **Loop 0 verdad canonica -> Loop 1 sistema visual -> Loop 2 preview composition/interactions -> Loop 3 review orchestration -> Loop 4 cleanup final**.
+- **Loop 4** ya puede considerarse cerrado: el ViewModel de review queda como shell Desktop de estado observable y asignacion final, no como duenio de toda la verdad procedural.
 ## Big Picture
 
 Floorplan Fit es un monolito modular local-first en .NET 10 con Avalonia, SQLite e IxMilia DXF. La promesa de `MVP-UX.md` es curar un floor plan una vez, reutilizarlo muchas veces y transformar cada site plan en una decision tecnica corta y auditable.
@@ -625,8 +627,9 @@ Capas chicas de dibujo/hit-test; evitan un mega-renderer.
 
 Estado y comandos de UI.
 
-- `src/FloorplanFit.Desktop/ViewModels/FloorPlanReviewViewModel.cs` - Mision: orquestar el flujo de Review, seleccion, acciones y pinch tools desde Desktop. Importancia: es hotspot estructural y principal candidato del Loop 3 de modularizacion. Use case: coordinar la pantalla de curado sin concentrar para siempre toda la logica de estado.
+- `src/FloorplanFit.Desktop/ViewModels/FloorPlanReviewViewModel.cs` - Mision: actuar como shell Desktop de estado observable para Review, aplicando resultados de coordinators y publicando propiedades/colecciones hacia Avalonia. Importancia: sigue siendo archivo central, pero ya no concentra mutaciones, seleccion, queue, inspector, session query/projection ni notification truth inline. Use case: coordinar la pantalla de curado como applier MVVM y frontera de `ObservableProperty`.
 
+- `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewMutationCoordinator.cs`, `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewSelectionCoordinator.cs`, `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewQueueCoordinator.cs`, `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewInspectorCoordinator.cs`, `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewSessionCoordinator.cs`, `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewApplyCoordinator.cs`, `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewNotificationCoordinator.cs` - Mision: repartir el review shell en coordinators de responsabilidad unica (mutaciones, truth de seleccion, queue projection, presentacion del inspector, queries/projection de session, apply orchestration y notification fan-out). Importancia: son el resultado directo de los Loops 3/4 de modularizacion y explican por que `FloorPlanReviewViewModel` puede quedar mas legible sin perder comportamiento. Use case: cambiar una parte del flujo de Review sin releer un ViewModel monstruoso entero.
 - `src/FloorplanFit.Desktop/ViewModels/LibraryViewModel.cs` — Mision: Pieza Desktop/Avalonia para Library View Model. Importancia: sostiene la experiencia de curado visual. Use case: operar Review, Library, preview, zoom/pan o paneles de artefactos.
 
 
@@ -990,7 +993,7 @@ Este bloque agrega los archivos que aparecieron en la ola posterior al corte 202
 - `src/FloorplanFit.Desktop/Controls/Preview/CuratedArtifactPreviewLayerRenderer.cs` - Mision: renderer especializado de artifacts curados resueltos. Importancia: separa overlays canonicos del render base de walls/openings. Use case: dibujar posiciones/clasificaciones curadas sin remezclar la logica del shell principal.
 - `src/FloorplanFit.Desktop/Controls/Preview/DimensionPreviewLayerRenderer.cs`, `src/FloorplanFit.Desktop/Controls/Preview/DimensionPreviewProjector.cs` - Mision: proyectar y dibujar la familia de dimensiones nativas. Importancia: sacan la fidelidad CAD de cotas del mega-control y la convierten en capa reusable. Use case: renderizar lineas, texto y primitives exactos desde `DimensionDto`.
 - `src/FloorplanFit.Desktop/Controls/Preview/NativeDimensionEditor.cs`, `src/FloorplanFit.Desktop/Controls/Preview/NativeDimensionHitTester.cs` - Mision: coordinar hit-testing y edicion manual de cotas nativas. Importancia: encapsulan una interaccion compleja que no debe vivir mezclada con pinch/walls/openings. Use case: agarrar handles, mover endpoints o texto y persistir overrides.
-- `src/FloorplanFit.Desktop/ViewModels/CuratedArtifactGroupViewModel.cs`, `src/FloorplanFit.Desktop/ViewModels/FloorPlanReviewDisplayText.cs` - Mision: soportar agrupacion/rotulado de artifacts curados y texto derivado de Review. Importancia: alivian a `FloorPlanReviewViewModel` de responsabilidades de presentacion repetitiva. Use case: mostrar grupos/labels legibles sin recalcular strings inline por toda la VM.
+- `src/FloorplanFit.Desktop/ViewModels/CuratedArtifactGroupViewModel.cs`, `src/FloorplanFit.Desktop/ViewModels/FloorPlanReviewDisplayText.cs` - Mision: soportar agrupacion/rotulado de artifacts curados y texto derivado de Review. Importancia: alivian a `FloorPlanReviewViewModel` y a los coordinators de tener que recalcular titulos/subtitulos inline. Use case: mostrar grupos/labels legibles sin remezclar texto de UI en shells u orquestadores.
 
 ### Domain e Infrastructure: overlays curados, round-trip DXF y repositorios nuevos
 

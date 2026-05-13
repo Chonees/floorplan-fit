@@ -731,6 +731,16 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Estado de hotspot post-**Loop 4B**: `FloorPlanReviewViewModel.cs` bajo a **1307 lineas**. El siguiente corte sano ya no es query/projection; pasa al shell residual de **apply/notify orchestration** (`ApplySessionProjection`, `ApplySelectionPresentationOutcome`, `NotifyReviewQueueStateChanged`, `NotifyUxStateChanged`) antes del cleanup cosmetico/documental final.
 
+- Cierre de **Loop 4C / review shell apply-notify cleanup** el **2026-05-12**: `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewApplyCoordinator.cs` ahora concentra el planning de apply desde `ReviewSessionProjection` y de selection-presentation apply; `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewNotificationCoordinator.cs` concentra la normalizacion de `SelectedInspectorTool` y el fan-out de propiedades de queue/UX. `FloorPlanReviewViewModel.cs` queda como shell de estado observable y asignacion final.
+
+- Verificacion de **Loop 4C** el **2026-05-12**: el slice focused `FloorPlanReviewViewModelArchitectureTests|FloorPlanReviewViewModelTests|CuratedArtifactFloorPlanReviewViewModelTests|LabelTextHeightFloorPlanReviewViewModelTests|DimensionEditingFloorPlanReviewViewModelTests` paso **36/36** despues del GREEN de notifications. Sigue apareciendo el warning `CS8625` en `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs`, pero sigue fuera de alcance.
+
+- Cierre de **Loop 4D / final modularization audit** el **2026-05-12**: se refresco el mapa canonico para reflejar el cluster real de coordinators bajo `src/FloorplanFit.Desktop/ViewModels/Review/`, y `Current State.md` deja asentado que `FloorPlanReviewViewModel.cs` ya no es el hotspot procedural original sino un shell Desktop mas fino.
+
+- Verificacion final del cierre de **Loop 4** el **2026-05-12**: el focused final `FloorPlanReviewViewModelArchitectureTests|FloorPlanReviewViewModelTests|CuratedArtifactFloorPlanReviewViewModelTests|LabelTextHeightFloorPlanReviewViewModelTests|DimensionEditingFloorPlanReviewViewModelTests` paso **36/36**, y la suite completa `FloorplanFit.Desktop.Tests` quedo en **132/132 PASS**. Sigue apareciendo el warning `CS8625` en `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs`, pero continua fuera de alcance.
+
+- Estado de cierre del programa de modularizacion por loops: `FloorPlanReviewViewModel.cs` quedo en **1270 lineas** y el review shell ya reparte mutaciones, seleccion, queue, inspector, session query/projection, apply y notifications en coordinators dedicados. El proximo trabajo ya no es saneamiento arquitectonico estructural sino volver a evolucion de producto sobre esta base.
+
 
 
 
@@ -2399,7 +2409,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 4C** sobre el shell residual de apply/notify orchestration: bajar el peso de `ApplySessionProjection`, `ApplySelectionPresentationOutcome`, `NotifyReviewQueueStateChanged` y `NotifyUxStateChanged`.
+0. Retomar trabajo de producto arriba de la base modularizada: el programa actual de loops **0 -> 4** ya quedo cerrado y el siguiente paso sano vuelve a ser evolucion funcional de Loop 1 / Loop 2, no seguir partiendo shells por inercia.
 
 
 
@@ -2417,7 +2427,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-1. Despues de **Loop 4C**, cerrar **Loop 4D/final cleanup** con naming/ownership consistency, drift documental final y auditoria final de \"un archivo = una responsabilidad\".
+1. Si aparece un hotspot nuevo mas adelante, abrir un slice puntual con TDD; por ahora la prioridad deja de ser refactor arquitectonico y vuelve a ser producto/dominio.
 
 
 
@@ -2672,6 +2682,10 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-12 - Loop 4A inspector presentation cleanup]]
 
 - [[Implementation/2026-05-12 - Loop 4B review session shell cleanup]]
+
+- [[Implementation/2026-05-12 - Loop 4C review shell apply-notify cleanup]]
+
+- [[Implementation/2026-05-12 - Loop 4D final modularization audit]]
 
 
 
