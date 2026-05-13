@@ -584,103 +584,9 @@ public sealed class FloorPlanPreviewControl : Control
         var bounds = GetLocalRenderBounds(Bounds);
         var axisTag = ParseAxisTag();
         var viewport = GetPreviewViewport(axisTag);
-        PreviewWorkspaceRenderer.Render(context, bounds, viewport);
-        context.DrawRectangle(new Pen(Brushes.Gainsboro, 1), bounds.Deflate(0.5));
+        var scene = BuildRenderScene(bounds, axisTag, viewport);
 
-        if (axisTag is not null)
-        {
-            CompressionHandlePreviewLayerRenderer.Render(context, bounds, axisTag.Value, IsPinchPlacementArmed);
-        }
-
-        if (GeometryPaths is not { Count: > 0 })
-        {
-            return;
-        }
-
-        if (viewport is null)
-        {
-            return;
-        }
-
-        var previewGeometry = BuildPreviewGeometry(axisTag);
-        previewGeometry = ApplyActiveArtifactMoveToGeometry(previewGeometry);
-        var roomLabels = BuildRenderedRoomLabels();
-        var openingLabels = BuildRenderedOpeningLabels();
-        var dimensions = BuildRenderedDimensions();
-        var artifactIndex = CuratedPlanArtifacts is { Count: > 0 }
-            ? PreviewArtifactGeometryIndex.Create(CuratedPlanArtifacts)
-            : PreviewArtifactGeometryIndex.Create(OpeningCandidates, FixedPlanComponents, ProtectedDetailAssemblies);
-        var orderedPaths = previewGeometry
-            .Where(path => !artifactIndex.OpeningGeometryPathIds.Contains(path.Id))
-            .Where(path => !artifactIndex.FixedPlanComponentGeometryPathIds.Contains(path.Id))
-            .Where(path => !artifactIndex.ProtectedDetailGeometryPathIds.Contains(path.Id))
-            .OrderBy(path => FloorPlanPreviewGeometry.GetPathStyle(path.Id, HighlightGeometryPathId).IsHighlighted)
-            .ToArray();
-
-        foreach (var path in orderedPaths)
-        {
-            var style = FloorPlanPreviewGeometry.GetPathStyle(path.Id, HighlightGeometryPathId);
-            var pen = new Pen(new SolidColorBrush(style.Color), style.Thickness);
-
-            foreach (var segment in path.Segments)
-            {
-                context.DrawLine(
-                    pen,
-                    viewport.Value.Project(segment.StartX, segment.StartY),
-                    viewport.Value.Project(segment.EndX, segment.EndY));
-            }
-        }
-
-        if (CuratedPlanArtifacts is { Count: > 0 })
-        {
-            CuratedArtifactPreviewLayerRenderer.Render(
-                context,
-                viewport.Value,
-                previewGeometry,
-                CuratedPlanArtifacts,
-                HighlightGeometryPathId);
-        }
-        else
-        {
-            OpeningPreviewLayerRenderer.Render(
-                context,
-                viewport.Value,
-                previewGeometry,
-                OpeningCandidates,
-                artifactIndex.OpeningGeometryPathIds,
-                HighlightGeometryPathId);
-            FixedPlanComponentPreviewLayerRenderer.Render(
-                context,
-                viewport.Value,
-                previewGeometry,
-                FixedPlanComponents,
-                artifactIndex.FixedPlanComponentGeometryPathIds,
-                HighlightGeometryPathId);
-            ProtectedDetailPreviewLayerRenderer.Render(
-                context,
-                viewport.Value,
-                previewGeometry,
-                ProtectedDetailAssemblies,
-                artifactIndex.ProtectedDetailGeometryPathIds,
-                HighlightGeometryPathId);
-        }
-        DimensionPreviewLayerRenderer.Render(context, viewport.Value, dimensions, HighlightDimensionId);
-        CadTextPreviewLayerRenderer.RenderRoomLabels(context, viewport.Value, roomLabels, HighlightRoomLabelId);
-        CadTextPreviewLayerRenderer.RenderOpeningLabels(context, viewport.Value, openingLabels, HighlightOpeningLabelId);
-        CadTextPreviewLayerRenderer.RenderDimensions(context, viewport.Value, dimensions, HighlightDimensionId);
-        PinchMarkerPreviewLayerRenderer.Render(
-            context,
-            viewport.Value,
-            previewGeometry,
-            PinchMarkers,
-            PreviewPinchGroupId,
-            PreviewAxisTag);
-        DimensionPreviewLayerRenderer.RenderHandles(
-            context,
-            viewport.Value,
-            dimensions,
-            HighlightDimensionId,
-            activeDimensionEdit?.HandleKind);
+        PreviewRenderComposer.Render(context, scene);
     }
 
     internal static double CalculateWheelZoomFactor(double currentZoomFactor, double wheelDeltaY)
@@ -800,8 +706,46 @@ public sealed class FloorPlanPreviewControl : Control
                     edit.BaseDimension.DimensionId,
                     edit.BaseDimension,
                     edit.HandleKind,
-                    edit.CurrentWorldPoint)
+                edit.CurrentWorldPoint)
                 : null);
+    }
+
+    private PreviewRenderScene BuildRenderScene(
+        Rect bounds,
+        PinchAxisTag? axisTag,
+        FloorPlanPreviewGeometry.PreviewViewport? viewport)
+    {
+        var previewGeometry = BuildPreviewGeometry(axisTag);
+        previewGeometry = ApplyActiveArtifactMoveToGeometry(previewGeometry);
+        var roomLabels = BuildRenderedRoomLabels();
+        var openingLabels = BuildRenderedOpeningLabels();
+        var dimensions = BuildRenderedDimensions();
+        var artifactIndex = CuratedPlanArtifacts is { Count: > 0 }
+            ? PreviewArtifactGeometryIndex.Create(CuratedPlanArtifacts)
+            : PreviewArtifactGeometryIndex.Create(OpeningCandidates, FixedPlanComponents, ProtectedDetailAssemblies);
+
+        return new PreviewRenderScene(
+            Bounds: bounds,
+            AxisTag: axisTag,
+            IsPinchPlacementArmed: IsPinchPlacementArmed,
+            Viewport: viewport,
+            PreviewGeometry: previewGeometry,
+            RoomLabels: roomLabels,
+            OpeningLabels: openingLabels,
+            Dimensions: dimensions,
+            ArtifactIndex: artifactIndex,
+            OpeningCandidates: OpeningCandidates,
+            FixedPlanComponents: FixedPlanComponents,
+            ProtectedDetailAssemblies: ProtectedDetailAssemblies,
+            CuratedPlanArtifacts: CuratedPlanArtifacts,
+            PinchMarkers: PinchMarkers,
+            HighlightGeometryPathId: HighlightGeometryPathId,
+            HighlightRoomLabelId: HighlightRoomLabelId,
+            HighlightOpeningLabelId: HighlightOpeningLabelId,
+            HighlightDimensionId: HighlightDimensionId,
+            PreviewPinchGroupId: PreviewPinchGroupId,
+            PreviewAxisTag: PreviewAxisTag,
+            ActiveDimensionHandleKind: activeDimensionEdit?.HandleKind);
     }
 
     private DimensionDto? BuildEditedDimensionPreview(PreviewDimensionEditState edit, DimensionDto baseDimension)

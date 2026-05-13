@@ -162,6 +162,20 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void FloorPlanPreviewControl_sources_preview_render_through_the_composer()
+    {
+        var controlPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "FloorplanFit.Desktop", "Controls", "FloorPlanPreviewControl.cs");
+        var source = File.ReadAllText(controlPath);
+
+        Assert.Contains("PreviewRenderComposer.Render(context, scene);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("context.DrawLine(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("CuratedArtifactPreviewLayerRenderer.Render(", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BuildHitTestGeometry_keeps_opening_paths_selectable_and_topmost()
     {
         var wallPathId = Guid.NewGuid();
