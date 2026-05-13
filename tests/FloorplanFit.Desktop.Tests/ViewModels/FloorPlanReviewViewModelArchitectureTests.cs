@@ -112,4 +112,18 @@ public sealed class FloorPlanReviewViewModelArchitectureTests
         Assert.DoesNotContain("DraftCurationId = response.DraftCurationId;", source, StringComparison.Ordinal);
         Assert.DoesNotContain("DraftCurationId = string.Equals(session.Status, \"Published\"", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void FloorPlanReviewViewModel_sources_apply_shell_through_the_apply_coordinator()
+    {
+        var viewModelPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "FloorplanFit.Desktop", "ViewModels", "FloorPlanReviewViewModel.cs");
+        var source = File.ReadAllText(viewModelPath);
+
+        Assert.Contains("FloorPlanReviewApplyCoordinator", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private void ApplySessionProjection(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private void ApplySelectionPresentationOutcome(", source, StringComparison.Ordinal);
+    }
 }

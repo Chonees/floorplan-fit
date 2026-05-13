@@ -17,6 +17,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private const string InspectorToolActions = "Actions";
     private const string InspectorToolFit = "Fit";
 
+    private readonly FloorPlanReviewApplyCoordinator applyCoordinator;
     private readonly FloorPlanReviewMutationCoordinator mutationCoordinator;
     private readonly FloorPlanReviewSelectionCoordinator selectionCoordinator;
     private readonly FloorPlanReviewQueueCoordinator queueCoordinator;
@@ -34,6 +35,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     public FloorPlanReviewViewModel(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory, Guid templateId, Guid? floorPlanVersionId)
     {
+        applyCoordinator = new FloorPlanReviewApplyCoordinator();
         mutationCoordinator = new FloorPlanReviewMutationCoordinator(scopeFactory);
         selectionCoordinator = new FloorPlanReviewSelectionCoordinator();
         queueCoordinator = new FloorPlanReviewQueueCoordinator();
@@ -370,7 +372,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         var loadResult = await sessionCoordinator.OpenAsync(templateId, floorPlanVersionId, cancellationToken);
         DraftCurationId = loadResult.DraftCurationId;
-        ApplySessionProjection(loadResult.Projection, ReviewSelectionSnapshot.Empty);
+        ApplySessionState(loadResult.Projection, ReviewSelectionSnapshot.Empty);
         StatusMessage = $"Loaded review session for {Name}";
     }
 
@@ -954,56 +956,56 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     partial void OnSelectedCandidateChanged(WallCandidateDto? value)
     {
-        ApplySelectionPresentationOutcome(
+        ApplySelectionPresentation(
             selectionCoordinator.ResolveCandidatePresentation(value, SelectedPinchMarker, SelectedPinchAxis));
         NotifyUxStateChanged();
     }
 
     partial void OnSelectedCuratedArtifactChanged(CuratedPlanArtifactDto? value)
     {
-        ApplySelectionPresentationOutcome(selectionCoordinator.ResolveCuratedArtifactPresentation(value));
+        ApplySelectionPresentation(selectionCoordinator.ResolveCuratedArtifactPresentation(value));
         NotifyUxStateChanged();
     }
 
     partial void OnSelectedRoomLabelChanged(RoomLabelDto? value)
     {
-        ApplySelectionPresentationOutcome(selectionCoordinator.ResolveRoomLabelPresentation(value));
+        ApplySelectionPresentation(selectionCoordinator.ResolveRoomLabelPresentation(value));
         NotifyUxStateChanged();
     }
 
     partial void OnSelectedPinchMarkerChanged(PinchMarkerDto? value)
     {
-        ApplySelectionPresentationOutcome(selectionCoordinator.ResolvePinchMarkerPresentation(value));
+        ApplySelectionPresentation(selectionCoordinator.ResolvePinchMarkerPresentation(value));
         NotifyUxStateChanged();
     }
 
     partial void OnSelectedOpeningCandidateChanged(OpeningCandidateDto? value)
     {
-        ApplySelectionPresentationOutcome(selectionCoordinator.ResolveOpeningCandidatePresentation(value));
+        ApplySelectionPresentation(selectionCoordinator.ResolveOpeningCandidatePresentation(value));
         NotifyUxStateChanged();
     }
 
     partial void OnSelectedOpeningLabelChanged(OpeningLabelDto? value)
     {
-        ApplySelectionPresentationOutcome(selectionCoordinator.ResolveOpeningLabelPresentation(value));
+        ApplySelectionPresentation(selectionCoordinator.ResolveOpeningLabelPresentation(value));
         NotifyUxStateChanged();
     }
 
     partial void OnSelectedFixedPlanComponentChanged(FixedPlanComponentDto? value)
     {
-        ApplySelectionPresentationOutcome(selectionCoordinator.ResolveFixedPlanComponentPresentation(value));
+        ApplySelectionPresentation(selectionCoordinator.ResolveFixedPlanComponentPresentation(value));
         NotifyUxStateChanged();
     }
 
     partial void OnSelectedProtectedDetailAssemblyChanged(ProtectedDetailAssemblyDto? value)
     {
-        ApplySelectionPresentationOutcome(selectionCoordinator.ResolveProtectedDetailAssemblyPresentation(value));
+        ApplySelectionPresentation(selectionCoordinator.ResolveProtectedDetailAssemblyPresentation(value));
         NotifyUxStateChanged();
     }
 
     partial void OnSelectedDimensionChanged(DimensionDto? value)
     {
-        ApplySelectionPresentationOutcome(selectionCoordinator.ResolveDimensionPresentation(value));
+        ApplySelectionPresentation(selectionCoordinator.ResolveDimensionPresentation(value));
         NotifyUxStateChanged();
     }
 
@@ -1177,33 +1179,41 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         var loadResult = await sessionCoordinator.RefreshAsync(templateId, floorPlanVersionId, DraftCurationId, cancellationToken);
         DraftCurationId = loadResult.DraftCurationId;
-        ApplySessionProjection(loadResult.Projection, selection);
+        ApplySessionState(loadResult.Projection, selection);
     }
 
-    private void ApplySessionProjection(ReviewSessionProjection session, ReviewSelectionSnapshot selection)
+    private void ApplySessionState(ReviewSessionProjection session, ReviewSelectionSnapshot selection)
     {
-        Code = session.Code;
-        Name = session.Name;
-        Status = session.Status;
-        ActiveVersionNumber = session.ActiveVersionNumber;
-        ActivePublishedCurationId = session.ActivePublishedCurationId;
+        var applyPlan = applyCoordinator.BuildSessionApplyPlan(session, selection, selectionCoordinator);
 
-        ReplaceItems(GeometryPaths, session.GeometryPaths);
-        ReplaceItems(RoomLabels, session.RoomLabels);
-        ReplaceItems(OpeningCandidates, session.OpeningCandidates);
-        ReplaceItems(OpeningLabels, session.OpeningLabels);
-        ReplaceItems(Dimensions, session.Dimensions);
-        ReplaceItems(DimensionAssociations, session.DimensionAssociations);
-        ReplaceItems(FixedPlanComponents, session.FixedPlanComponents);
-        ReplaceItems(ProtectedDetailAssemblies, session.ProtectedDetailAssemblies);
-        ReplaceItems(WallCandidates, session.WallCandidates);
-        ReplaceItems(PinchGroups, session.PinchGroups);
-        ReplaceItems(PinchMarkers, session.PinchMarkers);
-        ReplaceItems(CuratedPlanArtifacts, session.CuratedPlanArtifacts);
-        dimensionAssociationsById = session.DimensionAssociationsById;
-        ReplaceItems(VisibleCuratedPlanArtifacts, session.VisibleCuratedPlanArtifacts);
+        Code = applyPlan.Session.Code;
+        Name = applyPlan.Session.Name;
+        Status = applyPlan.Session.Status;
+        ActiveVersionNumber = applyPlan.Session.ActiveVersionNumber;
+        ActivePublishedCurationId = applyPlan.Session.ActivePublishedCurationId;
+
+        ReplaceItems(GeometryPaths, applyPlan.Session.GeometryPaths);
+        ReplaceItems(RoomLabels, applyPlan.Session.RoomLabels);
+        ReplaceItems(OpeningCandidates, applyPlan.Session.OpeningCandidates);
+        ReplaceItems(OpeningLabels, applyPlan.Session.OpeningLabels);
+        ReplaceItems(Dimensions, applyPlan.Session.Dimensions);
+        ReplaceItems(DimensionAssociations, applyPlan.Session.DimensionAssociations);
+        ReplaceItems(FixedPlanComponents, applyPlan.Session.FixedPlanComponents);
+        ReplaceItems(ProtectedDetailAssemblies, applyPlan.Session.ProtectedDetailAssemblies);
+        ReplaceItems(WallCandidates, applyPlan.Session.WallCandidates);
+        ReplaceItems(PinchGroups, applyPlan.Session.PinchGroups);
+        ReplaceItems(PinchMarkers, applyPlan.Session.PinchMarkers);
+        ReplaceItems(CuratedPlanArtifacts, applyPlan.Session.CuratedPlanArtifacts);
+        dimensionAssociationsById = applyPlan.Session.DimensionAssociationsById;
+        ReplaceItems(VisibleCuratedPlanArtifacts, applyPlan.Session.VisibleCuratedPlanArtifacts);
         RefreshReviewQueue();
 
+        NotifySessionProjectionCountsChanged();
+        ApplySelectionReplay(applyPlan.SelectionReplay);
+    }
+
+    private void NotifySessionProjectionCountsChanged()
+    {
         OnPropertyChanged(nameof(DoorOpeningCount));
         OnPropertyChanged(nameof(WindowOpeningCount));
         OnPropertyChanged(nameof(FixedPlanComponentCount));
@@ -1211,42 +1221,35 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(RoomLabelCount));
         OnPropertyChanged(nameof(OpeningLabelCount));
         OnPropertyChanged(nameof(DimensionCount));
+    }
 
-        var resolvedSelection = selectionCoordinator.ResolveSelectionSnapshot(
-            selection,
-            WallCandidates,
-            PinchMarkers,
-            PinchGroups,
-            RoomLabels,
-            OpeningLabels,
-            Dimensions,
-            CuratedPlanArtifacts);
+    private void ApplySelectionReplay(ReviewSelectionReplayResult selectionReplay)
+    {
+        SelectedCandidate = selectionReplay.Candidate;
+        SelectedPinchMarker = selectionReplay.PinchMarker;
+        SelectedPinchGroup = selectionReplay.PinchGroup;
 
-        SelectedCandidate = resolvedSelection.Candidate;
-        SelectedPinchMarker = resolvedSelection.PinchMarker;
-        SelectedPinchGroup = resolvedSelection.PinchGroup;
-
-        if (resolvedSelection.CuratedArtifact is not null)
+        if (selectionReplay.CuratedArtifact is not null)
         {
-            SelectedCuratedArtifact = resolvedSelection.CuratedArtifact;
+            SelectedCuratedArtifact = selectionReplay.CuratedArtifact;
             return;
         }
 
-        if (resolvedSelection.OpeningLabel is not null)
+        if (selectionReplay.OpeningLabel is not null)
         {
-            SelectedOpeningLabel = resolvedSelection.OpeningLabel;
+            SelectedOpeningLabel = selectionReplay.OpeningLabel;
             return;
         }
 
-        if (resolvedSelection.Dimension is not null)
+        if (selectionReplay.Dimension is not null)
         {
-            SelectedDimension = resolvedSelection.Dimension;
+            SelectedDimension = selectionReplay.Dimension;
             return;
         }
 
-        if (resolvedSelection.RoomLabel is not null)
+        if (selectionReplay.RoomLabel is not null)
         {
-            SelectedRoomLabel = resolvedSelection.RoomLabel;
+            SelectedRoomLabel = selectionReplay.RoomLabel;
         }
     }
 
@@ -1341,105 +1344,108 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(HasVisibleCuratedArtifactGroups));
     }
 
-    private void ApplySelectionPresentationOutcome(SelectionPresentationOutcome outcome)
+    private void ApplySelectionPresentation(SelectionPresentationOutcome outcome)
     {
-        if (outcome.ClearSelections.HasFlag(ReviewSelectionSlots.CuratedArtifact))
+        ApplySelectionPresentationPlan(
+            applyCoordinator.BuildSelectionPresentationApplyPlan(outcome, PinchGroups, WallCandidates));
+    }
+
+    private void ApplySelectionPresentationPlan(SelectionPresentationApplyPlan plan)
+    {
+        ApplySelectionClears(plan.ClearSelections);
+
+        if (!string.IsNullOrWhiteSpace(plan.SelectedPinchAxis) &&
+            !string.Equals(SelectedPinchAxis, plan.SelectedPinchAxis, StringComparison.OrdinalIgnoreCase))
         {
-            SelectedCuratedArtifact = null;
+            SelectedPinchAxis = plan.SelectedPinchAxis;
         }
 
-        if (outcome.ClearSelections.HasFlag(ReviewSelectionSlots.Candidate))
+        if (plan.SelectedPinchGroup is not null)
         {
-            SelectedCandidate = null;
+            SelectedPinchGroup = plan.SelectedPinchGroup;
         }
 
-        if (outcome.ClearSelections.HasFlag(ReviewSelectionSlots.RoomLabel))
+        if (plan.LinkedCandidate is not null)
         {
-            SelectedRoomLabel = null;
+            SelectedCandidate = plan.LinkedCandidate;
         }
 
-        if (outcome.ClearSelections.HasFlag(ReviewSelectionSlots.PinchMarker))
+        if (plan.HasHighlightGeometryPathId)
         {
-            SelectedPinchMarker = null;
+            HighlightGeometryPathId = plan.HighlightGeometryPathId;
         }
 
-        if (outcome.ClearSelections.HasFlag(ReviewSelectionSlots.OpeningCandidate))
+        if (plan.HasPreviewSelectionLabel && plan.PreviewSelectionLabel is not null)
         {
-            SelectedOpeningCandidate = null;
+            PreviewSelectionLabel = plan.PreviewSelectionLabel;
         }
 
-        if (outcome.ClearSelections.HasFlag(ReviewSelectionSlots.OpeningLabel))
+        switch (plan.CuratedArtifactEditorAction)
         {
-            SelectedOpeningLabel = null;
-        }
-
-        if (outcome.ClearSelections.HasFlag(ReviewSelectionSlots.Dimension))
-        {
-            SelectedDimension = null;
-        }
-
-        if (outcome.ClearSelections.HasFlag(ReviewSelectionSlots.FixedPlanComponent))
-        {
-            SelectedFixedPlanComponent = null;
-        }
-
-        if (outcome.ClearSelections.HasFlag(ReviewSelectionSlots.ProtectedDetailAssembly))
-        {
-            SelectedProtectedDetailAssembly = null;
-        }
-
-        if (!string.IsNullOrWhiteSpace(outcome.SelectedPinchAxis) &&
-            !string.Equals(SelectedPinchAxis, outcome.SelectedPinchAxis, StringComparison.OrdinalIgnoreCase))
-        {
-            SelectedPinchAxis = outcome.SelectedPinchAxis;
-        }
-
-        if (outcome.SelectedPinchGroupId is Guid pinchGroupId)
-        {
-            var pinchGroup = PinchGroups.FirstOrDefault(item => item.PinchGroupId == pinchGroupId);
-            if (pinchGroup is not null)
-            {
-                SelectedPinchGroup = pinchGroup;
-            }
-        }
-
-        if (outcome.LinkedCandidateId is Guid candidateId)
-        {
-            var sourceCandidate = WallCandidates.FirstOrDefault(item => item.CandidateId == candidateId);
-            if (sourceCandidate is not null)
-            {
-                SelectedCandidate = sourceCandidate;
-            }
-        }
-
-        if (outcome.HasHighlightGeometryPathId)
-        {
-            HighlightGeometryPathId = outcome.HighlightGeometryPathId;
-        }
-
-        if (outcome.HasPreviewSelectionLabel && outcome.PreviewSelectionLabel is not null)
-        {
-            PreviewSelectionLabel = outcome.PreviewSelectionLabel;
-        }
-
-        switch (outcome.CuratedArtifactEditorAction)
-        {
-            case CuratedArtifactEditorAction.Sync when outcome.CuratedArtifactEditorArtifact is not null:
-                PopulateCuratedArtifactEditors(outcome.CuratedArtifactEditorArtifact);
+            case CuratedArtifactEditorAction.Sync when plan.CuratedArtifactEditorArtifact is not null:
+                PopulateCuratedArtifactEditors(plan.CuratedArtifactEditorArtifact);
                 break;
             case CuratedArtifactEditorAction.Clear:
                 ResetCuratedArtifactEditors();
                 break;
         }
 
-        switch (outcome.LabelTextHeightEditorAction)
+        switch (plan.LabelTextHeightEditorAction)
         {
             case LabelTextHeightEditorAction.Sync:
-                SetSelectedLabelTextHeightEditorValue(outcome.LabelTextHeight);
+                SetSelectedLabelTextHeightEditorValue(plan.LabelTextHeight);
                 break;
             case LabelTextHeightEditorAction.Clear:
                 ResetSelectedLabelTextHeightEditor();
                 break;
+        }
+    }
+
+    private void ApplySelectionClears(ReviewSelectionSlots clearSelections)
+    {
+        if (clearSelections.HasFlag(ReviewSelectionSlots.CuratedArtifact))
+        {
+            SelectedCuratedArtifact = null;
+        }
+
+        if (clearSelections.HasFlag(ReviewSelectionSlots.Candidate))
+        {
+            SelectedCandidate = null;
+        }
+
+        if (clearSelections.HasFlag(ReviewSelectionSlots.RoomLabel))
+        {
+            SelectedRoomLabel = null;
+        }
+
+        if (clearSelections.HasFlag(ReviewSelectionSlots.PinchMarker))
+        {
+            SelectedPinchMarker = null;
+        }
+
+        if (clearSelections.HasFlag(ReviewSelectionSlots.OpeningCandidate))
+        {
+            SelectedOpeningCandidate = null;
+        }
+
+        if (clearSelections.HasFlag(ReviewSelectionSlots.OpeningLabel))
+        {
+            SelectedOpeningLabel = null;
+        }
+
+        if (clearSelections.HasFlag(ReviewSelectionSlots.Dimension))
+        {
+            SelectedDimension = null;
+        }
+
+        if (clearSelections.HasFlag(ReviewSelectionSlots.FixedPlanComponent))
+        {
+            SelectedFixedPlanComponent = null;
+        }
+
+        if (clearSelections.HasFlag(ReviewSelectionSlots.ProtectedDetailAssembly))
+        {
+            SelectedProtectedDetailAssembly = null;
         }
     }
 
