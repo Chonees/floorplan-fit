@@ -31,5 +31,12 @@ public sealed class FloorPlanReviewViewModelArchitectureTests
         Assert.DoesNotContain("GetRequiredService<AddPinchGroupHandler>()", source, StringComparison.Ordinal);
         Assert.DoesNotContain("GetRequiredService<AddPinchMarkerHandler>()", source, StringComparison.Ordinal);
         Assert.DoesNotContain("GetRequiredService<RestoreFloorPlanDimensionOverrideHandler>()", source, StringComparison.Ordinal);
+
+        Assert.Contains("FloorPlanReviewSelectionCoordinator", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private ReviewSelectionSnapshot CaptureSelection()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private ReviewSelectionSnapshot BuildSelectionSnapshotForMovedArtifact(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("VisibleCuratedPlanArtifacts.FirstOrDefault(item => item.GeometryPathIds.Contains(geometryPathId))", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SelectedCandidate = selection.CandidateId is null", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SelectedPinchMarker = selection.PinchMarkerId is null", source, StringComparison.Ordinal);
     }
 }

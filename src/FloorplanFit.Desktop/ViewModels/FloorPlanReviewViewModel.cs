@@ -23,6 +23,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     private readonly IServiceScopeFactory scopeFactory;
     private readonly FloorPlanReviewMutationCoordinator mutationCoordinator;
+    private readonly FloorPlanReviewSelectionCoordinator selectionCoordinator;
     private readonly Guid templateId;
     private readonly Guid? floorPlanVersionId;
     private IReadOnlyDictionary<Guid, DimensionAssociationDto> dimensionAssociationsById = new Dictionary<Guid, DimensionAssociationDto>();
@@ -37,6 +38,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         this.scopeFactory = scopeFactory;
         mutationCoordinator = new FloorPlanReviewMutationCoordinator(scopeFactory);
+        selectionCoordinator = new FloorPlanReviewSelectionCoordinator();
         this.templateId = templateId;
         this.floorPlanVersionId = floorPlanVersionId;
     }
@@ -643,7 +645,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return;
         }
 
-        var selection = CaptureSelection() with { DimensionId = e.DimensionId };
+        var selection = selectionCoordinator.CaptureSelection(
+            SelectedCandidate,
+            SelectedPinchMarker,
+            SelectedPinchGroup,
+            SelectedRoomLabel,
+            SelectedOpeningLabel,
+            SelectedDimension,
+            SelectedCuratedArtifact) with { DimensionId = e.DimensionId };
         StatusMessage = $"Saving native dimension {e.SourceDimensionKey}...";
         await mutationCoordinator.SaveDimensionOverrideAsync(DraftCurationId, e.Dimension, cancellationToken);
 
@@ -664,7 +673,16 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             floorPlanVersionId,
             DraftCurationId,
             cancellationToken);
-        await RefreshSessionAsync(CaptureSelection(), cancellationToken);
+        await RefreshSessionAsync(
+            selectionCoordinator.CaptureSelection(
+                SelectedCandidate,
+                SelectedPinchMarker,
+                SelectedPinchGroup,
+                SelectedRoomLabel,
+                SelectedOpeningLabel,
+                SelectedDimension,
+                SelectedCuratedArtifact),
+            cancellationToken);
         StatusMessage = $"Adjusted DXF exported: {Path.GetFileName(response.ManagedFilePath)}";
     }
 
@@ -677,7 +695,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return;
         }
 
-        var selection = BuildSelectionSnapshotForMovedArtifact(e);
+        var selection = selectionCoordinator.BuildSelectionSnapshotForMovedArtifact(SelectedPinchGroup?.PinchGroupId, e);
         StatusMessage = $"Saving moved artifact {e.SourceArtifactKind}:{e.SourceArtifactId}...";
         await mutationCoordinator.SaveArtifactPositionAsync(DraftCurationId, e, cancellationToken);
 
@@ -692,7 +710,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return;
         }
 
-        var selection = CaptureSelection();
+        var selection = selectionCoordinator.CaptureSelection(
+            SelectedCandidate,
+            SelectedPinchMarker,
+            SelectedPinchGroup,
+            SelectedRoomLabel,
+            SelectedOpeningLabel,
+            SelectedDimension,
+            SelectedCuratedArtifact);
         FloorPlanReviewMutationCoordinator.RestoreArtifactPositionRequest? request = null;
         if (SelectedRoomLabel is not null)
         {
@@ -754,7 +779,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return;
         }
 
-        var selection = CaptureSelection();
+        var selection = selectionCoordinator.CaptureSelection(
+            SelectedCandidate,
+            SelectedPinchMarker,
+            SelectedPinchGroup,
+            SelectedRoomLabel,
+            SelectedOpeningLabel,
+            SelectedDimension,
+            SelectedCuratedArtifact);
         var sourceArtifactKind = SelectedRoomLabel is not null
             ? FloorPlanLabelOverrideSourceKinds.RoomLabel
             : FloorPlanLabelOverrideSourceKinds.OpeningLabel;
@@ -783,7 +815,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return;
         }
 
-        var selection = CaptureSelection();
+        var selection = selectionCoordinator.CaptureSelection(
+            SelectedCandidate,
+            SelectedPinchMarker,
+            SelectedPinchGroup,
+            SelectedRoomLabel,
+            SelectedOpeningLabel,
+            SelectedDimension,
+            SelectedCuratedArtifact);
         var sourceArtifactKind = SelectedRoomLabel is not null
             ? FloorPlanLabelOverrideSourceKinds.RoomLabel
             : FloorPlanLabelOverrideSourceKinds.OpeningLabel;
@@ -1008,95 +1047,49 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     public bool SelectPreviewPath(Guid geometryPathId)
     {
-        var curatedArtifact = VisibleCuratedPlanArtifacts.FirstOrDefault(item => item.GeometryPathIds.Contains(geometryPathId));
-        if (curatedArtifact is not null)
-        {
-            SelectedCuratedArtifact = curatedArtifact;
-            HighlightGeometryPathId = geometryPathId;
-            PreviewSelectionLabel = $"Previewing curated object: {curatedArtifact.SourceEntityRef}";
-            return true;
-        }
-
-        var protectedDetail = ProtectedDetailAssemblies.FirstOrDefault(item => item.GeometryPathIds.Contains(geometryPathId));
-        if (protectedDetail is not null)
-        {
-            SelectedProtectedDetailAssembly = protectedDetail;
-            HighlightGeometryPathId = geometryPathId;
-            PreviewSelectionLabel = $"Previewing protected detail: {protectedDetail.SourceEntityRef}";
-            return true;
-        }
-
-        var fixedComponent = FixedPlanComponents.FirstOrDefault(item => item.GeometryPathIds.Contains(geometryPathId));
-        if (fixedComponent is not null)
-        {
-            SelectedFixedPlanComponent = fixedComponent;
-            HighlightGeometryPathId = geometryPathId;
-            PreviewSelectionLabel = $"Previewing fixed component: {fixedComponent.SourceEntityRef}";
-            return true;
-        }
-
-        var opening = OpeningCandidates.FirstOrDefault(item => item.GeometryPathId == geometryPathId);
-        if (opening is not null)
-        {
-            SelectedOpeningCandidate = opening;
-            return true;
-        }
-
-        var candidate = WallCandidates.FirstOrDefault(item => item.GeometryPathId == geometryPathId);
-        if (candidate is null)
+        var selection = selectionCoordinator.ResolvePreviewHit(
+            geometryPathId,
+            VisibleCuratedPlanArtifacts,
+            ProtectedDetailAssemblies,
+            FixedPlanComponents,
+            OpeningCandidates,
+            WallCandidates);
+        if (!selection.IsMatched)
         {
             return false;
         }
 
-        SelectedPinchMarker = null;
-        SelectedCandidate = candidate;
+        if (selection.ClearSelectedPinchMarker)
+        {
+            SelectedPinchMarker = null;
+        }
+
+        if (selection.CuratedArtifact is not null)
+        {
+            SelectedCuratedArtifact = selection.CuratedArtifact;
+            return true;
+        }
+
+        if (selection.ProtectedDetailAssembly is not null)
+        {
+            SelectedProtectedDetailAssembly = selection.ProtectedDetailAssembly;
+            return true;
+        }
+
+        if (selection.FixedPlanComponent is not null)
+        {
+            SelectedFixedPlanComponent = selection.FixedPlanComponent;
+            return true;
+        }
+
+        if (selection.OpeningCandidate is not null)
+        {
+            SelectedOpeningCandidate = selection.OpeningCandidate;
+            return true;
+        }
+
+        SelectedCandidate = selection.Candidate;
         return true;
-    }
-
-    private ReviewSelectionSnapshot CaptureSelection()
-    {
-        return new ReviewSelectionSnapshot(
-            SelectedCandidate?.CandidateId,
-            SelectedPinchMarker?.PinchMarkerId,
-            SelectedPinchGroup?.PinchGroupId,
-            SelectedRoomLabel?.RoomLabelId,
-            SelectedOpeningLabel?.OpeningLabelId,
-            SelectedDimension?.DimensionId,
-            SelectedCuratedArtifact?.SourceArtifactKind,
-            SelectedCuratedArtifact?.SourceArtifactId);
-    }
-
-    private ReviewSelectionSnapshot BuildSelectionSnapshotForMovedArtifact(FloorPlanPreviewControl.MovableArtifactMovedEventArgs e)
-    {
-        return e.PositionMode == FloorPlanArtifactPositionMode.AbsolutePoint
-            ? string.Equals(e.SourceArtifactKind, FloorPlanArtifactPositionSourceKinds.RoomLabel, StringComparison.Ordinal)
-                ? new ReviewSelectionSnapshot(
-                    null,
-                    null,
-                    SelectedPinchGroup?.PinchGroupId,
-                    e.SourceArtifactId,
-                    null,
-                    null,
-                    null,
-                    null)
-                : new ReviewSelectionSnapshot(
-                    null,
-                    null,
-                    SelectedPinchGroup?.PinchGroupId,
-                    null,
-                    e.SourceArtifactId,
-                    null,
-                    null,
-                    null)
-            : new ReviewSelectionSnapshot(
-                null,
-                null,
-                SelectedPinchGroup?.PinchGroupId,
-                null,
-                null,
-                null,
-                e.SourceArtifactKind,
-                e.SourceArtifactId);
     }
 
     partial void OnSelectedCandidateChanged(WallCandidateDto? value)
@@ -1509,44 +1502,41 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(OpeningLabelCount));
         OnPropertyChanged(nameof(DimensionCount));
 
-        SelectedCandidate = selection.CandidateId is null
-            ? WallCandidates.FirstOrDefault()
-            : WallCandidates.FirstOrDefault(item => item.CandidateId == selection.CandidateId) ?? WallCandidates.FirstOrDefault();
+        var resolvedSelection = selectionCoordinator.ResolveSelectionSnapshot(
+            selection,
+            WallCandidates,
+            PinchMarkers,
+            PinchGroups,
+            RoomLabels,
+            OpeningLabels,
+            Dimensions,
+            CuratedPlanArtifacts);
 
-        SelectedPinchMarker = selection.PinchMarkerId is null
-            ? null
-            : PinchMarkers.FirstOrDefault(item => item.PinchMarkerId == selection.PinchMarkerId);
+        SelectedCandidate = resolvedSelection.Candidate;
+        SelectedPinchMarker = resolvedSelection.PinchMarker;
+        SelectedPinchGroup = resolvedSelection.PinchGroup;
 
-        SelectedPinchGroup = selection.PinchGroupId is null
-            ? SelectedPinchMarker is null
-                ? PinchGroups.FirstOrDefault()
-                : PinchGroups.FirstOrDefault(item => item.PinchGroupId == SelectedPinchMarker.PinchGroupId) ?? PinchGroups.FirstOrDefault()
-            : PinchGroups.FirstOrDefault(item => item.PinchGroupId == selection.PinchGroupId) ?? PinchGroups.FirstOrDefault();
-
-        if (selection.ArtifactSourceId is Guid artifactSourceId &&
-            !string.IsNullOrWhiteSpace(selection.ArtifactSourceKind))
+        if (resolvedSelection.CuratedArtifact is not null)
         {
-            SelectedCuratedArtifact = CuratedPlanArtifacts.FirstOrDefault(item =>
-                item.SourceArtifactId == artifactSourceId &&
-                string.Equals(item.SourceArtifactKind, selection.ArtifactSourceKind, StringComparison.Ordinal));
+            SelectedCuratedArtifact = resolvedSelection.CuratedArtifact;
             return;
         }
 
-        if (selection.OpeningLabelId is Guid openingLabelId)
+        if (resolvedSelection.OpeningLabel is not null)
         {
-            SelectedOpeningLabel = OpeningLabels.FirstOrDefault(item => item.OpeningLabelId == openingLabelId);
+            SelectedOpeningLabel = resolvedSelection.OpeningLabel;
             return;
         }
 
-        if (selection.DimensionId is Guid dimensionId)
+        if (resolvedSelection.Dimension is not null)
         {
-            SelectedDimension = Dimensions.FirstOrDefault(item => item.DimensionId == dimensionId);
+            SelectedDimension = resolvedSelection.Dimension;
             return;
         }
 
-        if (selection.RoomLabelId is Guid roomLabelId)
+        if (resolvedSelection.RoomLabel is not null)
         {
-            SelectedRoomLabel = RoomLabels.FirstOrDefault(item => item.RoomLabelId == roomLabelId);
+            SelectedRoomLabel = resolvedSelection.RoomLabel;
         }
     }
 
@@ -2110,24 +2100,4 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     private readonly record struct CuratedArtifactSelection(string SourceArtifactKind, Guid SourceArtifactId);
 
-    private readonly record struct ReviewSelectionSnapshot(
-        Guid? CandidateId,
-        Guid? PinchMarkerId,
-        Guid? PinchGroupId,
-        Guid? RoomLabelId,
-        Guid? OpeningLabelId,
-        Guid? DimensionId,
-        string? ArtifactSourceKind,
-        Guid? ArtifactSourceId)
-    {
-        public static ReviewSelectionSnapshot Empty { get; } = new(
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null);
-    }
 }
