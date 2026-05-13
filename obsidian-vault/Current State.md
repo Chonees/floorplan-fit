@@ -713,6 +713,12 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Estado de hotspot post-Loop 3B: `FloorPlanReviewViewModel.cs` bajo a **1709 lineas** al sacar routing/snapshots y presentation side effects a `FloorPlanReviewSelectionCoordinator.cs` (**541 lineas**). El siguiente corte sano ya no es selection state; pasa a ser evaluar **Loop 3C queue/filter orchestration** versus entrar directo a **Loop 4 cleanup final**.
 
+- Cierre de **Loop 3C / review queue orchestration** el **2026-05-12**: `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewQueueCoordinator.cs` ya concentra filtering/search, projection de visibles, grouping de curated artifacts y normalizacion/collapse de expansion state para la review queue. `FloorPlanReviewViewModel.cs` ahora refresca la queue como shell, aplicando projections y expansion states en lugar de conservar inline `MatchesReviewQueueFilter`, `MatchesReviewQueueSearch`, `NormalizeQueueExpansion` y el grouping de curated artifacts.
+
+- Verificacion de cierre de **Loop 3C** el **2026-05-12**: el focused queue slice `FloorPlanReviewViewModelArchitectureTests|FloorPlanReviewViewModelTests` paso **32/32**, y la suite completa `FloorplanFit.Desktop.Tests` quedo en **128/128 PASS**. Sigue apareciendo el warning `CS8625` en `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs`, pero no pertenece al alcance de este loop.
+
+- Estado de cierre de **Loop 3 / review orchestration**: `FloorPlanReviewViewModel.cs` bajo a **1563 lineas** y ya no concentra mutaciones, selection state ni review queue orchestration. El siguiente paso sano deja de ser Loop 3 y pasa a **Loop 4 cleanup final**, con foco en naming/ownership consistency, drift documental final y auditoria de los restos de shell/UI state.
+
 
 
 
@@ -2381,7 +2387,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Evaluar si conviene abrir **Loop 3C** para sacar queue/filter orchestration (`RefreshReviewQueue`, filtros, grouping y expand/collapse state) o si el repo ya gano suficiente claridad para pasar directo a **Loop 4 cleanup final**.
+0. Arrancar **Loop 4 cleanup final**: auditar naming, ownership residual y consistencia documental ahora que preview y review ya quedaron particionados en coordinators claros.
 
 
 
@@ -2399,7 +2405,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-1. Si se abre **Loop 3C**, arrancar por el routing de filtros/visibilidad antes de tocar naming cosmetico; si NO, el siguiente paso es **Loop 4** con cleanup final de ownership, naming y drift check documental.
+1. Dentro de **Loop 4**, priorizar primero los restos del Desktop shell (`SelectedInspectorTool`, summaries/labels derivados, hints y helpers UI) antes de hacer cleanup cosmetico de nombres o carpetas.
 
 
 
@@ -2648,6 +2654,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-12 - Loop 3A review command orchestration]]
 
 - [[Implementation/2026-05-12 - Loop 3B selection state extraction]]
+
+- [[Implementation/2026-05-12 - Loop 3C review queue orchestration]]
 
 
 

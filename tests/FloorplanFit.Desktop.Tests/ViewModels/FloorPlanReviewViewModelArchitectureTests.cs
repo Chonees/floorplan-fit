@@ -54,4 +54,22 @@ public sealed class FloorPlanReviewViewModelArchitectureTests
         Assert.DoesNotContain("SyncSelectedLabelTextHeightEditor(value.TextHeight);", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ClearSelectedLabelTextHeightEditor();", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void FloorPlanReviewViewModel_sources_review_queue_orchestration_through_the_queue_coordinator()
+    {
+        var viewModelPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "FloorplanFit.Desktop", "ViewModels", "FloorPlanReviewViewModel.cs");
+        var source = File.ReadAllText(viewModelPath);
+
+        Assert.Contains("FloorPlanReviewQueueCoordinator", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private void NormalizeQueueExpansion()", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private void CollapseQueueSectionsExcept(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private bool MatchesReviewQueueFilter(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private bool MatchesReviewQueueSearch(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("CuratedArtifactGroups.Add(new CuratedArtifactGroupViewModel(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(".GroupBy(item => (item.ResolvedFamily, item.ResolvedCategory))", source, StringComparison.Ordinal);
+    }
 }

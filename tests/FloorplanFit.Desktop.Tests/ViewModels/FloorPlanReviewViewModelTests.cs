@@ -283,6 +283,78 @@ public sealed class FloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task Review_queue_filter_changes_rehome_the_open_expander_to_the_first_visible_section()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var wallPathId = Guid.NewGuid();
+        var curatedPathId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 11, 21, 15, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "seminole2000",
+                "SEMINOLE2000",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(wallPathId, false, [new GeometrySegmentDto(wallPathId, 1, 0m, 0m, 120m, 0m)]),
+                    new GeometryPathDto(curatedPathId, false, [new GeometrySegmentDto(curatedPathId, 1, 40m, 0m, 76m, 0m)])
+                ],
+                [
+                    new RoomLabelDto(Guid.NewGuid(), "TEXT:ROOM:1", "ROOM LBLS", "KITCHEN", 125m, 784m, 0.95m, null, 1)
+                ],
+                [],
+                [],
+                [
+                    new FixedPlanComponentDto(
+                        Guid.NewGuid(),
+                        "INSERT:TUB:1",
+                        "FIXTURES",
+                        "Tub",
+                        "INSERT",
+                        "TUB1",
+                        [curatedPathId],
+                        0.95m,
+                        null,
+                        1)
+                ],
+                [],
+                [
+                    new WallCandidateDto(Guid.NewGuid(), "LINE:WALL:1", "WALLS", "Accepted", 0.95m, null, null, wallPathId, 1)
+                ],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        Assert.True(viewModel.IsCuratedObjectsQueueExpanded);
+        Assert.False(viewModel.IsRoomNamesQueueExpanded);
+
+        viewModel.SelectedReviewQueueFilter = "Text & Notes";
+        viewModel.ReviewQueueSearchText = "kitch";
+
+        Assert.False(viewModel.IsCuratedObjectsQueueExpanded);
+        Assert.True(viewModel.IsRoomNamesQueueExpanded);
+        Assert.Empty(viewModel.CuratedArtifactGroups);
+        Assert.Single(viewModel.VisibleRoomLabels);
+    }
+
+    [Fact]
     public async Task Inspector_tool_selection_falls_back_to_overview_when_the_active_tool_is_no_longer_valid()
     {
         var templateId = Guid.NewGuid();

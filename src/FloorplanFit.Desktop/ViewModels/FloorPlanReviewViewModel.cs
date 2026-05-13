@@ -24,6 +24,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private readonly IServiceScopeFactory scopeFactory;
     private readonly FloorPlanReviewMutationCoordinator mutationCoordinator;
     private readonly FloorPlanReviewSelectionCoordinator selectionCoordinator;
+    private readonly FloorPlanReviewQueueCoordinator queueCoordinator;
     private readonly Guid templateId;
     private readonly Guid? floorPlanVersionId;
     private IReadOnlyDictionary<Guid, DimensionAssociationDto> dimensionAssociationsById = new Dictionary<Guid, DimensionAssociationDto>();
@@ -39,6 +40,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         this.scopeFactory = scopeFactory;
         mutationCoordinator = new FloorPlanReviewMutationCoordinator(scopeFactory);
         selectionCoordinator = new FloorPlanReviewSelectionCoordinator();
+        queueCoordinator = new FloorPlanReviewQueueCoordinator();
         this.templateId = templateId;
         this.floorPlanVersionId = floorPlanVersionId;
     }
@@ -1227,7 +1229,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         if (value)
         {
-            CollapseQueueSectionsExcept(nameof(IsStructureQueueExpanded));
+            ApplyQueueExpansionState(queueCoordinator.CollapseSectionsExcept(
+                CaptureQueueExpansionState(),
+                ReviewQueueSection.Structure));
         }
     }
 
@@ -1235,7 +1239,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         if (value)
         {
-            CollapseQueueSectionsExcept(nameof(IsRoomNamesQueueExpanded));
+            ApplyQueueExpansionState(queueCoordinator.CollapseSectionsExcept(
+                CaptureQueueExpansionState(),
+                ReviewQueueSection.RoomNames));
         }
     }
 
@@ -1243,7 +1249,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         if (value)
         {
-            CollapseQueueSectionsExcept(nameof(IsOpeningCodesQueueExpanded));
+            ApplyQueueExpansionState(queueCoordinator.CollapseSectionsExcept(
+                CaptureQueueExpansionState(),
+                ReviewQueueSection.OpeningCodes));
         }
     }
 
@@ -1251,7 +1259,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         if (value)
         {
-            CollapseQueueSectionsExcept(nameof(IsDimensionsQueueExpanded));
+            ApplyQueueExpansionState(queueCoordinator.CollapseSectionsExcept(
+                CaptureQueueExpansionState(),
+                ReviewQueueSection.Dimensions));
         }
     }
 
@@ -1259,7 +1269,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         if (value)
         {
-            CollapseQueueSectionsExcept(nameof(IsCuratedObjectsQueueExpanded));
+            ApplyQueueExpansionState(queueCoordinator.CollapseSectionsExcept(
+                CaptureQueueExpansionState(),
+                ReviewQueueSection.CuratedObjects));
         }
     }
 
@@ -1443,53 +1455,50 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     private void RefreshReviewQueue()
     {
-        ReplaceItems(
-            VisibleWallCandidates,
-            WallCandidates
-                .Where(ShouldIncludeWallCandidateInQueue)
-                .OrderBy(item => item.SortOrder)
-                .ThenBy(item => item.SourceEntityRef, StringComparer.OrdinalIgnoreCase));
+        var projection = queueCoordinator.BuildProjection(
+            SelectedReviewQueueFilter,
+            ReviewQueueSearchText,
+            WallCandidates,
+            RoomLabels,
+            OpeningLabels,
+            Dimensions,
+            VisibleCuratedPlanArtifacts);
 
-        ReplaceItems(
-            VisibleRoomLabels,
-            RoomLabels
-                .Where(ShouldIncludeRoomLabelInQueue)
-                .OrderBy(item => item.SortOrder)
-                .ThenBy(item => item.Text, StringComparer.OrdinalIgnoreCase));
+        ApplyQueueProjection(projection);
+        ApplyQueueExpansionState(queueCoordinator.NormalizeExpansion(CaptureQueueExpansionState(), projection));
+        NotifyReviewQueueStateChanged();
+    }
 
-        ReplaceItems(
-            VisibleOpeningLabels,
-            OpeningLabels
-                .Where(ShouldIncludeOpeningLabelInQueue)
-                .OrderBy(item => item.SortOrder)
-                .ThenBy(item => item.Text, StringComparer.OrdinalIgnoreCase));
+    private ReviewQueueExpansionState CaptureQueueExpansionState()
+    {
+        return new ReviewQueueExpansionState(
+            IsStructureQueueExpanded,
+            IsRoomNamesQueueExpanded,
+            IsOpeningCodesQueueExpanded,
+            IsDimensionsQueueExpanded,
+            IsCuratedObjectsQueueExpanded);
+    }
 
-        ReplaceItems(
-            VisibleDimensions,
-            Dimensions
-                .Where(ShouldIncludeDimensionInQueue)
-                .OrderBy(item => item.SortOrder)
-                .ThenBy(item => item.DisplayText, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(item => item.SourceEntityRef, StringComparer.OrdinalIgnoreCase));
+    private void ApplyQueueProjection(ReviewQueueProjection projection)
+    {
+        ReplaceItems(VisibleWallCandidates, projection.VisibleWallCandidates);
+        ReplaceItems(VisibleRoomLabels, projection.VisibleRoomLabels);
+        ReplaceItems(VisibleOpeningLabels, projection.VisibleOpeningLabels);
+        ReplaceItems(VisibleDimensions, projection.VisibleDimensions);
+        ReplaceItems(CuratedArtifactGroups, projection.CuratedArtifactGroups);
+    }
 
-        CuratedArtifactGroups.Clear();
-        foreach (var group in VisibleCuratedPlanArtifacts
-                     .Where(ShouldIncludeCuratedArtifactInQueue)
-                     .GroupBy(item => (item.ResolvedFamily, item.ResolvedCategory))
-                     .OrderBy(group => FloorPlanArtifactTaxonomy.ResolveFamilySortOrder(group.Key.ResolvedFamily))
-                     .ThenBy(group => FloorPlanArtifactTaxonomy.ResolveCategorySortOrder(group.Key.ResolvedFamily, group.Key.ResolvedCategory)))
-        {
-            CuratedArtifactGroups.Add(new CuratedArtifactGroupViewModel(
-                group.Key.ResolvedFamily,
-                group.Key.ResolvedCategory,
-                FloorPlanReviewDisplayText.GetCuratedGroupTitle(group.Key.ResolvedFamily, group.Key.ResolvedCategory),
-                FloorPlanReviewDisplayText.GetCuratedGroupSubtitle(group.Key.ResolvedFamily, group.Key.ResolvedCategory),
-                group.First().ResolvedColorArgb,
-                group.OrderBy(item => item.SortOrder).ThenBy(item => item.SourceEntityRef, StringComparer.OrdinalIgnoreCase).ToArray()));
-        }
+    private void ApplyQueueExpansionState(ReviewQueueExpansionState state)
+    {
+        IsStructureQueueExpanded = state.IsStructureQueueExpanded;
+        IsRoomNamesQueueExpanded = state.IsRoomNamesQueueExpanded;
+        IsOpeningCodesQueueExpanded = state.IsOpeningCodesQueueExpanded;
+        IsDimensionsQueueExpanded = state.IsDimensionsQueueExpanded;
+        IsCuratedObjectsQueueExpanded = state.IsCuratedObjectsQueueExpanded;
+    }
 
-        NormalizeQueueExpansion();
-
+    private void NotifyReviewQueueStateChanged()
+    {
         OnPropertyChanged(nameof(CuratedObjectCount));
         OnPropertyChanged(nameof(VisibleQueueItemCount));
         OnPropertyChanged(nameof(TotalQueueItemCount));
@@ -1506,192 +1515,6 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(HasVisibleOpeningLabels));
         OnPropertyChanged(nameof(HasVisibleDimensions));
         OnPropertyChanged(nameof(HasVisibleCuratedArtifactGroups));
-    }
-
-    private void NormalizeQueueExpansion()
-    {
-        if (IsStructureQueueExpanded && !HasVisibleWallCandidates)
-        {
-            IsStructureQueueExpanded = false;
-        }
-
-        if (IsRoomNamesQueueExpanded && !HasVisibleRoomLabels)
-        {
-            IsRoomNamesQueueExpanded = false;
-        }
-
-        if (IsOpeningCodesQueueExpanded && !HasVisibleOpeningLabels)
-        {
-            IsOpeningCodesQueueExpanded = false;
-        }
-
-        if (IsDimensionsQueueExpanded && !HasVisibleDimensions)
-        {
-            IsDimensionsQueueExpanded = false;
-        }
-
-        if (IsCuratedObjectsQueueExpanded && !HasVisibleCuratedArtifactGroups)
-        {
-            IsCuratedObjectsQueueExpanded = false;
-        }
-
-        if (IsStructureQueueExpanded || IsRoomNamesQueueExpanded || IsOpeningCodesQueueExpanded || IsDimensionsQueueExpanded || IsCuratedObjectsQueueExpanded)
-        {
-            return;
-        }
-
-        if (HasVisibleCuratedArtifactGroups)
-        {
-            IsCuratedObjectsQueueExpanded = true;
-            return;
-        }
-
-        if (HasVisibleRoomLabels)
-        {
-            IsRoomNamesQueueExpanded = true;
-            return;
-        }
-
-        if (HasVisibleOpeningLabels)
-        {
-            IsOpeningCodesQueueExpanded = true;
-            return;
-        }
-
-        if (HasVisibleDimensions)
-        {
-            IsDimensionsQueueExpanded = true;
-            return;
-        }
-
-        if (HasVisibleWallCandidates)
-        {
-            IsStructureQueueExpanded = true;
-        }
-    }
-
-    private void CollapseQueueSectionsExcept(string expandedPropertyName)
-    {
-        if (!string.Equals(expandedPropertyName, nameof(IsStructureQueueExpanded), StringComparison.Ordinal))
-        {
-            IsStructureQueueExpanded = false;
-        }
-
-        if (!string.Equals(expandedPropertyName, nameof(IsRoomNamesQueueExpanded), StringComparison.Ordinal))
-        {
-            IsRoomNamesQueueExpanded = false;
-        }
-
-        if (!string.Equals(expandedPropertyName, nameof(IsOpeningCodesQueueExpanded), StringComparison.Ordinal))
-        {
-            IsOpeningCodesQueueExpanded = false;
-        }
-
-        if (!string.Equals(expandedPropertyName, nameof(IsDimensionsQueueExpanded), StringComparison.Ordinal))
-        {
-            IsDimensionsQueueExpanded = false;
-        }
-
-        if (!string.Equals(expandedPropertyName, nameof(IsCuratedObjectsQueueExpanded), StringComparison.Ordinal))
-        {
-            IsCuratedObjectsQueueExpanded = false;
-        }
-    }
-
-    private bool ShouldIncludeWallCandidateInQueue(WallCandidateDto candidate)
-    {
-        if (!MatchesReviewQueueFilter("Structure", changed: false))
-        {
-            return false;
-        }
-
-        return MatchesReviewQueueSearch(candidate.SourceEntityRef, candidate.SourceLayer, candidate.AssemblyHint);
-    }
-
-    private bool ShouldIncludeRoomLabelInQueue(RoomLabelDto label)
-    {
-        var changed = label.HasManualPosition || label.HasManualTextHeight;
-        if (!MatchesReviewQueueFilter("Text & Notes", changed))
-        {
-            return false;
-        }
-
-        return MatchesReviewQueueSearch(label.Text, label.SourceEntityRef, label.SourceLayer);
-    }
-
-    private bool ShouldIncludeOpeningLabelInQueue(OpeningLabelDto label)
-    {
-        var changed = label.HasManualPosition || label.HasManualTextHeight;
-        if (!MatchesReviewQueueFilter("Text & Notes", changed))
-        {
-            return false;
-        }
-
-        return MatchesReviewQueueSearch(label.Text, label.Kind, label.SourceEntityRef, label.SourceLayer);
-    }
-
-    private bool ShouldIncludeDimensionInQueue(DimensionDto dimension)
-    {
-        if (!MatchesReviewQueueFilter("Dimensions", changed: false))
-        {
-            return false;
-        }
-
-        return MatchesReviewQueueSearch(
-            dimension.DisplayText,
-            dimension.SourceEntityRef,
-            dimension.SourceLayer,
-            dimension.GeometryBlockName,
-            dimension.RawTextOverride,
-            dimension.SourceEntityKind);
-    }
-
-    private bool ShouldIncludeCuratedArtifactInQueue(CuratedPlanArtifactDto artifact)
-    {
-        var changed =
-            artifact.HasManualPosition ||
-            !string.Equals(artifact.DecisionState, FloorPlanArtifactDecisionState.DetectedDefault.ToString(), StringComparison.Ordinal);
-
-        if (!MatchesReviewQueueFilter("Curated Objects", changed))
-        {
-            return false;
-        }
-
-        return MatchesReviewQueueSearch(
-            artifact.SourceEntityRef,
-            artifact.SourceLayer,
-            artifact.ResolvedFamily,
-            artifact.ResolvedCategory,
-            artifact.ResolvedType,
-            artifact.SourceBlockName,
-            artifact.SourceEntityKind);
-    }
-
-    private bool MatchesReviewQueueFilter(string bucket, bool changed)
-    {
-        return SelectedReviewQueueFilter switch
-        {
-            "Everything" => true,
-            "Changed only" => changed,
-            "Text & Notes" => string.Equals(bucket, "Text & Notes", StringComparison.Ordinal),
-            "Dimensions" => string.Equals(bucket, "Dimensions", StringComparison.Ordinal),
-            "Curated Objects" => string.Equals(bucket, "Curated Objects", StringComparison.Ordinal),
-            "Structure" => string.Equals(bucket, "Structure", StringComparison.Ordinal),
-            _ => true
-        };
-    }
-
-    private bool MatchesReviewQueueSearch(params string?[] values)
-    {
-        var search = ReviewQueueSearchText.Trim();
-        if (string.IsNullOrWhiteSpace(search))
-        {
-            return true;
-        }
-
-        return values.Any(value =>
-            !string.IsNullOrWhiteSpace(value) &&
-            value.Contains(search, StringComparison.OrdinalIgnoreCase));
     }
 
     private void ApplySelectionPresentationOutcome(SelectionPresentationOutcome outcome)
