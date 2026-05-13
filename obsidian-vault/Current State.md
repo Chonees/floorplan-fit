@@ -683,6 +683,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Estado de hotspot post-Loop 2A: aunque la coordinacion de interaccion ya salio del cuerpo principal, `FloorPlanPreviewControl.cs` sigue siendo un hotspot Desktop grande (**1747 lineas** al 2026-05-12) y el siguiente corte sano es **Loop 2B** sobre observer wiring / invalidation repetition antes de meterse con `FloorPlanReviewViewModel`.
 
+- Decision de arquitectura tomada el **2026-05-12** para **Loop 2B**: el siguiente slice del preview va a extraer la plomeria de colecciones observables a un `PreviewCollectionObserverHub`. Objetivo: sacar de `FloorPlanPreviewControl` los handlers repetidos `OnXChanged`, `Attach...CollectionObserver`, `Detach...CollectionObserver` y `CollectionChanged => InvalidateVisual()` sin tocar render ni comportamiento de interaccion.
+
 
 
 
@@ -2351,7 +2353,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 2B** del programa de modularizacion: sacar de `FloorPlanPreviewControl` el wiring repetitivo de observers/invalidation y terminar de consolidarlo como shell Avalonia alrededor de `PreviewInteractionCoordinator`.
+0. Ejecutar **Loop 2B** del programa de modularizacion: introducir `PreviewCollectionObserverHub`, mover ahi attach / replace / detach / invalidation de colecciones observables y seguir adelgazando `FloorPlanPreviewControl` como shell Avalonia.
 
 
 
@@ -2602,6 +2604,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-12 - Loop 1 visual system cleanup]]
 
 - [[Implementation/2026-05-12 - Loop 2A preview interaction extraction]]
+
+- [[Decisions/2026-05-12 - Loop 2B targets preview observer wiring via collection hub]]
 
 
 
