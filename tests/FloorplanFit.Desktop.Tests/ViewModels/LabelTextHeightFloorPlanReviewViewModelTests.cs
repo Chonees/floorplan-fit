@@ -95,6 +95,44 @@ public sealed class LabelTextHeightFloorPlanReviewViewModelTests
         Assert.Null(saved.ResolvedTextHeight);
     }
 
+    [Fact]
+    public async Task Selecting_and_clearing_room_label_syncs_and_clears_text_height_editor()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var labelId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var session = new FloorPlanReviewSessionDto(
+            templateId,
+            "seminole2000",
+            "SEMINOLE2000",
+            "Curated Draft",
+            1,
+            null,
+            [],
+            [new RoomLabelDto(labelId, "TEXT:7", "ROOM LBLS", "KITCHEN", 240m, 180m, 0.95m, null, 1, TextHeight: 7.5m, DetectedTextHeight: 7.5m)],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
+        var services = BuildServices(template, session, new InMemoryFloorPlanLabelOverrideRepository());
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        viewModel.SelectRoomLabel(labelId);
+        Assert.Equal("7.5", viewModel.EditableSelectedLabelTextHeight);
+
+        viewModel.SelectedRoomLabel = null;
+        Assert.Equal(string.Empty, viewModel.EditableSelectedLabelTextHeight);
+    }
+
     private static ServiceCollection BuildServices(
         FloorPlanTemplate template,
         FloorPlanReviewSessionDto session,

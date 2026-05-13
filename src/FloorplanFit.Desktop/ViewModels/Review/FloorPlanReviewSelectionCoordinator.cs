@@ -185,6 +185,285 @@ internal sealed class FloorPlanReviewSelectionCoordinator
             dimension,
             curatedArtifact);
     }
+
+    public SelectionPresentationOutcome ResolveCandidatePresentation(
+        WallCandidateDto? candidate,
+        PinchMarkerDto? selectedPinchMarker,
+        string selectedPinchAxis)
+    {
+        return candidate is null
+            ? new SelectionPresentationOutcome(
+                ReviewSelectionSlots.None,
+                HasHighlightGeometryPathId: true,
+                HighlightGeometryPathId: selectedPinchMarker?.GeometryPathId,
+                HasPreviewSelectionLabel: true,
+                PreviewSelectionLabel: selectedPinchMarker is null
+                    ? "Previewing floor plan"
+                    : $"Previewing pinch marker on {selectedPinchAxis}",
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.None,
+                LabelTextHeight: null)
+            : new SelectionPresentationOutcome(
+                ReviewSelectionSlots.CuratedArtifact |
+                ReviewSelectionSlots.RoomLabel |
+                ReviewSelectionSlots.OpeningCandidate |
+                ReviewSelectionSlots.OpeningLabel |
+                ReviewSelectionSlots.Dimension |
+                ReviewSelectionSlots.FixedPlanComponent |
+                ReviewSelectionSlots.ProtectedDetailAssembly,
+                HasHighlightGeometryPathId: true,
+                HighlightGeometryPathId: candidate.GeometryPathId,
+                HasPreviewSelectionLabel: true,
+                PreviewSelectionLabel: $"Previewing candidate: {candidate.SourceEntityRef}",
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.None,
+                LabelTextHeight: null);
+    }
+
+    public SelectionPresentationOutcome ResolveCuratedArtifactPresentation(CuratedPlanArtifactDto? curatedArtifact)
+    {
+        return curatedArtifact is null
+            ? new SelectionPresentationOutcome(
+                ReviewSelectionSlots.None,
+                HasHighlightGeometryPathId: false,
+                HighlightGeometryPathId: null,
+                HasPreviewSelectionLabel: false,
+                PreviewSelectionLabel: null,
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.Clear,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.None,
+                LabelTextHeight: null)
+            : new SelectionPresentationOutcome(
+                ReviewSelectionSlots.Candidate |
+                ReviewSelectionSlots.RoomLabel |
+                ReviewSelectionSlots.PinchMarker |
+                ReviewSelectionSlots.OpeningCandidate |
+                ReviewSelectionSlots.OpeningLabel |
+                ReviewSelectionSlots.Dimension |
+                ReviewSelectionSlots.FixedPlanComponent |
+                ReviewSelectionSlots.ProtectedDetailAssembly,
+                HasHighlightGeometryPathId: true,
+                HighlightGeometryPathId: curatedArtifact.GeometryPathIds.FirstOrDefault(),
+                HasPreviewSelectionLabel: true,
+                PreviewSelectionLabel: $"Previewing curated object: {curatedArtifact.SourceEntityRef}",
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.Sync,
+                CuratedArtifactEditorArtifact: curatedArtifact,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.None,
+                LabelTextHeight: null);
+    }
+
+    public SelectionPresentationOutcome ResolveRoomLabelPresentation(RoomLabelDto? roomLabel)
+    {
+        return roomLabel is null
+            ? new SelectionPresentationOutcome(
+                ReviewSelectionSlots.None,
+                HasHighlightGeometryPathId: false,
+                HighlightGeometryPathId: null,
+                HasPreviewSelectionLabel: false,
+                PreviewSelectionLabel: null,
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.Clear,
+                LabelTextHeight: null)
+            : new SelectionPresentationOutcome(
+                ReviewSelectionSlots.CuratedArtifact |
+                ReviewSelectionSlots.Candidate |
+                ReviewSelectionSlots.PinchMarker |
+                ReviewSelectionSlots.OpeningCandidate |
+                ReviewSelectionSlots.OpeningLabel |
+                ReviewSelectionSlots.Dimension |
+                ReviewSelectionSlots.FixedPlanComponent |
+                ReviewSelectionSlots.ProtectedDetailAssembly,
+                HasHighlightGeometryPathId: true,
+                HighlightGeometryPathId: null,
+                HasPreviewSelectionLabel: true,
+                PreviewSelectionLabel: $"Previewing room label: {roomLabel.Text}",
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.Sync,
+                LabelTextHeight: roomLabel.TextHeight);
+    }
+
+    public SelectionPresentationOutcome ResolvePinchMarkerPresentation(PinchMarkerDto? pinchMarker)
+    {
+        return pinchMarker is null
+            ? SelectionPresentationOutcome.Empty
+            : new SelectionPresentationOutcome(
+                ReviewSelectionSlots.None,
+                HasHighlightGeometryPathId: true,
+                HighlightGeometryPathId: pinchMarker.GeometryPathId,
+                HasPreviewSelectionLabel: true,
+                PreviewSelectionLabel: $"Previewing {pinchMarker.AxisTag} pinch",
+                SelectedPinchAxis: pinchMarker.AxisTag,
+                SelectedPinchGroupId: pinchMarker.PinchGroupId,
+                LinkedCandidateId: pinchMarker.SourceCandidateId,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.None,
+                LabelTextHeight: null);
+    }
+
+    public SelectionPresentationOutcome ResolveOpeningCandidatePresentation(OpeningCandidateDto? openingCandidate)
+    {
+        return openingCandidate is null
+            ? SelectionPresentationOutcome.Empty
+            : new SelectionPresentationOutcome(
+                ReviewSelectionSlots.CuratedArtifact |
+                ReviewSelectionSlots.Candidate |
+                ReviewSelectionSlots.RoomLabel |
+                ReviewSelectionSlots.PinchMarker |
+                ReviewSelectionSlots.OpeningLabel |
+                ReviewSelectionSlots.Dimension |
+                ReviewSelectionSlots.FixedPlanComponent |
+                ReviewSelectionSlots.ProtectedDetailAssembly,
+                HasHighlightGeometryPathId: true,
+                HighlightGeometryPathId: openingCandidate.GeometryPathId,
+                HasPreviewSelectionLabel: true,
+                PreviewSelectionLabel: $"Previewing opening: {openingCandidate.SourceEntityRef}",
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.None,
+                LabelTextHeight: null);
+    }
+
+    public SelectionPresentationOutcome ResolveOpeningLabelPresentation(OpeningLabelDto? openingLabel)
+    {
+        return openingLabel is null
+            ? new SelectionPresentationOutcome(
+                ReviewSelectionSlots.None,
+                HasHighlightGeometryPathId: false,
+                HighlightGeometryPathId: null,
+                HasPreviewSelectionLabel: false,
+                PreviewSelectionLabel: null,
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.Clear,
+                LabelTextHeight: null)
+            : new SelectionPresentationOutcome(
+                ReviewSelectionSlots.CuratedArtifact |
+                ReviewSelectionSlots.Candidate |
+                ReviewSelectionSlots.RoomLabel |
+                ReviewSelectionSlots.PinchMarker |
+                ReviewSelectionSlots.OpeningCandidate |
+                ReviewSelectionSlots.Dimension |
+                ReviewSelectionSlots.FixedPlanComponent |
+                ReviewSelectionSlots.ProtectedDetailAssembly,
+                HasHighlightGeometryPathId: true,
+                HighlightGeometryPathId: null,
+                HasPreviewSelectionLabel: true,
+                PreviewSelectionLabel: $"Previewing opening label: {openingLabel.Text}",
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.Sync,
+                LabelTextHeight: openingLabel.TextHeight);
+    }
+
+    public SelectionPresentationOutcome ResolveFixedPlanComponentPresentation(FixedPlanComponentDto? fixedPlanComponent)
+    {
+        return fixedPlanComponent is null
+            ? SelectionPresentationOutcome.Empty
+            : new SelectionPresentationOutcome(
+                ReviewSelectionSlots.CuratedArtifact |
+                ReviewSelectionSlots.Candidate |
+                ReviewSelectionSlots.RoomLabel |
+                ReviewSelectionSlots.PinchMarker |
+                ReviewSelectionSlots.OpeningCandidate |
+                ReviewSelectionSlots.OpeningLabel |
+                ReviewSelectionSlots.Dimension |
+                ReviewSelectionSlots.ProtectedDetailAssembly,
+                HasHighlightGeometryPathId: true,
+                HighlightGeometryPathId: fixedPlanComponent.GeometryPathIds.FirstOrDefault(),
+                HasPreviewSelectionLabel: true,
+                PreviewSelectionLabel: $"Previewing fixed component: {fixedPlanComponent.SourceEntityRef}",
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.None,
+                LabelTextHeight: null);
+    }
+
+    public SelectionPresentationOutcome ResolveProtectedDetailAssemblyPresentation(ProtectedDetailAssemblyDto? protectedDetailAssembly)
+    {
+        return protectedDetailAssembly is null
+            ? SelectionPresentationOutcome.Empty
+            : new SelectionPresentationOutcome(
+                ReviewSelectionSlots.CuratedArtifact |
+                ReviewSelectionSlots.Candidate |
+                ReviewSelectionSlots.RoomLabel |
+                ReviewSelectionSlots.PinchMarker |
+                ReviewSelectionSlots.OpeningCandidate |
+                ReviewSelectionSlots.OpeningLabel |
+                ReviewSelectionSlots.FixedPlanComponent |
+                ReviewSelectionSlots.Dimension,
+                HasHighlightGeometryPathId: true,
+                HighlightGeometryPathId: protectedDetailAssembly.GeometryPathIds.FirstOrDefault(),
+                HasPreviewSelectionLabel: true,
+                PreviewSelectionLabel: $"Previewing protected detail: {protectedDetailAssembly.SourceEntityRef}",
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.None,
+                LabelTextHeight: null);
+    }
+
+    public SelectionPresentationOutcome ResolveDimensionPresentation(DimensionDto? dimension)
+    {
+        return dimension is null
+            ? SelectionPresentationOutcome.Empty
+            : new SelectionPresentationOutcome(
+                ReviewSelectionSlots.CuratedArtifact |
+                ReviewSelectionSlots.Candidate |
+                ReviewSelectionSlots.RoomLabel |
+                ReviewSelectionSlots.PinchMarker |
+                ReviewSelectionSlots.OpeningCandidate |
+                ReviewSelectionSlots.OpeningLabel |
+                ReviewSelectionSlots.FixedPlanComponent |
+                ReviewSelectionSlots.ProtectedDetailAssembly,
+                HasHighlightGeometryPathId: true,
+                HighlightGeometryPathId: null,
+                HasPreviewSelectionLabel: true,
+                PreviewSelectionLabel: $"Previewing dimension: {dimension.DisplayText}",
+                SelectedPinchAxis: null,
+                SelectedPinchGroupId: null,
+                LinkedCandidateId: null,
+                CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+                CuratedArtifactEditorArtifact: null,
+                LabelTextHeightEditorAction: LabelTextHeightEditorAction.None,
+                LabelTextHeight: null);
+    }
 }
 
 internal readonly record struct PreviewHitSelectionResult(
@@ -231,4 +510,62 @@ internal readonly record struct ReviewSelectionSnapshot(
         null,
         null,
         null);
+}
+
+[Flags]
+internal enum ReviewSelectionSlots
+{
+    None = 0,
+    Candidate = 1 << 0,
+    RoomLabel = 1 << 1,
+    PinchMarker = 1 << 2,
+    OpeningCandidate = 1 << 3,
+    OpeningLabel = 1 << 4,
+    Dimension = 1 << 5,
+    FixedPlanComponent = 1 << 6,
+    ProtectedDetailAssembly = 1 << 7,
+    CuratedArtifact = 1 << 8
+}
+
+internal enum CuratedArtifactEditorAction
+{
+    None,
+    Sync,
+    Clear
+}
+
+internal enum LabelTextHeightEditorAction
+{
+    None,
+    Sync,
+    Clear
+}
+
+internal readonly record struct SelectionPresentationOutcome(
+    ReviewSelectionSlots ClearSelections,
+    bool HasHighlightGeometryPathId,
+    Guid? HighlightGeometryPathId,
+    bool HasPreviewSelectionLabel,
+    string? PreviewSelectionLabel,
+    string? SelectedPinchAxis,
+    Guid? SelectedPinchGroupId,
+    Guid? LinkedCandidateId,
+    CuratedArtifactEditorAction CuratedArtifactEditorAction,
+    CuratedPlanArtifactDto? CuratedArtifactEditorArtifact,
+    LabelTextHeightEditorAction LabelTextHeightEditorAction,
+    decimal? LabelTextHeight)
+{
+    public static SelectionPresentationOutcome Empty { get; } = new(
+        ReviewSelectionSlots.None,
+        HasHighlightGeometryPathId: false,
+        HighlightGeometryPathId: null,
+        HasPreviewSelectionLabel: false,
+        PreviewSelectionLabel: null,
+        SelectedPinchAxis: null,
+        SelectedPinchGroupId: null,
+        LinkedCandidateId: null,
+        CuratedArtifactEditorAction: CuratedArtifactEditorAction.None,
+        CuratedArtifactEditorArtifact: null,
+        LabelTextHeightEditorAction: LabelTextHeightEditorAction.None,
+        LabelTextHeight: null);
 }

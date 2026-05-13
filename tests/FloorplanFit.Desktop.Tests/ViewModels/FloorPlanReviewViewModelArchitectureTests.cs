@@ -38,5 +38,20 @@ public sealed class FloorPlanReviewViewModelArchitectureTests
         Assert.DoesNotContain("VisibleCuratedPlanArtifacts.FirstOrDefault(item => item.GeometryPathIds.Contains(geometryPathId))", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SelectedCandidate = selection.CandidateId is null", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SelectedPinchMarker = selection.PinchMarkerId is null", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviewSelectionLabel = $\"Previewing candidate:", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviewSelectionLabel = $\"Previewing curated object:", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviewSelectionLabel = $\"Previewing room label:", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviewSelectionLabel = $\"Previewing opening:", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviewSelectionLabel = $\"Previewing opening label:", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviewSelectionLabel = $\"Previewing fixed component:", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviewSelectionLabel = $\"Previewing protected detail:", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviewSelectionLabel = $\"Previewing dimension:", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviewSelectionLabel = $\"Previewing {value.AxisTag} pinch\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("HighlightGeometryPathId = value.GeometryPathId;", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("HighlightGeometryPathId = value.GeometryPathIds.FirstOrDefault();", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SyncCuratedArtifactEditors(value);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ClearCuratedArtifactEditors();", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SyncSelectedLabelTextHeightEditor(value.TextHeight);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ClearSelectedLabelTextHeightEditor();", source, StringComparison.Ordinal);
     }
 }

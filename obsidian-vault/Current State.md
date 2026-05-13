@@ -707,6 +707,12 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Decision de arquitectura tomada el **2026-05-12** para **Loop 3B**: selection state se parte en **dos sub-slices**. Primero **selection routing + snapshot truth**; despues **selection presentation side effects**. La prioridad es separar la verdad de seleccion antes de tocar los efectos repetidos de `HighlightGeometryPathId`, `PreviewSelectionLabel`, clears cruzados y sync de editors.
 
+- Cierre de **Loop 3B / selection state extraction** el **2026-05-12**: `src/FloorplanFit.Desktop/ViewModels/Review/FloorPlanReviewSelectionCoordinator.cs` ya concentra preview-hit routing, selection snapshot capture/replay y los presentation outcomes de seleccion (highlight, preview label, linked pinch/candidate state y editor actions). `FloorPlanReviewViewModel.cs` quedo como shell de propiedades/colecciones que aplica outcomes en lugar de seguir escribiendo inline los partials de seleccion.
+
+- Verificacion de cierre de **Loop 3B** el **2026-05-12**: el focused selection slice `FloorPlanReviewViewModelArchitectureTests|FloorPlanReviewViewModelTests|CuratedArtifactFloorPlanReviewViewModelTests|MovableArtifactFloorPlanReviewViewModelTests|LabelTextHeightFloorPlanReviewViewModelTests|DimensionEditingFloorPlanReviewViewModelTests` paso **30/30**, y la suite completa `FloorplanFit.Desktop.Tests` quedo en **126/126 PASS**. Sigue apareciendo el warning `CS8625` en `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs`, pero no pertenece al alcance de este loop.
+
+- Estado de hotspot post-Loop 3B: `FloorPlanReviewViewModel.cs` bajo a **1709 lineas** al sacar routing/snapshots y presentation side effects a `FloorPlanReviewSelectionCoordinator.cs` (**541 lineas**). El siguiente corte sano ya no es selection state; pasa a ser evaluar **Loop 3C queue/filter orchestration** versus entrar directo a **Loop 4 cleanup final**.
+
 
 
 
@@ -2375,7 +2381,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 3B1** del programa de modularizacion: extraer `selection routing + snapshot truth` desde `FloorPlanReviewViewModel` a un `FloorPlanReviewSelectionCoordinator`.
+0. Evaluar si conviene abrir **Loop 3C** para sacar queue/filter orchestration (`RefreshReviewQueue`, filtros, grouping y expand/collapse state) o si el repo ya gano suficiente claridad para pasar directo a **Loop 4 cleanup final**.
 
 
 
@@ -2393,7 +2399,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-1. Despues de **Loop 3B1**, ejecutar **Loop 3B2** para sacar los selection side effects repetidos (`HighlightGeometryPathId`, `PreviewSelectionLabel`, clears cruzados y sync/clear de editors).
+1. Si se abre **Loop 3C**, arrancar por el routing de filtros/visibilidad antes de tocar naming cosmetico; si NO, el siguiente paso es **Loop 4** con cleanup final de ownership, naming y drift check documental.
 
 
 
@@ -2640,6 +2646,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Decisions/2026-05-12 - Loop 3B starts with selection routing before selection presentation]]
 
 - [[Implementation/2026-05-12 - Loop 3A review command orchestration]]
+
+- [[Implementation/2026-05-12 - Loop 3B selection state extraction]]
 
 
 
