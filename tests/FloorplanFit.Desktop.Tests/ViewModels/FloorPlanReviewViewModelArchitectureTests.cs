@@ -126,4 +126,18 @@ public sealed class FloorPlanReviewViewModelArchitectureTests
         Assert.DoesNotContain("private void ApplySessionProjection(", source, StringComparison.Ordinal);
         Assert.DoesNotContain("private void ApplySelectionPresentationOutcome(", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void FloorPlanReviewViewModel_sources_notifications_through_the_notification_coordinator()
+    {
+        var viewModelPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "FloorplanFit.Desktop", "ViewModels", "FloorPlanReviewViewModel.cs");
+        var source = File.ReadAllText(viewModelPath);
+
+        Assert.Contains("FloorPlanReviewNotificationCoordinator", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private void NotifyReviewQueueStateChanged(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("private void NotifyUxStateChanged(", source, StringComparison.Ordinal);
+    }
 }

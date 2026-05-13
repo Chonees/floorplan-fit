@@ -7,41 +7,6 @@ namespace FloorplanFit.Desktop.ViewModels;
 
 internal sealed class FloorPlanReviewInspectorCoordinator
 {
-    public string NormalizeSelectedInspectorTool(
-        string selectedInspectorTool,
-        bool canUsePositionTool,
-        bool canUseTextTool,
-        bool canUseClassificationTool,
-        bool canUseActionsTool,
-        string overviewTool,
-        string positionTool,
-        string textTool,
-        string classificationTool,
-        string actionsTool)
-    {
-        if (string.Equals(selectedInspectorTool, positionTool, StringComparison.Ordinal) && !canUsePositionTool)
-        {
-            return overviewTool;
-        }
-
-        if (string.Equals(selectedInspectorTool, textTool, StringComparison.Ordinal) && !canUseTextTool)
-        {
-            return overviewTool;
-        }
-
-        if (string.Equals(selectedInspectorTool, classificationTool, StringComparison.Ordinal) && !canUseClassificationTool)
-        {
-            return overviewTool;
-        }
-
-        if (string.Equals(selectedInspectorTool, actionsTool, StringComparison.Ordinal) && !canUseActionsTool)
-        {
-            return overviewTool;
-        }
-
-        return selectedInspectorTool;
-    }
-
     public ReviewInspectorPresentation BuildPresentation(
         CuratedPlanArtifactDto? selectedCuratedArtifact,
         WallCandidateDto? selectedCandidate,

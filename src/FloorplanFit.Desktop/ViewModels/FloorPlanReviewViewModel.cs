@@ -22,6 +22,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private readonly FloorPlanReviewSelectionCoordinator selectionCoordinator;
     private readonly FloorPlanReviewQueueCoordinator queueCoordinator;
     private readonly FloorPlanReviewInspectorCoordinator inspectorCoordinator;
+    private readonly FloorPlanReviewNotificationCoordinator notificationCoordinator;
     private readonly FloorPlanReviewSessionCoordinator sessionCoordinator;
     private readonly Guid templateId;
     private readonly Guid? floorPlanVersionId;
@@ -40,6 +41,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         selectionCoordinator = new FloorPlanReviewSelectionCoordinator();
         queueCoordinator = new FloorPlanReviewQueueCoordinator();
         inspectorCoordinator = new FloorPlanReviewInspectorCoordinator();
+        notificationCoordinator = new FloorPlanReviewNotificationCoordinator();
         sessionCoordinator = new FloorPlanReviewSessionCoordinator(scopeFactory);
         this.templateId = templateId;
         this.floorPlanVersionId = floorPlanVersionId;
@@ -958,55 +960,55 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         ApplySelectionPresentation(
             selectionCoordinator.ResolveCandidatePresentation(value, SelectedPinchMarker, SelectedPinchAxis));
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnSelectedCuratedArtifactChanged(CuratedPlanArtifactDto? value)
     {
         ApplySelectionPresentation(selectionCoordinator.ResolveCuratedArtifactPresentation(value));
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnSelectedRoomLabelChanged(RoomLabelDto? value)
     {
         ApplySelectionPresentation(selectionCoordinator.ResolveRoomLabelPresentation(value));
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnSelectedPinchMarkerChanged(PinchMarkerDto? value)
     {
         ApplySelectionPresentation(selectionCoordinator.ResolvePinchMarkerPresentation(value));
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnSelectedOpeningCandidateChanged(OpeningCandidateDto? value)
     {
         ApplySelectionPresentation(selectionCoordinator.ResolveOpeningCandidatePresentation(value));
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnSelectedOpeningLabelChanged(OpeningLabelDto? value)
     {
         ApplySelectionPresentation(selectionCoordinator.ResolveOpeningLabelPresentation(value));
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnSelectedFixedPlanComponentChanged(FixedPlanComponentDto? value)
     {
         ApplySelectionPresentation(selectionCoordinator.ResolveFixedPlanComponentPresentation(value));
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnSelectedProtectedDetailAssemblyChanged(ProtectedDetailAssemblyDto? value)
     {
         ApplySelectionPresentation(selectionCoordinator.ResolveProtectedDetailAssemblyPresentation(value));
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnSelectedDimensionChanged(DimensionDto? value)
     {
         ApplySelectionPresentation(selectionCoordinator.ResolveDimensionPresentation(value));
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnSelectedPinchGroupChanged(PinchGroupDto? value)
@@ -1017,12 +1019,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(SelectedPinchGroupId));
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnSelectedPinchAxisChanged(string value)
     {
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnEditableCuratedArtifactFamilyChanged(string value)
@@ -1046,7 +1048,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             }
         }
 
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnEditableCuratedArtifactCategoryChanged(string value)
@@ -1062,17 +1064,17 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             EditableCuratedArtifactType = EditableCuratedArtifactTypeOptions.FirstOrDefault() ?? string.Empty;
         }
 
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnEditableCuratedArtifactTypeChanged(string value)
     {
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnEditableSelectedLabelTextHeightChanged(string value)
     {
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnReviewQueueSearchTextChanged(string value)
@@ -1137,12 +1139,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     partial void OnSelectedInspectorToolChanged(string value)
     {
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     partial void OnIsPinchPlacementArmedChanged(bool value)
     {
-        NotifyUxStateChanged();
+        RaiseUxNotifications();
     }
 
     public void SelectInspectorTool(string tool)
@@ -1293,7 +1295,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         ApplyQueueProjection(projection);
         ApplyQueueExpansionState(queueCoordinator.NormalizeExpansion(CaptureQueueExpansionState(), projection));
-        NotifyReviewQueueStateChanged();
+        RaiseReviewQueueNotifications();
     }
 
     private ReviewQueueExpansionState CaptureQueueExpansionState()
@@ -1324,24 +1326,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         IsCuratedObjectsQueueExpanded = state.IsCuratedObjectsQueueExpanded;
     }
 
-    private void NotifyReviewQueueStateChanged()
+    private void RaiseReviewQueueNotifications()
     {
-        OnPropertyChanged(nameof(CuratedObjectCount));
-        OnPropertyChanged(nameof(VisibleQueueItemCount));
-        OnPropertyChanged(nameof(TotalQueueItemCount));
-        OnPropertyChanged(nameof(AdjustedQueueItemCount));
-        OnPropertyChanged(nameof(QueueSummary));
-        OnPropertyChanged(nameof(QueueInsightsSummary));
-        OnPropertyChanged(nameof(StructureSectionTitle));
-        OnPropertyChanged(nameof(RoomNamesSectionTitle));
-        OnPropertyChanged(nameof(OpeningCodesSectionTitle));
-        OnPropertyChanged(nameof(DimensionsSectionTitle));
-        OnPropertyChanged(nameof(CuratedObjectsSectionTitle));
-        OnPropertyChanged(nameof(HasVisibleWallCandidates));
-        OnPropertyChanged(nameof(HasVisibleRoomLabels));
-        OnPropertyChanged(nameof(HasVisibleOpeningLabels));
-        OnPropertyChanged(nameof(HasVisibleDimensions));
-        OnPropertyChanged(nameof(HasVisibleCuratedArtifactGroups));
+        RaisePropertyNotifications(notificationCoordinator.GetQueuePropertyNames());
     }
 
     private void ApplySelectionPresentation(SelectionPresentationOutcome outcome)
@@ -1535,9 +1522,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             : dimension.SourceEntityRef;
     }
 
-    private void NotifyUxStateChanged()
+    private void RaiseUxNotifications()
     {
-        var normalizedInspectorTool = inspectorCoordinator.NormalizeSelectedInspectorTool(
+        var normalizedInspectorTool = notificationCoordinator.NormalizeSelectedInspectorTool(
             SelectedInspectorTool,
             CanUsePositionTool,
             CanUseTextTool,
@@ -1552,41 +1539,15 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         {
             SelectedInspectorTool = normalizedInspectorTool;
         }
-        OnPropertyChanged(nameof(AddPinchButtonLabel));
-        OnPropertyChanged(nameof(SelectedPinchGroupId));
-        OnPropertyChanged(nameof(InteractionHint));
-        OnPropertyChanged(nameof(HasSelectedArtifact));
-        OnPropertyChanged(nameof(HasSelectedCuratedArtifact));
-        OnPropertyChanged(nameof(CanUsePositionTool));
-        OnPropertyChanged(nameof(CanUseTextTool));
-        OnPropertyChanged(nameof(CanUseClassificationTool));
-        OnPropertyChanged(nameof(CanUseActionsTool));
-        OnPropertyChanged(nameof(IsOverviewToolSelected));
-        OnPropertyChanged(nameof(IsPositionToolSelected));
-        OnPropertyChanged(nameof(IsTextToolSelected));
-        OnPropertyChanged(nameof(IsClassificationToolSelected));
-        OnPropertyChanged(nameof(IsActionsToolSelected));
-        OnPropertyChanged(nameof(IsFitToolSelected));
-        OnPropertyChanged(nameof(CanSaveSelectedCuratedArtifactClassification));
-        OnPropertyChanged(nameof(CanRestoreSelectedCuratedArtifactClassification));
-        OnPropertyChanged(nameof(SelectedArtifactTypeLabel));
-        OnPropertyChanged(nameof(SelectedArtifactTitle));
-        OnPropertyChanged(nameof(SelectedArtifactSubtitle));
-        OnPropertyChanged(nameof(SelectedArtifactDetails));
-        OnPropertyChanged(nameof(SelectedCuratedArtifactDetectedSummary));
-        OnPropertyChanged(nameof(SelectedCuratedArtifactResolvedSummary));
-        OnPropertyChanged(nameof(SelectedCuratedArtifactDecisionSummary));
-        OnPropertyChanged(nameof(SelectedCuratedArtifactColorArgb));
-        OnPropertyChanged(nameof(CanRestoreSelectedArtifactPosition));
-        OnPropertyChanged(nameof(SelectedArtifactPositionSummary));
-        OnPropertyChanged(nameof(HasSelectedResizableLabel));
-        OnPropertyChanged(nameof(CanSaveSelectedLabelTextHeight));
-        OnPropertyChanged(nameof(CanRestoreSelectedLabelTextHeight));
-        OnPropertyChanged(nameof(SelectedLabelTextHeightSummary));
-        OnPropertyChanged(nameof(SelectedRoomLabelId));
-        OnPropertyChanged(nameof(SelectedOpeningLabelId));
-        OnPropertyChanged(nameof(SelectedDimensionId));
-        OnPropertyChanged(nameof(ExcludeSelectedArtifactLabel));
+        RaisePropertyNotifications(notificationCoordinator.GetUxPropertyNames());
+    }
+
+    private void RaisePropertyNotifications(IEnumerable<string> propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            OnPropertyChanged(propertyName);
+        }
     }
 
     private readonly record struct CuratedArtifactSelection(string SourceArtifactKind, Guid SourceArtifactId);
