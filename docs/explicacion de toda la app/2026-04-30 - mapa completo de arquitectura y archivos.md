@@ -1,10 +1,10 @@
 ---
 type: architecture-map
 date: 2026-04-30
-last_verified: 2026-05-12
+last_verified: 2026-05-13
 status: active
 scope: current-working-tree-files
-file_count: 454
+file_count: 499
 ---
 
 # Mapa completo de arquitectura y archivos de Floorplan Fit
@@ -13,7 +13,7 @@ file_count: 454
 
 Este documento es el mapa exhaustivo del repositorio. Explica que parte de la arquitectura toca cada archivo, que responsabilidad tiene, por que importa y como encaja en el producto.
 
-Cobertura revalidada el **2026-05-12** contra `git ls-files` y `git ls-files --others --exclude-standard`: **454 archivos relevantes presentes** = **454 versionados presentes** + **0 nuevos no versionados**. Se excluyen `bin/`, `obj/`, `.artifacts-test/`, `.git/`, `.vs/`, `workspace/` y archivos locales de usuario.
+Cobertura revalidada el **2026-05-13** contra `git ls-files` y `git ls-files --others --exclude-standard`: **499 archivos relevantes presentes** = **499 versionados presentes** + **0 nuevos no versionados**. Se excluyen `bin/`, `obj/`, `.artifacts-test/`, `.git/`, `.vs/`, `workspace/` y archivos locales de usuario.
 
 ## Actualizacion 2026-05-08
 
@@ -1018,3 +1018,26 @@ Este bloque agrega los archivos que aparecieron en la ola posterior al corte 202
 - `tests/FloorplanFit.Infrastructure.Tests/Export/IxMiliaAdjustedDxfExporterTests.cs`, `tests/FloorplanFit.Infrastructure.Tests/Extraction/IxMiliaDimensionExtractorTests.cs` - Mision: fijar el extractor y el exportador reales de la familia de dimensiones. Importancia: aseguran el round-trip CAD-faithful a nivel Infrastructure. Use case: validar conteos, texto visible y escritura de DXF ajustado.
 - `tests/FloorplanFit.Infrastructure.Tests/Library/SqliteFloorPlanLibraryReaderIntegrationTests.cs` - Mision: cubrir la lectura SQLite de la Library version-aware. Importancia: protege el read-model que alimenta la pantalla principal. Use case: confirmar templates/versiones/estados despues de cambios en persistencia.
 - `tests/FloorplanFit.Infrastructure.Tests/Review/CanonicalArtifactPositionReviewSessionIntegrationTests.cs`, `tests/FloorplanFit.Infrastructure.Tests/Review/CuratedPlanArtifactReviewSessionIntegrationTests.cs`, `tests/FloorplanFit.Infrastructure.Tests/Review/DimensionAssociationProjectorTests.cs`, `tests/FloorplanFit.Infrastructure.Tests/Review/DimensionOverrideReviewSessionIntegrationTests.cs` - Mision: cubrir la proyeccion final de Review para artifacts curados, asociaciones y overrides de cotas. Importancia: validan la verdad efectiva que llega al Desktop despues de mezclar extraccion y overlays. Use case: detectar drift entre SQLite, projectors y DTOs del review session.
+
+## Delta 2026-05-13 - cierre de faltantes restantes para exhaustividad total
+
+Este delta completa los archivos que todavia no estaban mencionados literalmente en el mapa canonico despues del programa de modularizacion por loops. Con este cierre, la cobertura vuelve a quedar en 0 faltantes contra `git ls-files`.
+
+### Planes y specs de Superpowers para la modularizacion por loops
+
+- `docs/superpowers/plans/2026-05-12-loop-1-visual-system-cleanup.md`, `docs/superpowers/plans/2026-05-12-loop-2a-preview-interaction-extraction-plan.md`, `docs/superpowers/plans/2026-05-12-loop-2b-preview-collection-observer-cleanup-plan.md`, `docs/superpowers/plans/2026-05-12-loop-2c-preview-render-composition-plan.md`, `docs/superpowers/plans/2026-05-12-loop-3a-review-command-orchestration-plan.md`, `docs/superpowers/plans/2026-05-12-loop-3b-selection-state-plan.md`, `docs/superpowers/plans/2026-05-12-loop-4c-4d-review-shell-final-cleanup-plan.md` - Mision: dejar trazabilidad ejecutable del saneamiento arquitectonico loop por loop. Importancia: fijan alcance, orden y Definition of Done del programa que domo preview y review shell. Use case: reabrir la remodelacion, auditar por que se eligio cada slice y continuar sin improvisar.
+- `docs/superpowers/specs/2026-05-12-loop-2a-preview-interaction-extraction-design.md`, `docs/superpowers/specs/2026-05-12-loop-2b-preview-collection-observer-cleanup-design.md`, `docs/superpowers/specs/2026-05-12-loop-2c-preview-render-composition-design.md`, `docs/superpowers/specs/2026-05-12-loop-3a-review-command-orchestration-design.md`, `docs/superpowers/specs/2026-05-12-loop-3b-selection-state-design.md`, `docs/superpowers/specs/2026-05-12-loop-4c-4d-review-shell-final-cleanup-design.md` - Mision: documentar la frontera tecnica y los tradeoffs de cada loop de modularizacion. Importancia: son la justificacion canonica de por que el refactor se partio en interaction, observers, render, mutaciones, seleccion, queue e inspector shell. Use case: entender ownership y riesgos sin releer toda la conversacion historica.
+
+### Obsidian: decisiones e implementaciones de modularizacion por loops
+
+- `obsidian-vault/Decisions/2026-05-12 - Loop 2 starts with surgical interaction extraction.md`, `obsidian-vault/Decisions/2026-05-12 - Loop 2B targets preview observer wiring via collection hub.md`, `obsidian-vault/Decisions/2026-05-12 - Loop 2C targets preview render composition via scene and composer.md`, `obsidian-vault/Decisions/2026-05-12 - Loop 3 starts with review command orchestration.md`, `obsidian-vault/Decisions/2026-05-12 - Loop 3B starts with selection routing before selection presentation.md` - Mision: persistir las decisiones de secuencia y corte arquitectonico del saneamiento modular. Importancia: convierten preferencias verbales en reglas durables sobre por donde seguir y que no mezclar en cada slice. Use case: retomar el reasoning de modularizacion sin depender de memoria conversacional.
+- `obsidian-vault/Implementation/2026-05-12 - Loop 1 visual system cleanup.md`, `obsidian-vault/Implementation/2026-05-12 - Loop 2A preview interaction extraction.md`, `obsidian-vault/Implementation/2026-05-12 - Loop 2B preview collection observer cleanup.md`, `obsidian-vault/Implementation/2026-05-12 - Loop 2C preview render composition.md`, `obsidian-vault/Implementation/2026-05-12 - Loop 3A review command orchestration.md`, `obsidian-vault/Implementation/2026-05-12 - Loop 3B selection state extraction.md`, `obsidian-vault/Implementation/2026-05-12 - Loop 3C review queue orchestration.md`, `obsidian-vault/Implementation/2026-05-12 - Loop 4A inspector presentation cleanup.md`, `obsidian-vault/Implementation/2026-05-12 - Loop 4B review session shell cleanup.md`, `obsidian-vault/Implementation/2026-05-12 - Loop 4C review shell apply-notify cleanup.md`, `obsidian-vault/Implementation/2026-05-12 - Loop 4D final modularization audit.md` - Mision: registrar el cierre real de cada loop tecnico de la remodelacion total. Importancia: son la bitacora durable que prueba que el repo no solo fue pensado sino ejecutado y verificado slice por slice. Use case: recuperar que cambio, que quedo afuera y que test suite cerro cada etapa.
+
+### Desktop: piezas modulares restantes del preview y review shell
+
+- `src/FloorplanFit.Desktop/Controls/Preview/PreviewInteractionCoordinator.cs`, `src/FloorplanFit.Desktop/Controls/Preview/PreviewCollectionObserverHub.cs`, `src/FloorplanFit.Desktop/Controls/Preview/PreviewRenderScene.cs`, `src/FloorplanFit.Desktop/Controls/Preview/PreviewRenderComposer.cs` - Mision: completar la particion del preview en verdad de interaccion, lifecycle observable y composicion de render. Importancia: son el resultado concreto de sacar de `FloorPlanPreviewControl` la state machine, la plomeria repetitiva y el layer ordering. Use case: tocar input/render del preview sin volver a inflar el shell Avalonia.
+
+### Tests nuevos: guardrails del saneamiento modular
+
+- `tests/FloorplanFit.Desktop.Tests/Controls/PreviewInteractionCoordinatorTests.cs`, `tests/FloorplanFit.Desktop.Tests/Controls/PreviewCollectionObserverHubTests.cs`, `tests/FloorplanFit.Desktop.Tests/Controls/PreviewRenderComposerTests.cs`, `tests/FloorplanFit.Desktop.Tests/Controls/PreviewSemanticPaletteTests.cs` - Mision: fijar por tests el ownership nuevo del preview modular. Importancia: evitan que interaction, observers, palette y render composition vuelvan a colapsar en el control principal. Use case: refactorizar preview con red/green chico en vez de depender de inspeccion visual manual.
+- `tests/FloorplanFit.Desktop.Tests/ViewModels/FloorPlanReviewViewModelArchitectureTests.cs` - Mision: actuar como guardrail arquitectonico del review shell modularizado. Importancia: detecta cuando `FloorPlanReviewViewModel` vuelve a absorber responsabilidades que ya viven en coordinators. Use case: proteger la frontera lograda entre mutation, selection, queue, inspector, session apply y notifications.

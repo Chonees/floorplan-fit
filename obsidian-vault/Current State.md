@@ -46,7 +46,7 @@ status: active
 
 
 
-updated: 2026-05-12
+updated: 2026-05-13
 
 
 
@@ -671,7 +671,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Auditoria de 2026-05-12 sobre modularizacion: la separacion mejoro mucho en `src/FloorplanFit.Desktop/Controls/Preview/*`, pero el criterio **un archivo = una responsabilidad** todavia NO esta cerrado. `FloorPlanPreviewControl.cs` sigue en **1610 lineas** y `FloorPlanReviewViewModel.cs` en **1851 lineas**, senal de que la orquestacion visual y de interaccion todavia esta demasiado concentrada.
 
-- Cierre de **Loop 0 / canonical architecture truth** el **2026-05-12**: el mapa exhaustivo `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` ya fue refreshado post-`native dimensions`, quedo con `last_verified: 2026-05-12`, cubre **454 tracked files** y en la verificacion final dio **0 tracked files faltantes** frente al working tree relevante.
+- Cierre del refresh completo del mapa canonico el **2026-05-13**: `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` quedo con `last_verified: 2026-05-13`, `file_count: 499` y recupero exhaustividad real incluyendo los faltantes de `docs/superpowers/`, Obsidian y los shells/tests modulares de preview-review. La verificacion literal contra `git ls-files` quedo en **0 tracked files faltantes**.
 
 - Decision de arquitectura tomada el **2026-05-12**: la limpieza senior del repo avanza como **modularizacion por loops** con **doc-first order**. Secuencia aprobada: **Loop 0 verdad canonica -> Loop 1 sistema visual -> Loop 2 preview composition/interactions -> Loop 3 review orchestration -> Loop 4 cleanup final**.
 
@@ -2311,7 +2311,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-- El mapa exhaustivo `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` fue revalidado el **2026-05-12** contra el working tree real de la branch; hoy cubre **454 tracked files relevantes presentes**, con **0 tracked files faltantes** en el mapa al cierre de Loop 0, y documenta la arquitectura activa en formato **mision + importancia + use case**.
+- El mapa exhaustivo `docs/explicacion de toda la app/2026-04-30 - mapa completo de arquitectura y archivos.md` fue revalidado el **2026-05-13** contra el working tree real de la branch; hoy cubre **499 tracked files relevantes presentes**, con **0 tracked files faltantes** en el mapa, y documenta la arquitectura activa en formato **mision + importancia + use case**.
 
 
 
