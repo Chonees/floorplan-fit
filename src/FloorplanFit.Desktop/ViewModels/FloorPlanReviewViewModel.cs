@@ -22,6 +22,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private const string InspectorToolFit = "Fit";
 
     private readonly IServiceScopeFactory scopeFactory;
+    private readonly FloorPlanReviewMutationCoordinator mutationCoordinator;
     private readonly Guid templateId;
     private readonly Guid? floorPlanVersionId;
     private IReadOnlyDictionary<Guid, DimensionAssociationDto> dimensionAssociationsById = new Dictionary<Guid, DimensionAssociationDto>();
@@ -35,6 +36,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     public FloorPlanReviewViewModel(IServiceScopeFactory scopeFactory, Guid templateId, Guid? floorPlanVersionId)
     {
         this.scopeFactory = scopeFactory;
+        mutationCoordinator = new FloorPlanReviewMutationCoordinator(scopeFactory);
         this.templateId = templateId;
         this.floorPlanVersionId = floorPlanVersionId;
     }
@@ -664,12 +666,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         var selection = CaptureSelection() with { DimensionId = e.DimensionId };
         StatusMessage = $"Saving native dimension {e.SourceDimensionKey}...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<SaveFloorPlanDimensionOverrideHandler>();
-            await handler.HandleAsync(DraftCurationId, e.Dimension, cancellationToken);
-        }
+        await mutationCoordinator.SaveDimensionOverrideAsync(DraftCurationId, e.Dimension, cancellationToken);
 
         await RefreshSessionAsync(selection, cancellationToken);
         StatusMessage = "Saved native dimension override";
@@ -701,21 +698,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         var selection = BuildSelectionSnapshotForMovedArtifact(e);
         StatusMessage = $"Saving moved artifact {e.SourceArtifactKind}:{e.SourceArtifactId}...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<SaveFloorPlanArtifactPositionHandler>();
-            await handler.HandleAsync(
-                DraftCurationId,
-                e.SourceArtifactKind,
-                e.SourceArtifactId,
-                e.PositionMode,
-                e.ResolvedX,
-                e.ResolvedY,
-                e.TranslationDx,
-                e.TranslationDy,
-                cancellationToken);
-        }
+        await mutationCoordinator.SaveArtifactPositionAsync(DraftCurationId, e, cancellationToken);
 
         await RefreshSessionAsync(selection, cancellationToken);
         StatusMessage = "Saved canonical artifact position";
@@ -729,56 +712,57 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         var selection = CaptureSelection();
-        using var scope = scopeFactory.CreateScope();
-        var handler = scope.ServiceProvider.GetRequiredService<RestoreFloorPlanArtifactPositionHandler>();
-
+        FloorPlanReviewMutationCoordinator.RestoreArtifactPositionRequest? request = null;
         if (SelectedRoomLabel is not null)
         {
-            await handler.HandleAsync(
-                DraftCurationId,
+            request = new FloorPlanReviewMutationCoordinator.RestoreArtifactPositionRequest(
                 FloorPlanArtifactPositionSourceKinds.RoomLabel,
                 SelectedRoomLabel.RoomLabelId,
                 FloorPlanArtifactPositionMode.AbsolutePoint,
                 SelectedRoomLabel.DetectedX ?? SelectedRoomLabel.X,
                 SelectedRoomLabel.DetectedY ?? SelectedRoomLabel.Y,
                 null,
-                null,
-                cancellationToken);
+                null);
         }
         else if (SelectedOpeningLabel is not null)
         {
-            await handler.HandleAsync(
-                DraftCurationId,
+            request = new FloorPlanReviewMutationCoordinator.RestoreArtifactPositionRequest(
                 FloorPlanArtifactPositionSourceKinds.OpeningLabel,
                 SelectedOpeningLabel.OpeningLabelId,
                 FloorPlanArtifactPositionMode.AbsolutePoint,
                 SelectedOpeningLabel.DetectedX ?? SelectedOpeningLabel.X,
                 SelectedOpeningLabel.DetectedY ?? SelectedOpeningLabel.Y,
                 null,
-                null,
-                cancellationToken);
+                null);
         }
         else if (SelectedCuratedArtifact is not null)
         {
-            await handler.HandleAsync(
-                DraftCurationId,
+            request = new FloorPlanReviewMutationCoordinator.RestoreArtifactPositionRequest(
                 SelectedCuratedArtifact.SourceArtifactKind,
                 SelectedCuratedArtifact.SourceArtifactId,
                 FloorPlanArtifactPositionMode.Translation,
                 null,
                 null,
                 0m,
-                0m,
-                cancellationToken);
+                0m);
         }
         else if (SelectedDimension is not null)
         {
+            using var scope = scopeFactory.CreateScope();
             await scope.ServiceProvider
                 .GetRequiredService<RestoreFloorPlanDimensionOverrideHandler>()
                 .HandleAsync(
                     DraftCurationId,
                     ResolveSelectedDimensionSourceKey(SelectedDimension),
                     cancellationToken);
+        }
+
+        if (request is { } restoreRequest)
+        {
+            await mutationCoordinator.RestoreArtifactPositionAsync(
+                DraftCurationId,
+                restoreRequest,
+                cancellationToken);
         }
 
         await RefreshSessionAsync(selection, cancellationToken);
@@ -803,17 +787,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = $"Saving label text height for {sourceArtifactKind}:{sourceArtifactId}...";
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<SaveFloorPlanLabelTextHeightHandler>();
-            await handler.HandleAsync(
-                DraftCurationId,
-                sourceArtifactKind,
-                sourceArtifactId,
-                resolvedTextHeight,
-                cancellationToken);
-        }
+        await mutationCoordinator.SaveLabelTextHeightAsync(
+            DraftCurationId,
+            sourceArtifactKind,
+            sourceArtifactId,
+            resolvedTextHeight,
+            cancellationToken);
 
         await RefreshSessionAsync(selection, cancellationToken);
         StatusMessage = "Saved canonical label size";
@@ -835,16 +814,11 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         {
             return;
         }
-
-        using (var scope = scopeFactory.CreateScope())
-        {
-            var handler = scope.ServiceProvider.GetRequiredService<RestoreFloorPlanLabelTextHeightHandler>();
-            await handler.HandleAsync(
-                DraftCurationId,
-                sourceArtifactKind,
-                sourceArtifactId,
-                cancellationToken);
-        }
+        await mutationCoordinator.RestoreLabelTextHeightAsync(
+            DraftCurationId,
+            sourceArtifactKind,
+            sourceArtifactId,
+            cancellationToken);
 
         await RefreshSessionAsync(selection, cancellationToken);
         StatusMessage = "Restored detected label size";
