@@ -699,6 +699,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Estado de hotspot post-Loop 2C: `FloorPlanPreviewControl.cs` bajo de **1363** a **1307 lineas** al sacar la orquestacion de `Render(...)`. El siguiente corte sano ya no esta en el preview shell; pasa a ser **Loop 3** sobre review orchestration en `FloorPlanReviewViewModel`.
 
+- Decision de arquitectura tomada el **2026-05-12** para **Loop 3A**: el primer slice de review orchestration arranca por **review command orchestration**. Prioridad: sacar de `FloorPlanReviewViewModel` la ceremonia repetida de `StatusMessage + CreateScope + GetRequiredService<Handler> + HandleAsync + RefreshSessionAsync` antes de tocar selection state o queue logic.
+
 
 
 
@@ -2367,7 +2369,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 3** del programa de modularizacion: bajar el peso de `FloorPlanReviewViewModel` separando selection state, commands/actions, pinch tools state, dimension editing state y summaries view-facing.
+0. Ejecutar **Loop 3A** del programa de modularizacion: extraer review command orchestration desde `FloorPlanReviewViewModel` a un colaborador dedicado.
 
 
 
@@ -2385,7 +2387,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-1. Definir el primer slice quirurgico de **Loop 3**: elegir si conviene empezar por `commands/actions`, `selection state` o `dimension editing state` segun blast radius y test surface.
+1. Despues de Loop 3A, ejecutar **Loop 3B** sobre `selection state`, con el ViewModel ya menos procedural y mas seguro de partir.
 
 
 
@@ -2626,6 +2628,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Decisions/2026-05-12 - Loop 2B targets preview observer wiring via collection hub]]
 
 - [[Decisions/2026-05-12 - Loop 2C targets preview render composition via scene and composer]]
+
+- [[Decisions/2026-05-12 - Loop 3 starts with review command orchestration]]
 
 
 
