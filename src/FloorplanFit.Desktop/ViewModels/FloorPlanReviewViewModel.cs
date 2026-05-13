@@ -680,9 +680,11 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = "Exporting adjusted DXF...";
-        using var scope = scopeFactory.CreateScope();
-        var handler = scope.ServiceProvider.GetRequiredService<ExportAdjustedDxfHandler>();
-        var response = await handler.HandleAsync(templateId, floorPlanVersionId, DraftCurationId, cancellationToken);
+        var response = await mutationCoordinator.ExportAdjustedDxfAsync(
+            templateId,
+            floorPlanVersionId,
+            DraftCurationId,
+            cancellationToken);
         await RefreshSessionAsync(CaptureSelection(), cancellationToken);
         StatusMessage = $"Adjusted DXF exported: {Path.GetFileName(response.ManagedFilePath)}";
     }

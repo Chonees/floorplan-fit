@@ -2,6 +2,7 @@ using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.Controls;
+using FloorplanFit.Domain.Documents;
 using FloorplanFit.Domain.FloorPlans;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -94,6 +95,17 @@ internal sealed class FloorPlanReviewMutationCoordinator
             request.TranslationDx,
             request.TranslationDy,
             cancellationToken);
+    }
+
+    public async Task<ExportAdjustedDxfResponse> ExportAdjustedDxfAsync(
+        Guid templateId,
+        Guid? floorPlanVersionId,
+        Guid draftCurationId,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<ExportAdjustedDxfHandler>();
+        return await handler.HandleAsync(templateId, floorPlanVersionId, draftCurationId, cancellationToken);
     }
 
     internal readonly record struct RestoreArtifactPositionRequest(
