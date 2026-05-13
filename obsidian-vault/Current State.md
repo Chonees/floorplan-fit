@@ -693,6 +693,12 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 - Decision de arquitectura tomada el **2026-05-12** para **Loop 2C**: el siguiente slice del preview va a extraer la composicion de render a una dupla `PreviewRenderScene` + `PreviewRenderComposer`. Objetivo: sacar de `FloorPlanPreviewControl.Render(...)` el orden de layers, el branch curated-vs-detected artifacts y el loop de dibujo base, sin rediseñar todavia los helpers de scene preparation.
 
+- Cierre de **Loop 2C / preview render composition** el **2026-05-12**: `src/FloorplanFit.Desktop/Controls/Preview/PreviewRenderScene.cs` ya encapsula la snapshot render-only del preview y `src/FloorplanFit.Desktop/Controls/Preview/PreviewRenderComposer.cs` ya concentra workspace chrome, ordered base paths, curated-vs-detected artifact branching y layer ordering. `src/FloorplanFit.Desktop/Controls/FloorPlanPreviewControl.cs` ahora construye la scene y delega el render final como shell Avalonia.
+
+- Verificacion de cierre de **Loop 2C** el **2026-05-12**: el focused preview slice `PreviewRenderComposerTests|FloorPlanPreviewControlTests|PreviewInteractionCoordinatorTests|PreviewCollectionObserverHubTests` paso **57/57** y la suite completa `FloorplanFit.Desktop.Tests` quedo en **118/118 PASS**. Sigue apareciendo el warning `CS8625` en `src/FloorplanFit.Application/FloorPlans/Review/OpenFloorPlanReviewSessionHandler.cs`, pero no pertenece al alcance de este loop.
+
+- Estado de hotspot post-Loop 2C: `FloorPlanPreviewControl.cs` bajo de **1363** a **1307 lineas** al sacar la orquestacion de `Render(...)`. El siguiente corte sano ya no esta en el preview shell; pasa a ser **Loop 3** sobre review orchestration en `FloorPlanReviewViewModel`.
+
 
 
 
@@ -2361,7 +2367,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 ## Immediate Next Steps
 
-0. Ejecutar **Loop 2C** del programa de modularizacion: introducir `PreviewRenderScene` + `PreviewRenderComposer`, mover ahi la composicion de layers del preview y seguir adelgazando `FloorPlanPreviewControl` antes de entrar en `FloorPlanReviewViewModel`.
+0. Ejecutar **Loop 3** del programa de modularizacion: bajar el peso de `FloorPlanReviewViewModel` separando selection state, commands/actions, pinch tools state, dimension editing state y summaries view-facing.
 
 
 
@@ -2379,7 +2385,7 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 
 
 
-1. Ejecutar **Loop 3** del programa de modularizacion: bajar el peso de `FloorPlanReviewViewModel` separando selection state, commands/actions, pinch tools state, dimension editing state y summaries view-facing.
+1. Definir el primer slice quirurgico de **Loop 3**: elegir si conviene empezar por `commands/actions`, `selection state` o `dimension editing state` segun blast radius y test surface.
 
 
 
@@ -2614,6 +2620,8 @@ Floorplan Fit es una herramienta desktop local-first para importar floor plans y
 - [[Implementation/2026-05-12 - Loop 2A preview interaction extraction]]
 
 - [[Implementation/2026-05-12 - Loop 2B preview collection observer cleanup]]
+
+- [[Implementation/2026-05-12 - Loop 2C preview render composition]]
 
 - [[Decisions/2026-05-12 - Loop 2B targets preview observer wiring via collection hub]]
 
