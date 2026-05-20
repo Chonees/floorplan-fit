@@ -224,6 +224,9 @@ public sealed class ImportFloorPlanHandlerTests
             SourcePathReceived = sourceFilePath;
             return Task.FromResult(managedPath);
         }
+
+        public Task<string> ReserveAdjustedDxfPathAsync(string sourceFileName, CancellationToken cancellationToken)
+            => Task.FromResult(managedPath);
     }
 
     private sealed class SequenceManagedFileStorage : IManagedFileStorage
@@ -244,6 +247,16 @@ public sealed class ImportFloorPlanHandlerTests
 
             return Task.FromResult(managedPaths.Dequeue());
         }
+
+        public Task<string> ReserveAdjustedDxfPathAsync(string sourceFileName, CancellationToken cancellationToken)
+        {
+            if (managedPaths.Count == 0)
+            {
+                throw new InvalidOperationException("No managed path configured for this adjusted DXF export.");
+            }
+
+            return Task.FromResult(managedPaths.Dequeue());
+        }
     }
 
     private sealed class InMemoryFloorPlanTemplateRepository : IFloorPlanTemplateRepository
@@ -253,6 +266,11 @@ public sealed class ImportFloorPlanHandlerTests
         public Task<FloorPlanTemplate?> GetByCodeAsync(string code, CancellationToken cancellationToken)
         {
             return Task.FromResult(Items.SingleOrDefault(item => item.Code == code));
+        }
+
+        public Task<FloorPlanTemplate?> GetByIdAsync(Guid templateId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Items.SingleOrDefault(item => item.Id == templateId));
         }
 
         public Task AddAsync(FloorPlanTemplate template, CancellationToken cancellationToken)
@@ -282,6 +300,11 @@ public sealed class ImportFloorPlanHandlerTests
     {
         public List<FloorPlanVersion> Items { get; } = [];
 
+        public Task<FloorPlanVersion?> GetByIdAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Items.SingleOrDefault(item => item.Id == floorPlanVersionId));
+        }
+
         public Task<int> GetNextVersionNumberAsync(Guid floorPlanTemplateId, CancellationToken cancellationToken)
         {
             var nextVersion = Items
@@ -296,6 +319,12 @@ public sealed class ImportFloorPlanHandlerTests
         public Task AddAsync(FloorPlanVersion version, CancellationToken cancellationToken)
         {
             Items.Add(version);
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == floorPlanVersionId);
             return Task.CompletedTask;
         }
     }
@@ -361,3 +390,6 @@ public sealed class ImportFloorPlanHandlerTests
         public DateTime UtcNow { get; }
     }
 }
+
+
+

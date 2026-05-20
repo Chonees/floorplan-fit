@@ -1,4 +1,5 @@
 using Avalonia;
+using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Desktop.Composition;
 using FloorplanFit.Infrastructure.Persistence;
 using FloorplanFit.Infrastructure.Runtime;
@@ -26,7 +27,27 @@ internal static class Program
             .GetAwaiter()
             .GetResult();
 
+        ScheduleStartupCleanup(Host.Services);
+
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
+
+    private static void ScheduleStartupCleanup(IServiceProvider services)
+    {
+        var cleanupService = services.GetRequiredService<IFloorPlanVersionCleanupService>();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await cleanupService.CleanupAsync(CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "Floor plan version cleanup failed on startup: {0}",
+                    exception);
+            }
+        });
     }
 
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()

@@ -1,0 +1,903 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:viewModels="using:FloorplanFit.Desktop.ViewModels"
+        xmlns:contracts="using:FloorplanFit.Contracts.FloorPlans"
+        xmlns:controls="using:FloorplanFit.Desktop.Controls"
+        x:Class="FloorplanFit.Desktop.ReviewFloorPlanWindow"
+        x:DataType="viewModels:FloorPlanReviewViewModel"
+        x:Name="Root"
+        RequestedThemeVariant="Dark"
+        TransparencyLevelHint="AcrylicBlur, Mica, Blur"
+        Width="1280"
+        Height="800"
+        WindowState="Maximized"
+        Title="Floor Plan Review">
+  <Grid RowDefinitions="Auto,*"
+        Margin="24">
+    <Grid ColumnDefinitions="*,Auto"
+          ColumnSpacing="16">
+      <StackPanel Spacing="8">
+        <TextBlock FontSize="30"
+                   FontWeight="Bold"
+                   Text="{Binding Name}" />
+        <TextBlock Classes="muted"
+                   Text="{Binding Code, StringFormat='Template {0}'}" />
+        <StackPanel Orientation="Horizontal"
+                    Spacing="8">
+          <Border Classes="metric-chip">
+            <TextBlock Text="{Binding QueueSummary}" />
+          </Border>
+          <Border Classes="metric-chip">
+            <TextBlock Text="{Binding QueueInsightsSummary}" />
+          </Border>
+        </StackPanel>
+        <TextBlock Classes="muted"
+                   Text="{Binding StatusMessage}"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+
+      <Button Grid.Column="1"
+              Classes="primary"
+              VerticalAlignment="Center"
+              Content="Publish Curation"
+              Click="PublishButton_OnClick" />
+    </Grid>
+
+    <Grid Grid.Row="1"
+          ColumnDefinitions="340,*,320,72"
+          ColumnSpacing="16"
+          Margin="0,20,0,0">
+      <Border Classes="panel-card"
+              ClipToBounds="True">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*"
+              RowSpacing="10"
+              ClipToBounds="True">
+          <StackPanel Spacing="4">
+            <TextBlock FontSize="20"
+                       FontWeight="SemiBold"
+                       Text="Review Queue" />
+            <TextBlock Classes="muted"
+                       Text="Expandable folders keep navigation simple. Open one section, review it, then move on."
+                       TextWrapping="Wrap" />
+          </StackPanel>
+
+          <Grid Grid.Row="1"
+                ColumnDefinitions="*,170"
+                ColumnSpacing="10">
+            <StackPanel Spacing="6">
+              <TextBlock Classes="caption"
+                         Text="Search" />
+              <TextBox Text="{Binding ReviewQueueSearchText}"
+                       Watermark="Name, layer, code or entity ref" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1"
+                        Spacing="6">
+              <TextBlock Classes="caption"
+                         Text="Quick Filters" />
+              <ComboBox ItemsSource="{Binding ReviewQueueFilterOptions}"
+                        SelectedItem="{Binding SelectedReviewQueueFilter}" />
+            </StackPanel>
+          </Grid>
+
+          <TextBlock Grid.Row="2"
+                     Classes="muted"
+                     x:Name="QueueSummary"
+                     Text="{Binding QueueSummary}" />
+
+          <ToggleButton Grid.Row="3"
+                        Classes="folder-toggle"
+                        IsVisible="{Binding HasVisibleWallCandidates}"
+                        IsChecked="{Binding IsStructureQueueExpanded}">
+            <Grid ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="10">
+              <Path Width="16"
+                    Height="16"
+                    Stretch="Uniform"
+                    Fill="{DynamicResource TextPrimaryBrush}"
+                    Data="M2,4 L8,4 9.6,6 H18 A2,2 0 0 1 20,8 V16 A2,2 0 0 1 18,18 H4 A2,2 0 0 1 2,16 Z" />
+              <TextBlock Grid.Column="1"
+                         FontWeight="SemiBold"
+                         Text="{Binding StructureSectionTitle}" />
+              <TextBlock Grid.Column="2"
+                         Classes="muted"
+                         FontSize="18"
+                         Text="⌄"
+                         VerticalAlignment="Center" />
+            </Grid>
+          </ToggleButton>
+
+          <ToggleButton Grid.Row="4"
+                        Classes="folder-toggle"
+                        IsVisible="{Binding HasVisibleRoomLabels}"
+                        IsChecked="{Binding IsRoomNamesQueueExpanded}">
+            <Grid ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="10">
+              <Path Width="16"
+                    Height="16"
+                    Stretch="Uniform"
+                    Fill="{DynamicResource TextPrimaryBrush}"
+                    Data="M4,3 H16 A2,2 0 0 1 18,5 V19 L14,16 H4 A2,2 0 0 1 2,14 V5 A2,2 0 0 1 4,3 Z" />
+              <TextBlock Grid.Column="1"
+                         FontWeight="SemiBold"
+                         Text="{Binding RoomNamesSectionTitle}" />
+              <TextBlock Grid.Column="2"
+                         Classes="muted"
+                         FontSize="18"
+                         Text="⌄"
+                         VerticalAlignment="Center" />
+            </Grid>
+          </ToggleButton>
+
+          <ToggleButton Grid.Row="5"
+                        Classes="folder-toggle"
+                        IsVisible="{Binding HasVisibleOpeningLabels}"
+                        IsChecked="{Binding IsOpeningCodesQueueExpanded}">
+            <Grid ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="10">
+              <Path Width="16"
+                    Height="16"
+                    Stretch="Uniform"
+                    Fill="{DynamicResource TextPrimaryBrush}"
+                    Data="M4,3 H16 A2,2 0 0 1 18,5 V19 H2 V5 A2,2 0 0 1 4,3 Z M5,7 H15 V9 H5 Z M5,11 H11 V13 H5 Z" />
+              <TextBlock Grid.Column="1"
+                         FontWeight="SemiBold"
+                         Text="{Binding OpeningCodesSectionTitle}" />
+              <TextBlock Grid.Column="2"
+                         Classes="muted"
+                         FontSize="18"
+                         Text="⌄"
+                         VerticalAlignment="Center" />
+            </Grid>
+          </ToggleButton>
+
+          <ToggleButton Grid.Row="6"
+                        Classes="folder-toggle"
+                        IsVisible="{Binding HasVisibleDimensions}"
+                        IsChecked="{Binding IsDimensionsQueueExpanded}">
+            <Grid ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="10">
+              <Path Width="16"
+                    Height="16"
+                    Stretch="Uniform"
+                    Fill="{DynamicResource TextPrimaryBrush}"
+                    Data="M4,3 H16 V5 H4 Z M4,8 H16 V10 H4 Z M4,13 H16 V15 H4 Z M4,18 H12 V20 H4 Z" />
+              <TextBlock Grid.Column="1"
+                         FontWeight="SemiBold"
+                         Text="{Binding DimensionsSectionTitle}" />
+              <TextBlock Grid.Column="2"
+                         Classes="muted"
+                         FontSize="18"
+                         Text="âŒ„"
+                         VerticalAlignment="Center" />
+            </Grid>
+          </ToggleButton>
+
+          <ToggleButton Grid.Row="7"
+                        Classes="folder-toggle"
+                        IsVisible="{Binding HasVisibleCuratedArtifactGroups}"
+                        IsChecked="{Binding IsCuratedObjectsQueueExpanded}">
+            <Grid ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="10">
+              <Path Width="16"
+                    Height="16"
+                    Stretch="Uniform"
+                    Fill="{DynamicResource TextPrimaryBrush}"
+                    Data="M3,4 H9 L10.5,6 H19 V8 H3 Z M3,10 H19 V18 H3 Z" />
+              <TextBlock Grid.Column="1"
+                         FontWeight="SemiBold"
+                         Text="{Binding CuratedObjectsSectionTitle}" />
+              <TextBlock Grid.Column="2"
+                         Classes="muted"
+                         FontSize="18"
+                         Text="⌄"
+                         VerticalAlignment="Center" />
+            </Grid>
+          </ToggleButton>
+
+          <Grid Grid.Row="8"
+                x:Name="ReviewQueueContentHost"
+                MinHeight="0"
+                ClipToBounds="True">
+            <ScrollViewer IsVisible="{Binding IsStructureQueueExpanded}"
+                          MinHeight="0"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+              <ListBox ItemsSource="{Binding VisibleWallCandidates}"
+                       SelectedItem="{Binding SelectedCandidate}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="contracts:WallCandidateDto">
+                    <Border Classes="section-card"
+                            Margin="0,8,0,0">
+                      <StackPanel Spacing="4">
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="{Binding SourceEntityRef}" />
+                        <TextBlock Classes="muted"
+                                   Text="{Binding SourceLayer}" />
+                        <TextBlock Classes="caption"
+                                   Text="{Binding AssemblyHint}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding IsRoomNamesQueueExpanded}"
+                          MinHeight="0"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+              <ListBox ItemsSource="{Binding VisibleRoomLabels}"
+                       SelectedItem="{Binding SelectedRoomLabel}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="contracts:RoomLabelDto">
+                    <Border Classes="section-card"
+                            Margin="0,8,0,0">
+                      <StackPanel Spacing="4">
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="{Binding Text}" />
+                        <TextBlock Classes="muted"
+                                   Text="{Binding SourceLayer}" />
+                        <TextBlock Classes="caption"
+                                   Text="{Binding SourceEntityRef}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding IsOpeningCodesQueueExpanded}"
+                          MinHeight="0"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+              <ListBox ItemsSource="{Binding VisibleOpeningLabels}"
+                       SelectedItem="{Binding SelectedOpeningLabel}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="contracts:OpeningLabelDto">
+                    <Border Classes="section-card"
+                            Margin="0,8,0,0">
+                      <StackPanel Spacing="4">
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="{Binding Text}" />
+                        <TextBlock Classes="muted"
+                                   Text="{Binding Kind}" />
+                        <TextBlock Classes="caption"
+                                   Text="{Binding SourceLayer}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding IsDimensionsQueueExpanded}"
+                          MinHeight="0"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+              <ListBox ItemsSource="{Binding VisibleDimensions}"
+                       SelectedItem="{Binding SelectedDimension}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="contracts:DimensionDto">
+                    <Border Classes="section-card"
+                            Margin="0,8,0,0">
+                      <StackPanel Spacing="4">
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="{Binding DisplayText}" />
+                        <TextBlock Classes="muted"
+                                   Text="{Binding SourceLayer}" />
+                        <TextBlock Classes="caption"
+                                   Text="{Binding SourceEntityRef}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding IsCuratedObjectsQueueExpanded}"
+                          MinHeight="0"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+              <ItemsControl ItemsSource="{Binding CuratedArtifactGroups}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="viewModels:CuratedArtifactGroupViewModel">
+                    <Border Classes="section-card"
+                            Margin="0,8,0,0">
+                      <StackPanel Spacing="8">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="8">
+                          <Border Width="12"
+                                  Height="12"
+                                  CornerRadius="6"
+                                  Background="{Binding ColorArgb}" />
+                          <TextBlock FontWeight="SemiBold"
+                                     Text="{Binding Title}" />
+                          <TextBlock Classes="muted"
+                                     Text="{Binding Count, StringFormat='({0})'}" />
+                        </StackPanel>
+                        <TextBlock Classes="caption"
+                                   Text="{Binding Subtitle}"
+                                   TextWrapping="Wrap" />
+
+                        <ListBox ItemsSource="{Binding Items}"
+                                 SelectedItem="{Binding #Root.DataContext.SelectedCuratedArtifact}">
+                          <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="contracts:CuratedPlanArtifactDto">
+                              <Border Classes="section-card"
+                                      Margin="0,6,0,0">
+                                <StackPanel Spacing="4">
+                                  <StackPanel Orientation="Horizontal"
+                                              Spacing="8">
+                                    <Border Width="10"
+                                            Height="10"
+                                            CornerRadius="5"
+                                            Background="{Binding ResolvedColorArgb}" />
+                                    <TextBlock FontWeight="SemiBold"
+                                               Text="{Binding ResolvedType}" />
+                                    <TextBlock Classes="caption"
+                                               Text="{Binding DecisionState}" />
+                                  </StackPanel>
+                                  <TextBlock Text="{Binding SourceEntityRef}" />
+                                  <TextBlock Classes="muted"
+                                             Text="{Binding SourceLayer}" />
+                                </StackPanel>
+                              </Border>
+                            </DataTemplate>
+                          </ListBox.ItemTemplate>
+                        </ListBox>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Grid>
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="1"
+              Classes="panel-card"
+              ClipToBounds="True">
+        <Grid RowDefinitions="Auto,Auto,*"
+              RowSpacing="12"
+              ClipToBounds="True">
+          <Grid ColumnDefinitions="*,Auto"
+                ColumnSpacing="12">
+            <StackPanel Spacing="6">
+              <TextBlock FontSize="20"
+                         FontWeight="SemiBold"
+                         Text="Preview" />
+              <TextBlock Classes="muted"
+                         Text="{Binding PreviewSelectionLabel}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Border Grid.Column="1"
+                    Classes="metric-chip"
+                    VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal"
+                          Spacing="10">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Cotas"
+                           VerticalAlignment="Center" />
+                <ToggleSwitch Classes="preview-switch"
+                              IsChecked="{Binding ArePreviewDimensionsVisible}"
+                              OnContent="Visibles"
+                              OffContent="Ocultas"
+                              ToolTip.Tip="Mostr\u00E1 u ocult\u00E1 visualmente todas las cotas del preview." />
+              </StackPanel>
+            </Border>
+          </Grid>
+
+          <Border Grid.Row="1"
+                  Classes="section-card">
+            <TextBlock Text="{Binding InteractionHint}"
+                       TextWrapping="Wrap" />
+          </Border>
+
+          <controls:FloorPlanPreviewControl Grid.Row="2"
+                                            MinHeight="0"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Stretch"
+                                            ClipToBounds="True"
+                                            GeometryPathClicked="PreviewControl_OnGeometryPathClicked"
+                                            RoomLabelClicked="PreviewControl_OnRoomLabelClicked"
+                                            OpeningLabelClicked="PreviewControl_OnOpeningLabelClicked"
+                                            MovableArtifactMoved="PreviewControl_OnMovableArtifactMoved"
+                                            DimensionClicked="PreviewControl_OnDimensionClicked"
+                                            DimensionEdited="PreviewControl_OnDimensionEdited"
+                                            GeometryPaths="{Binding GeometryPaths}"
+                                            HighlightGeometryPathId="{Binding HighlightGeometryPathId}"
+                                            PinchMarkers="{Binding PinchMarkers}"
+                                            RoomLabels="{Binding RoomLabels}"
+                                            HighlightRoomLabelId="{Binding SelectedRoomLabelId}"
+                                            WallCandidates="{Binding WallCandidates}"
+                                            OpeningCandidates="{Binding OpeningCandidates}"
+                                            OpeningLabels="{Binding OpeningLabels}"
+                                            HighlightOpeningLabelId="{Binding SelectedOpeningLabelId}"
+                                             Dimensions="{Binding Dimensions}"
+                                             MeasurementContext="{Binding MeasurementContext}"
+                                             DimensionBindings="{Binding DimensionBindings}"
+                                             DimensionAssociations="{Binding DimensionAssociations}"
+                                             MeasurementCorridors="{Binding MeasurementCorridors}"
+                                             MeasurementNodes="{Binding MeasurementNodes}"
+                                             DimensionIntervalBindings="{Binding DimensionIntervalBindings}"
+                                             ArticulationBands="{Binding ArticulationBands}"
+                                             SelectedMeasurementCorridorId="{Binding SelectedMeasurementCorridor.CorridorId}"
+                                             SelectedMeasurementNodeId="{Binding SelectedMeasurementNode.NodeId}"
+                                             SelectedMeasurementStartNodeId="{Binding SelectedMeasurementStartNode.NodeId}"
+                                            SelectedMeasurementEndNodeId="{Binding SelectedMeasurementEndNode.NodeId}"
+                                             HighlightDimensionId="{Binding SelectedDimensionId}"
+                                             AreDimensionsVisible="{Binding ArePreviewDimensionsVisible}"
+                                             FixedPlanComponents="{Binding FixedPlanComponents}"
+                                             ProtectedDetailAssemblies="{Binding ProtectedDetailAssemblies}"
+                                             CuratedPlanArtifacts="{Binding VisibleCuratedPlanArtifacts}"
+                                            PreviewPinchGroupId="{Binding SelectedPinchGroupId}"
+                                            PreviewAxisTag="{Binding SelectedPinchAxis}"
+                                            IsPinchPlacementArmed="{Binding IsPinchPlacementArmed}" />
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="2"
+              Classes="panel-card">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+          <Grid RowDefinitions="Auto,*"
+                RowSpacing="12">
+            <StackPanel Spacing="4">
+              <TextBlock FontSize="20"
+                         FontWeight="SemiBold"
+                         Text="Inspector" />
+              <TextBlock Classes="muted"
+                         Text="Tool-based editing. Pick a tool from the icon rail and the panel stays focused."
+                         TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="1"
+                        Spacing="12">
+              <Border Classes="section-card"
+                      IsVisible="{Binding IsOverviewToolSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="caption"
+                             Text="{Binding SelectedArtifactTypeLabel}" />
+                  <TextBlock FontSize="18"
+                             FontWeight="SemiBold"
+                             Text="{Binding SelectedArtifactTitle}"
+                             TextWrapping="Wrap" />
+                  <TextBlock Classes="muted"
+                             Text="{Binding SelectedArtifactSubtitle}"
+                             TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding SelectedArtifactDetails}"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+
+              <Border Classes="section-card"
+                      IsVisible="{Binding IsPositionToolSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock FontWeight="SemiBold"
+                             Text="Position" />
+                  <TextBlock x:Name="SelectedArtifactPositionSummary"
+                             Text="{Binding SelectedArtifactPositionSummary}"
+                             TextWrapping="Wrap" />
+                  <Button Classes="subtle"
+                          IsEnabled="{Binding CanRestoreSelectedArtifactPosition}"
+                          Content="Restore Detected Position"
+                          Click="RestorePositionButton_OnClick" />
+                </StackPanel>
+              </Border>
+
+              <Border Classes="section-card"
+                      IsVisible="{Binding IsTextToolSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock FontWeight="SemiBold"
+                             Text="Label Size Editor" />
+                  <TextBlock Classes="caption"
+                             Text="{Binding SelectedLabelTextHeightSummary}"
+                             x:Name="SelectedLabelTextHeightSummary" />
+                  <TextBlock Classes="caption"
+                             Text="Label Size (mm)" />
+                  <TextBox Text="{Binding EditableSelectedLabelTextHeight}"
+                           IsEnabled="{Binding HasSelectedResizableLabel}" />
+                  <StackPanel Orientation="Horizontal"
+                              Spacing="8">
+                    <Button Content="Save Label Size"
+                            IsEnabled="{Binding CanSaveSelectedLabelTextHeight}"
+                            Click="SaveLabelSizeButton_OnClick" />
+                    <Button Classes="subtle"
+                            Content="Restore Detected Size"
+                            IsEnabled="{Binding CanRestoreSelectedLabelTextHeight}"
+                            Click="RestoreLabelSizeButton_OnClick" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="section-card"
+                      IsVisible="{Binding IsClassificationToolSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock FontWeight="SemiBold"
+                             Text="Classification Editor" />
+                  <StackPanel Orientation="Horizontal"
+                              Spacing="8">
+                    <Border Width="12"
+                            Height="12"
+                            CornerRadius="6"
+                            Background="{Binding SelectedCuratedArtifactColorArgb}" />
+                    <TextBlock Classes="caption"
+                               Text="{Binding SelectedCuratedArtifactDecisionSummary}" />
+                  </StackPanel>
+                  <TextBlock Classes="caption"
+                             Text="{Binding SelectedCuratedArtifactDetectedSummary}"
+                             TextWrapping="Wrap" />
+                  <TextBlock Classes="caption"
+                             Text="{Binding SelectedCuratedArtifactResolvedSummary}"
+                             TextWrapping="Wrap" />
+                  <TextBlock Classes="caption"
+                             Text="Family" />
+                  <ComboBox ItemsSource="{Binding CuratedArtifactFamilyOptions}"
+                            SelectedItem="{Binding EditableCuratedArtifactFamily}"
+                            IsEnabled="{Binding HasSelectedCuratedArtifact}" />
+                  <TextBlock Classes="caption"
+                             Text="Category" />
+                  <ComboBox ItemsSource="{Binding EditableCuratedArtifactCategoryOptions}"
+                            SelectedItem="{Binding EditableCuratedArtifactCategory}"
+                            IsEnabled="{Binding HasSelectedCuratedArtifact}" />
+                  <TextBlock Classes="caption"
+                             Text="Type" />
+                  <ComboBox ItemsSource="{Binding EditableCuratedArtifactTypeOptions}"
+                            SelectedItem="{Binding EditableCuratedArtifactType}"
+                            IsEnabled="{Binding HasSelectedCuratedArtifact}" />
+                  <StackPanel Orientation="Horizontal"
+                              Spacing="8">
+                    <Button Content="Save Classification"
+                            IsEnabled="{Binding CanSaveSelectedCuratedArtifactClassification}"
+                            Click="SaveClassificationButton_OnClick" />
+                    <Button Classes="subtle"
+                            Content="Restore Detected Classification"
+                            IsEnabled="{Binding CanRestoreSelectedCuratedArtifactClassification}"
+                            Click="RestoreClassificationButton_OnClick" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+                <Border Classes="section-card"
+                      IsVisible="{Binding IsActionsToolSelected}">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                              Text="Acciones de selección" />
+                    <Button Content="Exportar DXF ajustado"
+                            Click="ExportAdjustedDxfButton_OnClick" />
+                    <Button Classes="danger"
+                            IsEnabled="{Binding HasSelectedArtifact}"
+                            Content="Excluir del curado"
+                          Click="ExcludeSelectedArtifactButton_OnClick" />
+                </StackPanel>
+              </Border>
+
+              <StackPanel IsVisible="{Binding IsFitToolSelected}"
+                          Spacing="12">
+                <TextBlock FontSize="20"
+                           FontWeight="SemiBold"
+                           Text="Reglas de ajuste" />
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Grupos de ajuste" />
+                    <TextBlock Classes="caption"
+                               Text="Nombre del grupo" />
+                    <TextBox Text="{Binding NewPinchGroupName}" />
+                    <TextBlock Classes="caption"
+                               Text="Eje" />
+                    <ComboBox ItemsSource="{Binding PinchAxisOptions}"
+                              SelectedItem="{Binding SelectedPinchAxis}" />
+                    <Button Content="Crear grupo"
+                            Click="AddPinchGroupButton_OnClick" />
+                    <ListBox ItemsSource="{Binding PinchGroups}"
+                             SelectedItem="{Binding SelectedPinchGroup}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:PinchGroupDto">
+                          <Border Classes="section-card"
+                                  Margin="0,8,0,0">
+                            <StackPanel Spacing="4">
+                              <TextBlock FontWeight="SemiBold"
+                                         Text="{Binding Name}" />
+                              <TextBlock Classes="muted"
+                                         Text="{Binding AxisTag}" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Agregar ajuste" />
+                    <TextBlock Classes="caption"
+                               Text="Ajuste máximo (mm)" />
+                    <TextBox Text="{Binding NewPinchMaxTrimMm}" />
+                    <Button Content="{Binding AddPinchButtonLabel}"
+                            Click="AddPinchButton_OnClick" />
+                    <TextBlock Classes="caption"
+                               Text="Manijas de preview" />
+                    <TextBlock Classes="muted"
+                               Text="Arrastrá las manijas visibles directamente en el canvas. Ancho usa izquierda/derecha. Alto usa arriba/abajo."
+                               TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Ajustes marcados" />
+                    <ListBox ItemsSource="{Binding PinchMarkers}"
+                             SelectedItem="{Binding SelectedPinchMarker}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:PinchMarkerDto">
+                          <Border Classes="section-card"
+                                  Margin="0,8,0,0">
+                            <StackPanel Spacing="4">
+                              <TextBlock FontWeight="SemiBold"
+                                         Text="{Binding PinchGroupName}" />
+                              <TextBlock Classes="muted"
+                                         Text="{Binding AxisTag}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding MaxTrimMm, StringFormat='Ajuste máximo: {0} mm'}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding PositionRatio, StringFormat='Posición sobre la línea: {0:F2}'}" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button Classes="subtle"
+                            Content="Quitar ajuste"
+                            Click="RemovePinchButton_OnClick" />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Bandas de ajuste" />
+                    <TextBlock Classes="muted"
+                               Text="Rangos reducibles sugeridos (min-max) calculados desde los pinches seleccionados."
+                               TextWrapping="Wrap" />
+                    <ListBox ItemsSource="{Binding ArticulationBands}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:ArticulationBandDto">
+                          <Border Classes="section-card"
+                                  Margin="0,8,0,0">
+                            <StackPanel Spacing="4">
+                              <TextBlock FontWeight="SemiBold"
+                                         Text="{Binding PinchGroupName}" />
+                              <TextBlock Classes="muted"
+                                         Text="{Binding AxisTag}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding BandStartCoordinate, StringFormat='Inicio banda: {0:0.###}'}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding BandEndCoordinate, StringFormat='Fin banda: {0:0.###}'}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding MaxTrimMm, StringFormat='Ajuste máximo total: {0:0.###} mm'}" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                    <TextBlock Classes="muted"
+                               Text="{Binding SelectedPinchGroupImpactSummary}"
+                               TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Franjas de medida" />
+                    <TextBlock Classes="muted"
+                               Text="Primero seleccioná una línea del preview. Después creá la franja local donde vive esa medida."
+                               TextWrapping="Wrap" />
+                    <TextBlock Classes="caption"
+                               Text="Nombre de la franja" />
+                     <TextBox Text="{Binding NewMeasurementCorridorName}"
+                              Watermark="Patio-Width" />
+                     <StackPanel Orientation="Horizontal"
+                                 Spacing="8">
+                       <Button Content="Crear franja"
+                               Click="AddMeasurementCorridorButton_OnClick" />
+                       <Button Classes="subtle"
+                               Content="Eliminar franja"
+                               IsEnabled="{Binding CanRemoveSelectedMeasurementCorridor}"
+                               Click="RemoveMeasurementCorridorButton_OnClick" />
+                     </StackPanel>
+                     <ListBox ItemsSource="{Binding MeasurementCorridors}"
+                              SelectedItem="{Binding SelectedMeasurementCorridor}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:MeasurementCorridorDto">
+                          <Border Classes="section-card"
+                                  Margin="0,8,0,0">
+                            <StackPanel Spacing="4">
+                              <TextBlock FontWeight="SemiBold"
+                                         Text="{Binding Name}" />
+                              <TextBlock Classes="muted"
+                                         Text="{Binding AxisTag}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding BandMinCoordinate, StringFormat='Inicio franja: {0:0.###}'}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding BandMaxCoordinate, StringFormat='Fin franja: {0:0.###}'}" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Puntos de medida" />
+                    <TextBlock Classes="muted"
+                               Text="Primero elegí una franja. Después tocá 'Elegir punto' y hacé click sobre una geometría válida del preview."
+                               TextWrapping="Wrap" />
+                    <TextBlock Classes="caption"
+                               Text="{Binding SelectedMeasurementCorridor.Name, FallbackValue='No hay franja seleccionada'}" />
+                    <Button Content="{Binding AddMeasurementNodeButtonLabel}"
+                            Click="AddMeasurementNodeButton_OnClick" />
+                    <ListBox ItemsSource="{Binding SelectedMeasurementCorridorNodes}"
+                             SelectedItem="{Binding SelectedMeasurementNode}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:MeasurementNodeDto">
+                          <Border Classes="section-card"
+                                  Margin="0,8,0,0">
+                            <StackPanel Spacing="4">
+                              <TextBlock FontWeight="SemiBold"
+                                         Text="{Binding ReferenceKind}" />
+                              <TextBlock Classes="muted"
+                                         Text="{Binding SourceArtifactKind}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding AxisCoordinate, StringFormat='Coordenada eje: {0:0.###}'}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding PositionRatio, StringFormat='Posición sobre la línea: {0:F2}'}" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Definir qué mide la cota" />
+                    <TextBlock Classes="muted"
+                               Text="{Binding SelectedDimensionIntervalBindingSummary}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Classes="muted"
+                               Text="{Binding SelectedDimensionImpactSummary}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Classes="caption"
+                               Text="Punto inicial" />
+                    <ComboBox ItemsSource="{Binding SelectedMeasurementCorridorNodes}"
+                              SelectedItem="{Binding SelectedMeasurementStartNode}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:MeasurementNodeDto">
+                          <TextBlock Text="{Binding AxisCoordinate, StringFormat='Punto {0:0.###}'}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Classes="caption"
+                               Text="Punto final" />
+                    <ComboBox ItemsSource="{Binding SelectedMeasurementCorridorNodes}"
+                              SelectedItem="{Binding SelectedMeasurementEndNode}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:MeasurementNodeDto">
+                          <TextBlock Text="{Binding AxisCoordinate, StringFormat='Punto {0:0.###}'}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Content="Guardar qué mide"
+                            IsEnabled="{Binding CanSaveSelectedDimensionIntervalBinding}"
+                            Click="SaveDimensionIntervalBindingButton_OnClick" />
+                    <Button Classes="subtle"
+                            Content="Volver a medida fija"
+                            IsEnabled="{Binding CanRestoreSelectedDimensionIntervalBinding}"
+                            Click="RestoreDimensionIntervalBindingButton_OnClick" />
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </Border>
+
+      <Border Grid.Column="3"
+              Classes="panel-card"
+              x:Name="InspectorToolBar">
+        <StackPanel Spacing="10"
+                    HorizontalAlignment="Center">
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsOverviewToolSelected}"
+                  Tag="Overview"
+                  ToolTip.Tip="Overview"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M3,11 L11,3 19,11 V20 H13 V14 H9 V20 H3 Z" />
+          </Button>
+
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsPositionToolSelected}"
+                  Tag="Position"
+                  ToolTip.Tip="Position"
+                  IsEnabled="{Binding CanUsePositionTool}"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M11,2 L14,5 11,8 V6 H8 V11 H6 V6 H3 V11 H1 V4 H8 V2 Z M13,13 H20 V15 H13 V13 Z M13,17 H20 V19 H13 V17 Z" />
+          </Button>
+
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsTextToolSelected}"
+                  Tag="Text"
+                  ToolTip.Tip="Label tools"
+                  IsEnabled="{Binding CanUseTextTool}"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M3,4 H21 V7 H19 V6 H14 V20 H10 V6 H5 V7 H3 Z" />
+          </Button>
+
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsClassificationToolSelected}"
+                  Tag="Classification"
+                  ToolTip.Tip="Classification"
+                  IsEnabled="{Binding CanUseClassificationTool}"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M4,4 H10 V10 H4 Z M14,4 H20 V10 H14 Z M4,14 H10 V20 H4 Z M14,14 H20 V20 H14 Z" />
+          </Button>
+
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsActionsToolSelected}"
+                  Tag="Actions"
+                  ToolTip.Tip="Actions"
+                  IsEnabled="{Binding CanUseActionsTool}"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M4,5 H20 V7 H4 Z M4,11 H20 V13 H4 Z M4,17 H20 V19 H4 Z" />
+          </Button>
+
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsFitToolSelected}"
+                  Tag="Fit"
+                  ToolTip.Tip="Fit constraints"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M4,4 H20 V8 H18 V6 H6 V18 H8 V20 H4 Z M12,10 H20 V12 H12 Z M10,14 H20 V16 H10 Z M14,18 H20 V20 H14 Z" />
+          </Button>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

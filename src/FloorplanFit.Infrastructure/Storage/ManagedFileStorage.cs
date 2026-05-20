@@ -34,9 +34,31 @@ public sealed class ManagedFileStorage : IManagedFileStorage
         return Task.FromResult(destinationPath);
     }
 
+    public Task<string> ReserveAdjustedDxfPathAsync(string sourceFileName, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(sourceFileName))
+        {
+            throw new ArgumentException("A source file name is required.", nameof(sourceFileName));
+        }
+
+        workspace.EnsureCreated();
+
+        var baseName = Path.GetFileNameWithoutExtension(sourceFileName);
+        var extension = Path.GetExtension(sourceFileName);
+        var adjustedName = $"{baseName}-adjusted{extension}";
+        return Task.FromResult(GetAvailableDestinationPath(workspace.LibraryAdjustedDxfDirectory, adjustedName));
+    }
+
     private string GetAvailableDestinationPath(string fileName)
     {
-        var destinationPath = Path.Combine(workspace.LibraryRawDxfDirectory, fileName);
+        return GetAvailableDestinationPath(workspace.LibraryRawDxfDirectory, fileName);
+    }
+
+    private static string GetAvailableDestinationPath(string directory, string fileName)
+    {
+        var destinationPath = Path.Combine(directory, fileName);
 
         if (!File.Exists(destinationPath))
         {
@@ -49,7 +71,7 @@ public sealed class ManagedFileStorage : IManagedFileStorage
 
         while (true)
         {
-            var candidate = Path.Combine(workspace.LibraryRawDxfDirectory, $"{baseName}-{counter}{extension}");
+            var candidate = Path.Combine(directory, $"{baseName}-{counter}{extension}");
 
             if (!File.Exists(candidate))
             {

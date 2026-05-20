@@ -12,6 +12,7 @@ public sealed class AppWorkspace
         RootPath = rootPath;
         LibraryDirectory = Path.Combine(rootPath, "library");
         LibraryRawDxfDirectory = Path.Combine(LibraryDirectory, "raw-dxf");
+        LibraryAdjustedDxfDirectory = Path.Combine(LibraryDirectory, "adjusted-dxf");
         DatabasePath = Path.Combine(rootPath, "app.db");
     }
 
@@ -21,6 +22,8 @@ public sealed class AppWorkspace
 
     public string LibraryRawDxfDirectory { get; }
 
+    public string LibraryAdjustedDxfDirectory { get; }
+
     public string DatabasePath { get; }
 
     public void EnsureCreated()
@@ -28,5 +31,6 @@ public sealed class AppWorkspace
         Directory.CreateDirectory(RootPath);
         Directory.CreateDirectory(LibraryDirectory);
         Directory.CreateDirectory(LibraryRawDxfDirectory);
+        Directory.CreateDirectory(LibraryAdjustedDxfDirectory);
     }
 }

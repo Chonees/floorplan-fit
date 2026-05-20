@@ -400,9 +400,7 @@ Y el camino operativo recomendado para desarrollar es este:
 - `2026-04-29 - validacion real del slice 1 ejecutable.md`
 - `2026-04-29 - bugfix de versionado al reimportar el mismo dxf.md`
 - `2026-04-29 - hidratacion de library desde sqlite y fix de avln3001.md`
-- `2026-04-29 - launcher de desarrollo continuo para desktop.md`
 - `2026-04-29 - checklist manual del slice 1 ejecutable.md`
-- `2026-04-29 - acceso directo local para abrir floorplan fit.md`
 
 ### Estado y trazabilidad en `obsidian-vault/`
 
