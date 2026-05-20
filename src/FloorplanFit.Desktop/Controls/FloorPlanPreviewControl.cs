@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.Controls.Preview;
 using FloorplanFit.Domain.FloorPlans;
@@ -17,7 +18,7 @@ public sealed class FloorPlanPreviewControl : Control
     internal const decimal MovementPersistenceEpsilon = 0.001m;
     private const double DimensionHandleHitTolerance = 10d;
     internal const double MinimumUserZoomFactor = 0.35d;
-    internal const double MaximumUserZoomFactor = 6d;
+    internal const double MaximumUserZoomFactor = 80d;
     private readonly PreviewCollectionObserverHub collectionObserverHub;
     private FloorPlanPreviewGeometry.PreviewCompressionEdge? activeDragEdge;
     private PreviewArtifactMoveState? activeArtifactMove;
@@ -28,6 +29,7 @@ public sealed class FloorPlanPreviewControl : Control
     private Point panStartPoint;
     private PreviewZoomState panStartZoomState;
     private PreviewDimensionEditState? activeDimensionEdit;
+    private PreviewPendingDimensionEditState? pendingDimensionEdit;
 
     static FloorPlanPreviewControl()
     {
@@ -42,14 +44,21 @@ public sealed class FloorPlanPreviewControl : Control
             OpeningLabelsProperty,
             HighlightOpeningLabelIdProperty,
             DimensionsProperty,
+            MeasurementContextProperty,
+            DimensionBindingsProperty,
             DimensionAssociationsProperty,
+            MeasurementCorridorsProperty,
+            MeasurementNodesProperty,
+            DimensionIntervalBindingsProperty,
+            ArticulationBandsProperty,
             HighlightDimensionIdProperty,
             FixedPlanComponentsProperty,
             ProtectedDetailAssembliesProperty,
             CuratedPlanArtifactsProperty,
             PreviewPinchGroupIdProperty,
             PreviewAxisTagProperty,
-            IsPinchPlacementArmedProperty);
+            IsPinchPlacementArmedProperty,
+            AreDimensionsVisibleProperty);
         GeometryPathsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
             control.OnGeometryPathsChanged(
                 args.GetOldValue<IReadOnlyList<GeometryPathDto>?>(),
@@ -78,10 +87,34 @@ public sealed class FloorPlanPreviewControl : Control
             control.OnDimensionsChanged(
                 args.GetOldValue<IReadOnlyList<DimensionDto>?>(),
                 args.GetNewValue<IReadOnlyList<DimensionDto>?>()));
+        DimensionBindingsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
+            control.OnDimensionBindingsChanged(
+                args.GetOldValue<IReadOnlyList<DimensionBindingDto>?>(),
+                args.GetNewValue<IReadOnlyList<DimensionBindingDto>?>()));
         DimensionAssociationsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
             control.OnDimensionAssociationsChanged(
                 args.GetOldValue<IReadOnlyList<DimensionAssociationDto>?>(),
                 args.GetNewValue<IReadOnlyList<DimensionAssociationDto>?>()));
+        MeasurementCorridorsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
+            control.OnMeasurementCorridorsChanged(
+                args.GetOldValue<IReadOnlyList<MeasurementCorridorDto>?>(),
+                args.GetNewValue<IReadOnlyList<MeasurementCorridorDto>?>()));
+        MeasurementNodesProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
+            control.OnMeasurementNodesChanged(
+                args.GetOldValue<IReadOnlyList<MeasurementNodeDto>?>(),
+                args.GetNewValue<IReadOnlyList<MeasurementNodeDto>?>()));
+        DimensionIntervalBindingsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
+            control.OnDimensionIntervalBindingsChanged(
+                args.GetOldValue<IReadOnlyList<DimensionIntervalBindingDto>?>(),
+                args.GetNewValue<IReadOnlyList<DimensionIntervalBindingDto>?>()));
+        ArticulationBandsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
+            control.OnArticulationBandsChanged(
+                args.GetOldValue<IReadOnlyList<ArticulationBandDto>?>(),
+                args.GetNewValue<IReadOnlyList<ArticulationBandDto>?>()));
+        SelectedMeasurementCorridorIdProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, _) => control.InvalidateVisual());
+        SelectedMeasurementNodeIdProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, _) => control.InvalidateVisual());
+        SelectedMeasurementStartNodeIdProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, _) => control.InvalidateVisual());
+        SelectedMeasurementEndNodeIdProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, _) => control.InvalidateVisual());
         FixedPlanComponentsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
             control.OnFixedPlanComponentsChanged(
                 args.GetOldValue<IReadOnlyList<FixedPlanComponentDto>?>(),
@@ -131,11 +164,44 @@ public sealed class FloorPlanPreviewControl : Control
     public static readonly StyledProperty<IReadOnlyList<DimensionDto>?> DimensionsProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<DimensionDto>?>(nameof(Dimensions));
 
+    public static readonly StyledProperty<MeasurementContextDto?> MeasurementContextProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, MeasurementContextDto?>(nameof(MeasurementContext));
+
+    public static readonly StyledProperty<IReadOnlyList<DimensionBindingDto>?> DimensionBindingsProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<DimensionBindingDto>?>(nameof(DimensionBindings));
+
     public static readonly StyledProperty<IReadOnlyList<DimensionAssociationDto>?> DimensionAssociationsProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<DimensionAssociationDto>?>(nameof(DimensionAssociations));
 
+    public static readonly StyledProperty<IReadOnlyList<MeasurementCorridorDto>?> MeasurementCorridorsProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<MeasurementCorridorDto>?>(nameof(MeasurementCorridors));
+
+    public static readonly StyledProperty<IReadOnlyList<MeasurementNodeDto>?> MeasurementNodesProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<MeasurementNodeDto>?>(nameof(MeasurementNodes));
+
+    public static readonly StyledProperty<IReadOnlyList<DimensionIntervalBindingDto>?> DimensionIntervalBindingsProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<DimensionIntervalBindingDto>?>(nameof(DimensionIntervalBindings));
+
+    public static readonly StyledProperty<IReadOnlyList<ArticulationBandDto>?> ArticulationBandsProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<ArticulationBandDto>?>(nameof(ArticulationBands));
+
+    public static readonly StyledProperty<Guid?> SelectedMeasurementCorridorIdProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, Guid?>(nameof(SelectedMeasurementCorridorId));
+
+    public static readonly StyledProperty<Guid?> SelectedMeasurementNodeIdProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, Guid?>(nameof(SelectedMeasurementNodeId));
+
+    public static readonly StyledProperty<Guid?> SelectedMeasurementStartNodeIdProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, Guid?>(nameof(SelectedMeasurementStartNodeId));
+
+    public static readonly StyledProperty<Guid?> SelectedMeasurementEndNodeIdProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, Guid?>(nameof(SelectedMeasurementEndNodeId));
+
     public static readonly StyledProperty<Guid?> HighlightDimensionIdProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, Guid?>(nameof(HighlightDimensionId));
+
+    public static readonly StyledProperty<bool> AreDimensionsVisibleProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, bool>(nameof(AreDimensionsVisible), defaultValue: true);
 
     public static readonly StyledProperty<IReadOnlyList<FixedPlanComponentDto>?> FixedPlanComponentsProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<FixedPlanComponentDto>?>(nameof(FixedPlanComponents));
@@ -215,16 +281,82 @@ public sealed class FloorPlanPreviewControl : Control
         set => SetValue(DimensionsProperty, value);
     }
 
+    public MeasurementContextDto? MeasurementContext
+    {
+        get => GetValue(MeasurementContextProperty);
+        set => SetValue(MeasurementContextProperty, value);
+    }
+
+    public IReadOnlyList<DimensionBindingDto>? DimensionBindings
+    {
+        get => GetValue(DimensionBindingsProperty);
+        set => SetValue(DimensionBindingsProperty, value);
+    }
+
     public IReadOnlyList<DimensionAssociationDto>? DimensionAssociations
     {
         get => GetValue(DimensionAssociationsProperty);
         set => SetValue(DimensionAssociationsProperty, value);
     }
 
+    public IReadOnlyList<MeasurementCorridorDto>? MeasurementCorridors
+    {
+        get => GetValue(MeasurementCorridorsProperty);
+        set => SetValue(MeasurementCorridorsProperty, value);
+    }
+
+    public IReadOnlyList<MeasurementNodeDto>? MeasurementNodes
+    {
+        get => GetValue(MeasurementNodesProperty);
+        set => SetValue(MeasurementNodesProperty, value);
+    }
+
+    public IReadOnlyList<DimensionIntervalBindingDto>? DimensionIntervalBindings
+    {
+        get => GetValue(DimensionIntervalBindingsProperty);
+        set => SetValue(DimensionIntervalBindingsProperty, value);
+    }
+
+    public IReadOnlyList<ArticulationBandDto>? ArticulationBands
+    {
+        get => GetValue(ArticulationBandsProperty);
+        set => SetValue(ArticulationBandsProperty, value);
+    }
+
+    public Guid? SelectedMeasurementCorridorId
+    {
+        get => GetValue(SelectedMeasurementCorridorIdProperty);
+        set => SetValue(SelectedMeasurementCorridorIdProperty, value);
+    }
+
+    public Guid? SelectedMeasurementNodeId
+    {
+        get => GetValue(SelectedMeasurementNodeIdProperty);
+        set => SetValue(SelectedMeasurementNodeIdProperty, value);
+    }
+
+    public Guid? SelectedMeasurementStartNodeId
+    {
+        get => GetValue(SelectedMeasurementStartNodeIdProperty);
+        set => SetValue(SelectedMeasurementStartNodeIdProperty, value);
+    }
+
+    public Guid? SelectedMeasurementEndNodeId
+    {
+        get => GetValue(SelectedMeasurementEndNodeIdProperty);
+        set => SetValue(SelectedMeasurementEndNodeIdProperty, value);
+    }
+
     public Guid? HighlightDimensionId
     {
         get => GetValue(HighlightDimensionIdProperty);
         set => SetValue(HighlightDimensionIdProperty, value);
+    }
+
+    public bool AreDimensionsVisible
+    {
+        get => GetValue(AreDimensionsVisibleProperty);
+        set => SetValue(AreDimensionsVisibleProperty, value);
     }
 
     public IReadOnlyList<FixedPlanComponentDto>? FixedPlanComponents
@@ -306,10 +438,15 @@ public sealed class FloorPlanPreviewControl : Control
             pointerPosition,
             hitTolerancePixels,
             out var dimension,
-            out var suggestedHandle)
-            ? new DimensionHit(dimension, suggestedHandle)
+            out var suggestedHandle,
+            out var hitArea,
+            out var referenceWorldPoint)
+            ? new DimensionHit(dimension, suggestedHandle, hitArea, referenceWorldPoint)
             : null;
     }
+
+    internal static bool CanResolveDimensionInteractions(bool areDimensionsVisible, bool isPinchPlacementArmed)
+        => areDimensionsVisible && !isPinchPlacementArmed;
 
     internal static Point ResolveSnappedWorldPoint(
         Point worldPoint,
@@ -399,10 +536,11 @@ public sealed class FloorPlanPreviewControl : Control
                 axisTag,
                 IsPinchPlacementArmed,
                 ResolveEdgeDrag,
-                point => TryResolveDimensionHandleHit(Dimensions, HighlightDimensionId, viewport.Value, point, out var handleHit)
+                point => CanResolveDimensionInteractions(AreDimensionsVisible, IsPinchPlacementArmed) &&
+                         TryResolveDimensionHandleHit(Dimensions, HighlightDimensionId, viewport.Value, point, out var handleHit)
                     ? handleHit
                     : null,
-                point => !IsPinchPlacementArmed
+                point => CanResolveDimensionInteractions(AreDimensionsVisible, IsPinchPlacementArmed)
                     ? TryResolveDimensionHit(Dimensions, viewport.Value, point, HitTestTolerance)
                     : null,
                 point => TryResolveRoomLabelHit(viewport.Value, point, out var roomLabel)
@@ -453,21 +591,39 @@ public sealed class FloorPlanPreviewControl : Control
             GeometryPathClicked?.Invoke(this, new GeometryPathClickedEventArgs(geometryClick.GeometryPathId, geometryClick.PositionRatio));
         }
 
+        if (pressOutcome.StartedEdgeDrag is null &&
+            pressOutcome.StartedDimensionEdit is null &&
+            pressOutcome.PendingDimensionEdit is null &&
+            pressOutcome.StartedArtifactMove is null)
+        {
+            pendingDimensionEdit = null;
+            activeDimensionEdit = null;
+        }
+
         if (pressOutcome.StartedEdgeDrag is { } edge)
         {
             activeDragEdge = edge;
             dragStartPoint = pointerPosition;
             activePreviewTrimMm = 0m;
+            pendingDimensionEdit = null;
         }
 
         if (pressOutcome.StartedDimensionEdit is { } dimensionEdit)
         {
             activeDimensionEdit = dimensionEdit;
+            pendingDimensionEdit = null;
+        }
+
+        if (pressOutcome.PendingDimensionEdit is { } pendingEdit)
+        {
+            pendingDimensionEdit = pendingEdit;
+            activeDimensionEdit = null;
         }
 
         if (pressOutcome.StartedArtifactMove is { } artifactMove)
         {
             activeArtifactMove = artifactMove;
+            pendingDimensionEdit = null;
         }
 
         if (pressOutcome.CapturePointer)
@@ -697,17 +853,72 @@ public sealed class FloorPlanPreviewControl : Control
             .ToArray();
     }
 
-    private IReadOnlyList<DimensionDto> BuildRenderedDimensions()
+    internal static IReadOnlyList<DimensionDto> BuildRenderedDimensionsForPreview(
+        IReadOnlyList<DimensionDto>? dimensions,
+        IReadOnlyList<DimensionAssociationDto>? dimensionAssociations,
+        IReadOnlyList<DimensionBindingDto>? dimensionBindings,
+        IReadOnlyList<GeometryPathDto>? previewGeometry,
+        IReadOnlyList<WallCandidateDto>? wallCandidates,
+        IReadOnlyList<OpeningCandidateDto>? openingCandidates,
+        MeasurementContextDto? measurementContext,
+        bool useReactivePreview,
+        DimensionPreviewProjector.DimensionPreviewEditRequest? activeEdit,
+        IReadOnlyList<MeasurementCorridorDto>? measurementCorridors = null,
+        IReadOnlyList<MeasurementNodeDto>? measurementNodes = null,
+        IReadOnlyList<DimensionIntervalBindingDto>? dimensionIntervalBindings = null,
+        IReadOnlyList<ArticulationBandDto>? articulationBands = null,
+        Guid? previewPinchGroupId = null)
     {
+        var renderedDimensions = useReactivePreview &&
+                                 dimensions is { Count: > 0 } &&
+                                 previewGeometry is { Count: > 0 } &&
+                                 measurementCorridors is { Count: > 0 } &&
+                                 measurementNodes is { Count: > 0 } &&
+                                 dimensionIntervalBindings is { Count: > 0 } &&
+                                 articulationBands is { Count: > 0 } &&
+                                 previewPinchGroupId is not null
+            ? DimensionIntervalReactiveProjector.Project(
+                dimensions,
+                previewGeometry,
+                measurementCorridors,
+                measurementNodes,
+                dimensionIntervalBindings,
+                articulationBands,
+                previewPinchGroupId)
+            : dimensions ?? [];
+
         return DimensionPreviewProjector.BuildRenderedDimensions(
+            renderedDimensions,
+            activeEdit,
+            reactiveInputs: null);
+    }
+
+    private IReadOnlyList<DimensionDto> BuildRenderedDimensions(
+        IReadOnlyList<GeometryPathDto> previewGeometry,
+        PinchAxisTag? axisTag)
+    {
+        return BuildRenderedDimensionsForPreview(
             Dimensions,
-            activeDimensionEdit is { } edit
+            DimensionAssociations,
+            DimensionBindings,
+            previewGeometry,
+            WallCandidates,
+            OpeningCandidates,
+            MeasurementContext,
+            useReactivePreview: axisTag is not null && activeDragEdge is not null,
+            activeEdit: activeDimensionEdit is { } edit
                 ? new DimensionPreviewProjector.DimensionPreviewEditRequest(
                     edit.BaseDimension.DimensionId,
                     edit.BaseDimension,
                     edit.HandleKind,
-                edit.CurrentWorldPoint)
-                : null);
+                    edit.ReferenceWorldPoint,
+                    edit.CurrentWorldPoint)
+                : null,
+            measurementCorridors: MeasurementCorridors,
+            measurementNodes: MeasurementNodes,
+            dimensionIntervalBindings: DimensionIntervalBindings,
+            articulationBands: ArticulationBands,
+            previewPinchGroupId: PreviewPinchGroupId);
     }
 
     private PreviewRenderScene BuildRenderScene(
@@ -719,7 +930,7 @@ public sealed class FloorPlanPreviewControl : Control
         previewGeometry = ApplyActiveArtifactMoveToGeometry(previewGeometry);
         var roomLabels = BuildRenderedRoomLabels();
         var openingLabels = BuildRenderedOpeningLabels();
-        var dimensions = BuildRenderedDimensions();
+        var dimensions = BuildRenderedDimensions(previewGeometry, axisTag);
         var artifactIndex = CuratedPlanArtifacts is { Count: > 0 }
             ? PreviewArtifactGeometryIndex.Create(CuratedPlanArtifacts)
             : PreviewArtifactGeometryIndex.Create(OpeningCandidates, FixedPlanComponents, ProtectedDetailAssemblies);
@@ -733,12 +944,21 @@ public sealed class FloorPlanPreviewControl : Control
             RoomLabels: roomLabels,
             OpeningLabels: openingLabels,
             Dimensions: dimensions,
+            AreDimensionsVisible: AreDimensionsVisible,
             ArtifactIndex: artifactIndex,
             OpeningCandidates: OpeningCandidates,
             FixedPlanComponents: FixedPlanComponents,
             ProtectedDetailAssemblies: ProtectedDetailAssemblies,
             CuratedPlanArtifacts: CuratedPlanArtifacts,
             PinchMarkers: PinchMarkers,
+            MeasurementCorridors: MeasurementCorridors,
+            MeasurementNodes: MeasurementNodes,
+            DimensionIntervalBindings: DimensionIntervalBindings,
+            ArticulationBands: ArticulationBands,
+            SelectedMeasurementCorridorId: SelectedMeasurementCorridorId,
+            SelectedMeasurementNodeId: SelectedMeasurementNodeId,
+            SelectedMeasurementStartNodeId: SelectedMeasurementStartNodeId,
+            SelectedMeasurementEndNodeId: SelectedMeasurementEndNodeId,
             HighlightGeometryPathId: HighlightGeometryPathId,
             HighlightRoomLabelId: HighlightRoomLabelId,
             HighlightOpeningLabelId: HighlightOpeningLabelId,
@@ -756,6 +976,7 @@ public sealed class FloorPlanPreviewControl : Control
                 edit.BaseDimension.DimensionId,
                 edit.BaseDimension,
                 edit.HandleKind,
+                edit.ReferenceWorldPoint,
                 edit.CurrentWorldPoint));
 
         return rendered.FirstOrDefault();
@@ -771,6 +992,7 @@ public sealed class FloorPlanPreviewControl : Control
             dragStartPoint,
             activePreviewTrimMm,
             activeArtifactMove,
+            pendingDimensionEdit,
             activeDimensionEdit);
 
     private void ApplyInteractionState(PreviewInteractionCoordinator.InteractionState state)
@@ -783,6 +1005,7 @@ public sealed class FloorPlanPreviewControl : Control
         dragStartPoint = state.DragStartPoint;
         activePreviewTrimMm = state.ActivePreviewTrimMm;
         activeArtifactMove = state.ActiveArtifactMove;
+        pendingDimensionEdit = state.PendingDimensionEdit;
         activeDimensionEdit = state.ActiveDimensionEdit;
     }
 
@@ -809,7 +1032,8 @@ public sealed class FloorPlanPreviewControl : Control
             ? new DimensionEditedEventArgs(
                 edit.BaseDimension.DimensionId,
                 ResolveSourceDimensionKey(edit.BaseDimension),
-                editedDimension)
+                editedDimension,
+                edit.HandleKind)
             : null;
     }
 
@@ -898,9 +1122,10 @@ public sealed class FloorPlanPreviewControl : Control
                 pointerPosition,
                 DimensionHandleHitTolerance,
                 out var dimension,
-                out var handleKind))
+                out var handleKind,
+                out var referenceWorldPoint))
         {
-            handleHit = new DimensionHandleHit(dimension, handleKind);
+            handleHit = new DimensionHandleHit(dimension, handleKind, referenceWorldPoint);
             return true;
         }
 
@@ -1080,10 +1305,35 @@ public sealed class FloorPlanPreviewControl : Control
     private void OnWallCandidatesChanged(IReadOnlyList<WallCandidateDto>? oldValue, IReadOnlyList<WallCandidateDto>? newValue)
         => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.WallCandidates, oldValue, newValue);
 
+    private void OnDimensionBindingsChanged(
+        IReadOnlyList<DimensionBindingDto>? oldValue,
+        IReadOnlyList<DimensionBindingDto>? newValue)
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.DimensionBindings, oldValue, newValue);
+
     private void OnDimensionAssociationsChanged(
         IReadOnlyList<DimensionAssociationDto>? oldValue,
         IReadOnlyList<DimensionAssociationDto>? newValue)
         => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.DimensionAssociations, oldValue, newValue);
+
+    private void OnMeasurementCorridorsChanged(
+        IReadOnlyList<MeasurementCorridorDto>? oldValue,
+        IReadOnlyList<MeasurementCorridorDto>? newValue)
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.MeasurementCorridors, oldValue, newValue);
+
+    private void OnMeasurementNodesChanged(
+        IReadOnlyList<MeasurementNodeDto>? oldValue,
+        IReadOnlyList<MeasurementNodeDto>? newValue)
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.MeasurementNodes, oldValue, newValue);
+
+    private void OnDimensionIntervalBindingsChanged(
+        IReadOnlyList<DimensionIntervalBindingDto>? oldValue,
+        IReadOnlyList<DimensionIntervalBindingDto>? newValue)
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.DimensionIntervalBindings, oldValue, newValue);
+
+    private void OnArticulationBandsChanged(
+        IReadOnlyList<ArticulationBandDto>? oldValue,
+        IReadOnlyList<ArticulationBandDto>? newValue)
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.ArticulationBands, oldValue, newValue);
 
     private void OnFixedPlanComponentsChanged(IReadOnlyList<FixedPlanComponentDto>? oldValue, IReadOnlyList<FixedPlanComponentDto>? newValue)
         => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.FixedPlanComponents, oldValue, newValue);
@@ -1107,7 +1357,12 @@ public sealed class FloorPlanPreviewControl : Control
             OpeningCandidates,
             OpeningLabels,
             Dimensions,
+            DimensionBindings,
             DimensionAssociations,
+            MeasurementCorridors,
+            MeasurementNodes,
+            DimensionIntervalBindings,
+            ArticulationBands,
             FixedPlanComponents,
             ProtectedDetailAssemblies,
             CuratedPlanArtifacts);
@@ -1170,11 +1425,16 @@ public sealed class FloorPlanPreviewControl : Control
 
     public sealed class DimensionEditedEventArgs : EventArgs
     {
-        public DimensionEditedEventArgs(Guid dimensionId, string sourceDimensionKey, DimensionDto dimension)
+        public DimensionEditedEventArgs(
+            Guid dimensionId,
+            string sourceDimensionKey,
+            DimensionDto dimension,
+            DimensionHandleKind handleKind)
         {
             DimensionId = dimensionId;
             SourceDimensionKey = sourceDimensionKey;
             Dimension = dimension;
+            HandleKind = handleKind;
         }
 
         public Guid DimensionId { get; }
@@ -1182,6 +1442,8 @@ public sealed class FloorPlanPreviewControl : Control
         public string SourceDimensionKey { get; }
 
         public DimensionDto Dimension { get; }
+
+        public DimensionHandleKind HandleKind { get; }
     }
 
     public sealed class MovableArtifactMovedEventArgs : EventArgs
@@ -1224,17 +1486,31 @@ public sealed class FloorPlanPreviewControl : Control
         public static PreviewZoomState Default { get; } = new(1d, default);
     }
 
-    internal enum DimensionHandleKind
+    public enum DimensionHandleKind
     {
         FirstDefinitionPoint = 1,
         SecondDefinitionPoint = 2,
-        DimensionLinePoint = 3,
-        TextAnchor = 4
+        DimensionLinePoint = 3
     }
 
-    internal readonly record struct DimensionHit(DimensionDto Dimension, DimensionHandleKind SuggestedHandle);
+    internal enum DimensionHitArea
+    {
+        StartExtent = 1,
+        EndExtent = 2,
+        BodyText = 3,
+        BodyLine = 4
+    }
 
-    internal readonly record struct DimensionHandleHit(DimensionDto Dimension, DimensionHandleKind HandleKind);
+    internal readonly record struct DimensionHit(
+        DimensionDto Dimension,
+        DimensionHandleKind SuggestedHandle,
+        DimensionHitArea HitArea,
+        Point ReferenceWorldPoint);
+
+    internal readonly record struct DimensionHandleHit(
+        DimensionDto Dimension,
+        DimensionHandleKind HandleKind,
+        Point ReferenceWorldPoint);
 
     internal readonly record struct PreviewArtifactMoveState(
         string SourceArtifactKind,
@@ -1299,9 +1575,28 @@ public sealed class FloorPlanPreviewControl : Control
         DimensionDto BaseDimension,
         DimensionHandleKind HandleKind,
         Point PointerStart,
+        Point ReferenceWorldPoint,
         Point? CurrentWorldPoint)
     {
-        public static PreviewDimensionEditState Start(DimensionDto baseDimension, DimensionHandleKind handleKind, Point pointerStart)
-            => new(baseDimension, handleKind, pointerStart, null);
+        public static PreviewDimensionEditState Start(
+            DimensionDto baseDimension,
+            DimensionHandleKind handleKind,
+            Point pointerStart,
+            Point referenceWorldPoint)
+            => new(baseDimension, handleKind, pointerStart, referenceWorldPoint, null);
+    }
+
+    internal readonly record struct PreviewPendingDimensionEditState(
+        DimensionDto BaseDimension,
+        DimensionHandleKind HandleKind,
+        Point PointerStart,
+        Point ReferenceWorldPoint)
+    {
+        public static PreviewPendingDimensionEditState Start(
+            DimensionDto baseDimension,
+            DimensionHandleKind handleKind,
+            Point pointerStart,
+            Point referenceWorldPoint)
+            => new(baseDimension, handleKind, pointerStart, referenceWorldPoint);
     }
 }

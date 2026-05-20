@@ -19,7 +19,12 @@ internal sealed class PreviewCollectionObserverHub
         OpeningCandidates,
         OpeningLabels,
         Dimensions,
+        DimensionBindings,
         DimensionAssociations,
+        MeasurementCorridors,
+        MeasurementNodes,
+        DimensionIntervalBindings,
+        ArticulationBands,
         FixedPlanComponents,
         ProtectedDetailAssemblies,
         CuratedPlanArtifacts
@@ -33,7 +38,12 @@ internal sealed class PreviewCollectionObserverHub
         IEnumerable? OpeningCandidates,
         IEnumerable? OpeningLabels,
         IEnumerable? Dimensions,
+        IEnumerable? DimensionBindings,
         IEnumerable? DimensionAssociations,
+        IEnumerable? MeasurementCorridors,
+        IEnumerable? MeasurementNodes,
+        IEnumerable? DimensionIntervalBindings,
+        IEnumerable? ArticulationBands,
         IEnumerable? FixedPlanComponents,
         IEnumerable? ProtectedDetailAssemblies,
         IEnumerable? CuratedPlanArtifacts);
@@ -52,7 +62,12 @@ internal sealed class PreviewCollectionObserverHub
         Replace(PreviewObservedCollectionSlot.OpeningCandidates, collections.OpeningCandidates);
         Replace(PreviewObservedCollectionSlot.OpeningLabels, collections.OpeningLabels);
         Replace(PreviewObservedCollectionSlot.Dimensions, collections.Dimensions);
+        Replace(PreviewObservedCollectionSlot.DimensionBindings, collections.DimensionBindings);
         Replace(PreviewObservedCollectionSlot.DimensionAssociations, collections.DimensionAssociations);
+        Replace(PreviewObservedCollectionSlot.MeasurementCorridors, collections.MeasurementCorridors);
+        Replace(PreviewObservedCollectionSlot.MeasurementNodes, collections.MeasurementNodes);
+        Replace(PreviewObservedCollectionSlot.DimensionIntervalBindings, collections.DimensionIntervalBindings);
+        Replace(PreviewObservedCollectionSlot.ArticulationBands, collections.ArticulationBands);
         Replace(PreviewObservedCollectionSlot.FixedPlanComponents, collections.FixedPlanComponents);
         Replace(PreviewObservedCollectionSlot.ProtectedDetailAssemblies, collections.ProtectedDetailAssemblies);
         Replace(PreviewObservedCollectionSlot.CuratedPlanArtifacts, collections.CuratedPlanArtifacts);

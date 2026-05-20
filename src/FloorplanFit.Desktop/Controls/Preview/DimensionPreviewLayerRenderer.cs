@@ -14,7 +14,8 @@ internal static class DimensionPreviewLayerRenderer
         DrawingContext context,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
         IReadOnlyList<DimensionDto>? dimensions,
-        Guid? highlightedDimensionId = null)
+        Guid? highlightedDimensionId = null,
+        IReadOnlySet<Guid>? nodeBoundDimensionIds = null)
     {
         if (dimensions is not { Count: > 0 })
         {
@@ -24,7 +25,9 @@ internal static class DimensionPreviewLayerRenderer
         foreach (var dimension in dimensions)
         {
             var isHighlighted = dimension.DimensionId == highlightedDimensionId;
-            var pen = CreatePen(isHighlighted);
+            var isNodeBound = nodeBoundDimensionIds?.Contains(dimension.DimensionId) == true;
+            var pen = CreatePen(isHighlighted, isNodeBound);
+            var brush = PreviewSemanticPalette.Brush(ResolveDimensionStrokeColor(isHighlighted, isNodeBound));
 
             foreach (var segment in CreateProjectedSegments(dimension, viewport))
             {
@@ -33,8 +36,8 @@ internal static class DimensionPreviewLayerRenderer
 
             RenderCircles(context, viewport, dimension, pen);
             RenderArcs(context, viewport, dimension, pen);
-            RenderSolids(context, viewport, dimension);
-            RenderTerminalInserts(context, viewport, dimension, isHighlighted);
+            RenderSolids(context, viewport, dimension, brush);
+            RenderTerminalInserts(context, viewport, dimension, brush);
         }
     }
 
@@ -56,7 +59,7 @@ internal static class DimensionPreviewLayerRenderer
             return;
         }
 
-        foreach (var (kind, worldPoint) in ResolveHandles(dimension))
+        foreach (var (kind, worldPoint) in NativeDimensionEditor.ResolveHandles(dimension))
         {
             var projected = viewport.Project(worldPoint.X, worldPoint.Y);
             IBrush fill = kind == activeHandleKind
@@ -85,28 +88,42 @@ internal static class DimensionPreviewLayerRenderer
             .ToArray();
     }
 
-    private static IReadOnlyList<(FloorPlanPreviewControl.DimensionHandleKind Kind, Point WorldPoint)> ResolveHandles(DimensionDto dimension)
-    {
-        return NativeDimensionEditor.ResolveHandles(dimension)
-            .Select(item => (item.HandleKind, item.WorldPoint))
-            .ToArray();
-    }
-
     private static void RenderTerminalInserts(
         DrawingContext context,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
         DimensionDto dimension,
-        bool isHighlighted)
+        IBrush brush)
     {
-        foreach (var insert in dimension.InsertPrimitives)
+        if (NativeDimensionShape.TryResolve(dimension) is { } layout &&
+            layout.StartInsertIndex is { } startInsertIndex &&
+            layout.EndInsertIndex is { } endInsertIndex &&
+            dimension.InsertPrimitives.Count > Math.Max(startInsertIndex, endInsertIndex))
         {
-            var center = viewport.Project(insert.X, insert.Y);
-            var radius = Math.Max(DefaultTerminalRadius, (double)Math.Max(insert.ScaleX, insert.ScaleY) * 0.75d);
-            IBrush brush = isHighlighted
-                ? (IBrush)PreviewSemanticPalette.Brush(PreviewSemanticPalette.SelectionHighlight)
-                : PreviewSemanticPalette.Brush(PreviewSemanticPalette.Wall);
-            context.DrawEllipse(brush, null, center, radius, radius);
+            DrawTerminalAt(context, viewport, dimension.InsertPrimitives[startInsertIndex], brush);
+            if (endInsertIndex != startInsertIndex)
+            {
+                DrawTerminalAt(context, viewport, dimension.InsertPrimitives[endInsertIndex], brush);
+            }
+            return;
         }
+
+        foreach (var insert in dimension.InsertPrimitives
+                     .DistinctBy(item => (RoundKey(item.X), RoundKey(item.Y)))
+                     .Take(2))
+        {
+            DrawTerminalAt(context, viewport, insert, brush);
+        }
+    }
+
+    private static void DrawTerminalAt(
+        DrawingContext context,
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        DimensionInsertPrimitiveDto insert,
+        IBrush brush)
+    {
+        var center = viewport.Project(insert.X, insert.Y);
+        var radius = Math.Max(DefaultTerminalRadius, (double)Math.Max(insert.ScaleX, insert.ScaleY) * 0.75d);
+        context.DrawEllipse(brush, null, center, radius, radius);
     }
 
     private static void RenderCircles(DrawingContext context, FloorPlanPreviewGeometry.PreviewViewport viewport, DimensionDto dimension, Pen pen)
@@ -137,7 +154,11 @@ internal static class DimensionPreviewLayerRenderer
         }
     }
 
-    private static void RenderSolids(DrawingContext context, FloorPlanPreviewGeometry.PreviewViewport viewport, DimensionDto dimension)
+    private static void RenderSolids(
+        DrawingContext context,
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        DimensionDto dimension,
+        IBrush brush)
     {
         foreach (var solid in dimension.SolidPrimitives)
         {
@@ -148,18 +169,30 @@ internal static class DimensionPreviewLayerRenderer
             stream.LineTo(viewport.Project(solid.Point3X, solid.Point3Y));
             stream.LineTo(viewport.Project(solid.Point4X, solid.Point4Y));
             stream.EndFigure(isClosed: true);
-            context.DrawGeometry(PreviewSemanticPalette.Brush(PreviewSemanticPalette.Wall), null, geometry);
+            context.DrawGeometry(brush, null, geometry);
         }
     }
 
-    private static Pen CreatePen(bool isHighlighted)
+    private static Pen CreatePen(bool isHighlighted, bool isNodeBound)
     {
         return new Pen(
-            isHighlighted
-                ? PreviewSemanticPalette.Brush(PreviewSemanticPalette.SelectionHighlight)
-                : PreviewSemanticPalette.Brush(Colors.Black),
+            PreviewSemanticPalette.Brush(ResolveDimensionStrokeColor(isHighlighted, isNodeBound)),
             isHighlighted ? 1.6d : 1.1d);
     }
+
+    internal static Color ResolveDimensionStrokeColor(bool isHighlighted, bool isNodeBound)
+    {
+        if (isHighlighted)
+        {
+            return PreviewSemanticPalette.SelectionHighlight;
+        }
+
+        return isNodeBound
+            ? PreviewSemanticPalette.DimensionNodeBound
+            : Colors.Black;
+    }
+
+    private static decimal RoundKey(decimal value) => decimal.Round(value, 3, MidpointRounding.AwayFromZero);
 
     internal readonly record struct ProjectedDimensionSegment(Point Start, Point End);
 }

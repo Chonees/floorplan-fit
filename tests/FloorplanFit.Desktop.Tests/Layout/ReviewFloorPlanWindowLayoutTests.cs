@@ -29,15 +29,15 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("VisibleDimensions", xaml, StringComparison.Ordinal);
         Assert.Contains("Preview", xaml, StringComparison.Ordinal);
         Assert.Contains("Inspector", xaml, StringComparison.Ordinal);
-        Assert.Contains("Fit Constraints", xaml, StringComparison.Ordinal);
+        Assert.Contains("Reglas de ajuste", xaml, StringComparison.Ordinal);
         Assert.Contains("InspectorToolBar", xaml, StringComparison.Ordinal);
         Assert.Contains("Classes.tool-active", xaml, StringComparison.Ordinal);
-        Assert.Contains("Pinch Groups", xaml, StringComparison.Ordinal);
-        Assert.Contains("Create Group", xaml, StringComparison.Ordinal);
-        Assert.Contains("Axis", xaml, StringComparison.Ordinal);
-        Assert.Contains("Add Pinch", xaml, StringComparison.Ordinal);
-        Assert.Contains("Remove Pinch", xaml, StringComparison.Ordinal);
-        Assert.Contains("Exclude from Curation", xaml, StringComparison.Ordinal);
+        Assert.Contains("Grupos de ajuste", xaml, StringComparison.Ordinal);
+        Assert.Contains("Crear grupo", xaml, StringComparison.Ordinal);
+        Assert.Contains("Eje", xaml, StringComparison.Ordinal);
+        Assert.Contains("Agregar ajuste", xaml, StringComparison.Ordinal);
+        Assert.Contains("Quitar ajuste", xaml, StringComparison.Ordinal);
+        Assert.Contains("Excluir del curado", xaml, StringComparison.Ordinal);
         Assert.Contains("CuratedObjectsSectionTitle", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedCuratedArtifact", xaml, StringComparison.Ordinal);
         Assert.Contains("CuratedPlanArtifacts=\"{Binding VisibleCuratedPlanArtifacts}\"", xaml, StringComparison.Ordinal);
@@ -62,7 +62,7 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("SelectedOpeningLabel", xaml, StringComparison.Ordinal);
         Assert.Contains("Quick Filters", xaml, StringComparison.Ordinal);
         Assert.Contains("QueueSummary", xaml, StringComparison.Ordinal);
-        Assert.Contains("Selection Actions", xaml, StringComparison.Ordinal);
+        Assert.Contains("Acciones de selección", xaml, StringComparison.Ordinal);
         Assert.Contains("IsStructureQueueExpanded", xaml, StringComparison.Ordinal);
         Assert.Contains("IsRoomNamesQueueExpanded", xaml, StringComparison.Ordinal);
         Assert.Contains("IsOpeningCodesQueueExpanded", xaml, StringComparison.Ordinal);
@@ -115,6 +115,19 @@ public sealed class ReviewFloorPlanWindowLayoutTests
 
         Assert.Contains("private const double PreviewPadding = 48d;", source, StringComparison.Ordinal);
         Assert.DoesNotContain("private const double PreviewPadding = 16d;", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Preview_panel_exposes_a_toggle_switch_to_hide_dimensions_visually()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
+        var xaml = File.ReadAllText(xamlPath);
+
+        Assert.Contains("<ToggleSwitch", xaml, StringComparison.Ordinal);
+        Assert.Contains("ArePreviewDimensionsVisible", xaml, StringComparison.Ordinal);
+        Assert.Contains("OnContent=\"Visibles\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("OffContent=\"Ocultas\"", xaml, StringComparison.Ordinal);
     }
 
     private static string FindSolutionRoot()

@@ -56,6 +56,57 @@ public sealed class DimensionOverrideReviewSessionIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task GetByTemplateAsync_overlays_manual_dimension_binding_override_into_bindings_and_associations()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-dimension-binding-review-{Guid.NewGuid():N}");
+        var sourcePath = Path.Combine(tempRoot, "source.dxf");
+        var now = new DateTime(2026, 5, 12, 3, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            Directory.CreateDirectory(tempRoot);
+            await File.WriteAllTextAsync(sourcePath, "0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nEOF\n");
+
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            var import = await ExecuteImportAsync(workspace, sourcePath, now);
+            await SeedExtractionDraftAndDimensionOverrideAsync(workspace, now.AddMinutes(5), includeBindingOverride: true);
+
+            await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+            var reader = new SqliteFloorPlanReviewSessionReader(session);
+
+            var reviewSession = await reader.GetByTemplateAsync(import.Item.TemplateId, CancellationToken.None);
+
+            var binding = Assert.Single(reviewSession!.DimensionBindings);
+            Assert.True(binding.HasManualBindingOverride);
+            Assert.Equal("LinearSpan", binding.BindingKind);
+            Assert.True(binding.IsResolved);
+            Assert.Equal(2, binding.Anchors.Count);
+            Assert.Equal("edge-a", binding.Anchors[0].EdgeKey);
+            Assert.Equal("edge-b", binding.Anchors[1].EdgeKey);
+            Assert.Equal("Projected", binding.Anchors[1].EdgeAnchorKind);
+            Assert.Equal(0.5m, binding.Anchors[1].SegmentRatio);
+
+            var association = Assert.Single(reviewSession.DimensionAssociations);
+            Assert.Equal(binding.DimensionId, association.DimensionId);
+            Assert.True(association.IsFullyResolved);
+            Assert.Equal("edge-a", association.StartAnchor?.EdgeKey);
+            Assert.Equal("edge-b", association.EndAnchor?.EdgeKey);
+            Assert.Equal("Projected", association.EndAnchor?.EdgeAnchorKind);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static async Task<ImportFloorPlanResponse> ExecuteImportAsync(AppWorkspace workspace, string sourcePath, DateTime now)
     {
         await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
@@ -75,7 +126,7 @@ public sealed class DimensionOverrideReviewSessionIntegrationTests
         return await handler.HandleAsync(new ImportFloorPlanRequest(sourcePath), CancellationToken.None);
     }
 
-    private static async Task SeedExtractionDraftAndDimensionOverrideAsync(AppWorkspace workspace, DateTime now)
+    private static async Task SeedExtractionDraftAndDimensionOverrideAsync(AppWorkspace workspace, DateTime now, bool includeBindingOverride = false)
     {
         await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
         var templateRepository = new SqliteFloorPlanTemplateRepository(session);
@@ -200,6 +251,25 @@ public sealed class DimensionOverrideReviewSessionIntegrationTests
                 now.AddMinutes(2),
                 now.AddMinutes(3)),
             CancellationToken.None);
+
+        if (includeBindingOverride)
+        {
+            await new SqliteFloorPlanDimensionBindingOverrideRepository(session).UpsertAsync(
+                FloorPlanDimensionBindingOverride.CreateManualOverride(
+                    draft.Id,
+                    "AB12",
+                    "LinearSpan",
+                    true,
+                    0.96m,
+                    "Manual endpoint rebind.",
+                    new FloorPlanDimensionMeasuredSpanOverride("Width", 100m, 248m, 0m),
+                    [
+                        new FloorPlanDimensionBindingAnchorOverride(1, "edge-a", "WallCandidate", Guid.NewGuid(), Guid.NewGuid(), "Start", 100m, 100m, 0m, null),
+                        new FloorPlanDimensionBindingAnchorOverride(2, "edge-b", "OpeningCandidate", Guid.NewGuid(), Guid.NewGuid(), "Projected", 248m, 120m, 0m, 0.5m)
+                    ],
+                    now.AddMinutes(4)),
+                CancellationToken.None);
+        }
 
         await session.CommitAsync(CancellationToken.None);
     }

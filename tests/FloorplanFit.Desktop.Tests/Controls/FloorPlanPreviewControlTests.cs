@@ -100,6 +100,20 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void Preview_control_exposes_the_dimensions_visibility_toggle_state()
+    {
+        var control = new FloorPlanPreviewControl
+        {
+            AreDimensionsVisible = false
+        };
+
+        Assert.False(control.AreDimensionsVisible);
+        Assert.False(FloorPlanPreviewControl.CanResolveDimensionInteractions(areDimensionsVisible: false, isPinchPlacementArmed: false));
+        Assert.False(FloorPlanPreviewControl.CanResolveDimensionInteractions(areDimensionsVisible: true, isPinchPlacementArmed: true));
+        Assert.True(FloorPlanPreviewControl.CanResolveDimensionInteractions(areDimensionsVisible: true, isPinchPlacementArmed: false));
+    }
+
+    [Fact]
     public void Preview_control_exposes_fixed_plan_components_for_canvas_overlay()
     {
         var pathId = Guid.NewGuid();
@@ -822,6 +836,125 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void CreateProjectedSegments_preserves_all_authored_line_primitives_without_truncating_dimension_extras()
+    {
+        var pathId = Guid.NewGuid();
+        GeometryPathDto[] geometryPaths =
+        [
+            new GeometryPathDto(
+                pathId,
+                IsClosed: false,
+                [new GeometrySegmentDto(pathId, 1, 0m, 0m, 100m, 100m)])
+        ];
+        var viewport = FloorPlanPreviewGeometry.CalculateViewport(geometryPaths, new Rect(0, 0, 500, 500), 48d);
+        Assert.NotNull(viewport);
+        var dimension = new DimensionDto(
+            Guid.NewGuid(),
+            "DIMENSION:EXTRAS",
+            "DIMS",
+            "DIMENSION",
+            "*D171",
+            "10'",
+            "GeometryBlock",
+            string.Empty,
+            120m,
+            3048m,
+            "Inch",
+            0,
+            0m,
+            0m,
+            100m,
+            100m,
+            0m,
+            220m,
+            100m,
+            0m,
+            100m,
+            140m,
+            0m,
+            0.99m,
+            null,
+            1)
+        {
+            LinePrimitives =
+            [
+                new DimensionLinePrimitiveDto("LEFT-LEG", 1, 100m, 140m, 100m, 100m),
+                new DimensionLinePrimitiveDto("RIGHT-LEG", 2, 220m, 140m, 220m, 100m),
+                new DimensionLinePrimitiveDto("ROOF", 3, 100m, 140m, 220m, 140m),
+                new DimensionLinePrimitiveDto("TICK-MARK", 4, 95m, 145m, 105m, 135m),
+                new DimensionLinePrimitiveDto("CENTERLINE", 5, 160m, 90m, 160m, 150m)
+            ]
+        };
+
+        var projected = DimensionPreviewLayerRenderer.CreateProjectedSegments(dimension, viewport.Value);
+
+        Assert.Equal(5, projected.Count);
+        Assert.Equal(viewport.Value.Project(100m, 140m), projected[0].Start);
+        Assert.Equal(viewport.Value.Project(220m, 100m), projected[1].End);
+        Assert.Equal(viewport.Value.Project(220m, 140m), projected[2].End);
+        Assert.Equal(viewport.Value.Project(95m, 145m), projected[3].Start);
+        Assert.Equal(viewport.Value.Project(160m, 90m), projected[4].Start);
+    }
+
+    [Fact]
+    public void CreateProjectedSegments_preserves_authored_duplicate_lines_instead_of_blind_deduping()
+    {
+        var pathId = Guid.NewGuid();
+        GeometryPathDto[] geometryPaths =
+        [
+            new GeometryPathDto(
+                pathId,
+                IsClosed: false,
+                [new GeometrySegmentDto(pathId, 1, 0m, 0m, 100m, 100m)])
+        ];
+        var viewport = FloorPlanPreviewGeometry.CalculateViewport(geometryPaths, new Rect(0, 0, 500, 500), 48d);
+        Assert.NotNull(viewport);
+        var dimension = new DimensionDto(
+            Guid.NewGuid(),
+            "DIMENSION:DUP",
+            "DIMS",
+            "DIMENSION",
+            "*D170",
+            "10'",
+            "GeometryBlock",
+            string.Empty,
+            120m,
+            3048m,
+            "Inch",
+            0,
+            0m,
+            0m,
+            100m,
+            100m,
+            0m,
+            220m,
+            100m,
+            0m,
+            100m,
+            140m,
+            0m,
+            0.99m,
+            null,
+            1)
+        {
+            LinePrimitives =
+            [
+                new DimensionLinePrimitiveDto("LINE-1", 1, 100m, 140m, 100m, 100m),
+                new DimensionLinePrimitiveDto("LINE-1-DUP", 2, 100m, 140m, 100m, 100m),
+                new DimensionLinePrimitiveDto("LINE-2", 3, 220m, 140m, 220m, 100m),
+                new DimensionLinePrimitiveDto("LINE-3", 4, 100m, 140m, 220m, 140m),
+                new DimensionLinePrimitiveDto("LINE-3-REV", 5, 220m, 140m, 100m, 140m)
+            ]
+        };
+
+        var projected = DimensionPreviewLayerRenderer.CreateProjectedSegments(dimension, viewport.Value);
+
+        Assert.Equal(5, projected.Count);
+        Assert.Equal(viewport.Value.Project(100m, 140m), projected[0].Start);
+        Assert.Equal(viewport.Value.Project(100m, 140m), projected[1].Start);
+    }
+
+    [Fact]
     public void ResolveRoomLabelTextOrigin_uses_baseline_for_default_dxf_text()
     {
         var plan = new CadTextPreviewLayerRenderer.TextRenderPlan(
@@ -873,12 +1006,18 @@ public sealed class FloorPlanPreviewControlTests
         var zoomedIn = FloorPlanPreviewControl.CalculateWheelZoomFactor(1d, wheelDeltaY: 1d);
         var zoomedOut = FloorPlanPreviewControl.CalculateWheelZoomFactor(1d, wheelDeltaY: -1d);
         var clampedMinimum = FloorPlanPreviewControl.CalculateWheelZoomFactor(0.2d, wheelDeltaY: -10d);
-        var clampedMaximum = FloorPlanPreviewControl.CalculateWheelZoomFactor(20d, wheelDeltaY: 10d);
+        var clampedMaximum = FloorPlanPreviewControl.CalculateWheelZoomFactor(100d, wheelDeltaY: 10d);
 
         Assert.True(zoomedIn > 1d);
         Assert.True(zoomedOut < 1d);
         Assert.Equal(FloorPlanPreviewControl.MinimumUserZoomFactor, clampedMinimum);
         Assert.Equal(FloorPlanPreviewControl.MaximumUserZoomFactor, clampedMaximum);
+    }
+
+    [Fact]
+    public void MaximumUserZoomFactor_allows_precise_zoom_up_to_eighty_x()
+    {
+        Assert.Equal(80d, FloorPlanPreviewControl.MaximumUserZoomFactor);
     }
 
     [Fact]

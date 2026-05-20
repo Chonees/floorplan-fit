@@ -24,7 +24,17 @@ public sealed record FloorPlanReviewSessionDto(
 
     public IReadOnlyList<MeasurableEdgeDto> MeasurableEdges { get; init; } = [];
 
+    public IReadOnlyList<DimensionBindingDto> DimensionBindings { get; init; } = [];
+
     public IReadOnlyList<DimensionAssociationDto> DimensionAssociations { get; init; } = [];
+
+    public IReadOnlyList<MeasurementCorridorDto> MeasurementCorridors { get; init; } = [];
+
+    public IReadOnlyList<MeasurementNodeDto> MeasurementNodes { get; init; } = [];
+
+    public IReadOnlyList<DimensionIntervalBindingDto> DimensionIntervalBindings { get; init; } = [];
+
+    public IReadOnlyList<ArticulationBandDto> ArticulationBands { get; init; } = [];
 
     public FloorPlanReviewSessionDto(
         Guid templateId,

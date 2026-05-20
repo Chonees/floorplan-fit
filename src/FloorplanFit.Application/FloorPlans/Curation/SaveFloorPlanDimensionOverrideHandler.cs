@@ -8,22 +8,29 @@ public sealed class SaveFloorPlanDimensionOverrideHandler
 {
     private readonly IFloorPlanCurationRepository curationRepository;
     private readonly IFloorPlanDimensionOverrideRepository dimensionOverrideRepository;
+    private readonly IFloorPlanDimensionBindingOverrideRepository dimensionBindingOverrideRepository;
     private readonly IUnitOfWork unitOfWork;
     private readonly IClock clock;
 
     public SaveFloorPlanDimensionOverrideHandler(
         IFloorPlanCurationRepository curationRepository,
         IFloorPlanDimensionOverrideRepository dimensionOverrideRepository,
+        IFloorPlanDimensionBindingOverrideRepository dimensionBindingOverrideRepository,
         IUnitOfWork unitOfWork,
         IClock clock)
     {
         this.curationRepository = curationRepository;
         this.dimensionOverrideRepository = dimensionOverrideRepository;
+        this.dimensionBindingOverrideRepository = dimensionBindingOverrideRepository;
         this.unitOfWork = unitOfWork;
         this.clock = clock;
     }
 
-    public async Task HandleAsync(Guid curationId, DimensionDto dimension, CancellationToken cancellationToken)
+    public async Task HandleAsync(
+        Guid curationId,
+        DimensionDto dimension,
+        DimensionBindingDto? manualBindingOverride,
+        CancellationToken cancellationToken)
     {
         var curation = await curationRepository.GetByIdAsync(curationId, cancellationToken)
             ?? throw new InvalidOperationException("Floor plan curation was not found.");
@@ -66,6 +73,13 @@ public sealed class SaveFloorPlanDimensionOverrideHandler
                 clock.UtcNow,
                 dimension.LastExportedAtUtc),
             cancellationToken);
+        if (manualBindingOverride is not null)
+        {
+            await dimensionBindingOverrideRepository.UpsertAsync(
+                MapBindingOverride(curationId, sourceDimensionKey, manualBindingOverride, clock.UtcNow),
+                cancellationToken);
+        }
+
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
@@ -125,4 +139,40 @@ public sealed class SaveFloorPlanDimensionOverrideHandler
             SourceHandle = primitive.SourceHandle,
             SourceLayer = primitive.SourceLayer
         };
+
+    private static FloorPlanDimensionBindingOverride MapBindingOverride(
+        Guid curationId,
+        string sourceDimensionKey,
+        DimensionBindingDto binding,
+        DateTime updatedAtUtc)
+    {
+        return FloorPlanDimensionBindingOverride.CreateManualOverride(
+            curationId,
+            sourceDimensionKey,
+            binding.BindingKind,
+            binding.IsResolved,
+            binding.Confidence,
+            binding.Notes,
+            binding.MeasuredSpan is null
+                ? null
+                : new FloorPlanDimensionMeasuredSpanOverride(
+                    binding.MeasuredSpan.AxisTag,
+                    binding.MeasuredSpan.StartCoordinate,
+                    binding.MeasuredSpan.EndCoordinate,
+                    binding.MeasuredSpan.OrientationDegrees),
+            binding.Anchors
+                .Select((anchor, index) => new FloorPlanDimensionBindingAnchorOverride(
+                    index + 1,
+                    anchor.EdgeKey,
+                    anchor.SourceArtifactKind,
+                    anchor.SourceArtifactId,
+                    anchor.GeometryPathId,
+                    anchor.EdgeAnchorKind,
+                    anchor.AnchorX,
+                    anchor.AnchorY,
+                    anchor.DistanceSourceUnits,
+                    anchor.SegmentRatio))
+                .ToArray(),
+            updatedAtUtc);
+    }
 }

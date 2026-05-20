@@ -127,6 +127,13 @@
       <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}" />
     </Style>
 
+    <Style Selector="ToggleSwitch.preview-switch">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+
     <Style Selector="TextBox">
       <Setter Property="Background" Value="{DynamicResource InputBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />

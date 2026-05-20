@@ -7,15 +7,18 @@ public sealed class RestoreFloorPlanDimensionOverrideHandler
 {
     private readonly IFloorPlanCurationRepository curationRepository;
     private readonly IFloorPlanDimensionOverrideRepository dimensionOverrideRepository;
+    private readonly IFloorPlanDimensionBindingOverrideRepository dimensionBindingOverrideRepository;
     private readonly IUnitOfWork unitOfWork;
 
     public RestoreFloorPlanDimensionOverrideHandler(
         IFloorPlanCurationRepository curationRepository,
         IFloorPlanDimensionOverrideRepository dimensionOverrideRepository,
+        IFloorPlanDimensionBindingOverrideRepository dimensionBindingOverrideRepository,
         IUnitOfWork unitOfWork)
     {
         this.curationRepository = curationRepository;
         this.dimensionOverrideRepository = dimensionOverrideRepository;
+        this.dimensionBindingOverrideRepository = dimensionBindingOverrideRepository;
         this.unitOfWork = unitOfWork;
     }
 
@@ -29,6 +32,7 @@ public sealed class RestoreFloorPlanDimensionOverrideHandler
         }
 
         await dimensionOverrideRepository.DeleteAsync(curationId, sourceDimensionKey, cancellationToken);
+        await dimensionBindingOverrideRepository.DeleteAsync(curationId, sourceDimensionKey, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }

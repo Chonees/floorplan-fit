@@ -11,12 +11,16 @@ internal static class NativeDimensionHitTester
         Point pointerPosition,
         double hitTolerancePixels,
         out DimensionDto dimension,
-        out FloorPlanPreviewControl.DimensionHandleKind suggestedHandle)
+        out FloorPlanPreviewControl.DimensionHandleKind suggestedHandle,
+        out FloorPlanPreviewControl.DimensionHitArea hitArea,
+        out Point referenceWorldPoint)
     {
         if (dimensions is not { Count: > 0 })
         {
             dimension = null!;
             suggestedHandle = default;
+            hitArea = default;
+            referenceWorldPoint = default;
             return false;
         }
 
@@ -26,16 +30,22 @@ internal static class NativeDimensionHitTester
                 CadTextPreviewLayerRenderer.GetDimensionBounds(item, viewport).Contains(pointerPosition))
             {
                 dimension = item;
-                suggestedHandle = FloorPlanPreviewControl.DimensionHandleKind.TextAnchor;
+                suggestedHandle = FloorPlanPreviewControl.DimensionHandleKind.DimensionLinePoint;
+                hitArea = FloorPlanPreviewControl.DimensionHitArea.BodyText;
+                referenceWorldPoint = NativeDimensionEditor.ResolveImplicitBodyControl(item);
                 return true;
             }
 
-            foreach (var projected in DimensionPreviewLayerRenderer.CreateProjectedSegments(item, viewport))
+            foreach (var segment in EnumerateWorldSegments(item))
             {
-                if (DistanceSquared(pointerPosition, projected.Start, projected.End) <= hitTolerancePixels * hitTolerancePixels)
+                var projectedStart = viewport.Project(segment.StartX, segment.StartY);
+                var projectedEnd = viewport.Project(segment.EndX, segment.EndY);
+                if (DistanceSquared(pointerPosition, projectedStart, projectedEnd) <= hitTolerancePixels * hitTolerancePixels)
                 {
                     dimension = item;
-                    suggestedHandle = GuessSuggestedHandle(item, viewport, pointerPosition);
+                    suggestedHandle = FloorPlanPreviewControl.DimensionHandleKind.DimensionLinePoint;
+                    hitArea = FloorPlanPreviewControl.DimensionHitArea.BodyLine;
+                    referenceWorldPoint = ResolveNearestWorldPoint(segment, projectedStart, projectedEnd, pointerPosition);
                     return true;
                 }
             }
@@ -43,6 +53,8 @@ internal static class NativeDimensionHitTester
 
         dimension = null!;
         suggestedHandle = default;
+        hitArea = default;
+        referenceWorldPoint = default;
         return false;
     }
 
@@ -53,13 +65,15 @@ internal static class NativeDimensionHitTester
         Point pointerPosition,
         double handleTolerancePixels,
         out DimensionDto dimension,
-        out FloorPlanPreviewControl.DimensionHandleKind handleKind)
+        out FloorPlanPreviewControl.DimensionHandleKind handleKind,
+        out Point referenceWorldPoint)
     {
         var resolvedDimension = dimensions?.FirstOrDefault(item => item.DimensionId == highlightedDimensionId);
         if (resolvedDimension is null)
         {
             dimension = null!;
             handleKind = default;
+            referenceWorldPoint = default;
             return false;
         }
 
@@ -70,30 +84,49 @@ internal static class NativeDimensionHitTester
             {
                 dimension = resolvedDimension;
                 handleKind = candidateHandleKind;
+                referenceWorldPoint = worldPoint;
                 return true;
             }
         }
 
         handleKind = default;
         dimension = null!;
+        referenceWorldPoint = default;
         return false;
     }
 
-    private static FloorPlanPreviewControl.DimensionHandleKind GuessSuggestedHandle(
-        DimensionDto dimension,
-        FloorPlanPreviewGeometry.PreviewViewport viewport,
-        Point pointerPosition)
+    private static IReadOnlyList<DimensionLineSegmentDto> EnumerateWorldSegments(DimensionDto dimension)
     {
-        return NativeDimensionEditor.ResolveHandles(dimension)
-            .Select(item => (item.HandleKind, Distance: Distance(viewport.Project(item.WorldPoint.X, item.WorldPoint.Y), pointerPosition)))
-            .OrderBy(item => item.Distance)
-            .First()
-            .HandleKind;
+        return dimension.LinePrimitives.Count > 0
+            ? dimension.LinePrimitives
+                .Select(item => new DimensionLineSegmentDto(item.StartX, item.StartY, item.EndX, item.EndY))
+                .ToArray()
+            : dimension.LineSegments;
     }
 
-    private static double Distance(Point start, Point end)
+    private static Point ResolveNearestWorldPoint(
+        DimensionLineSegmentDto segment,
+        Point projectedStart,
+        Point projectedEnd,
+        Point pointerPosition)
     {
-        return Math.Sqrt(DistanceSquared(start, end));
+        var deltaX = projectedEnd.X - projectedStart.X;
+        var deltaY = projectedEnd.Y - projectedStart.Y;
+        var segmentLengthSquared = (deltaX * deltaX) + (deltaY * deltaY);
+        if (segmentLengthSquared <= double.Epsilon)
+        {
+            return new Point((double)segment.StartX, (double)segment.StartY);
+        }
+
+        var projection = (((pointerPosition.X - projectedStart.X) * deltaX) + ((pointerPosition.Y - projectedStart.Y) * deltaY)) / segmentLengthSquared;
+        var clamped = Math.Clamp(projection, 0d, 1d);
+        var startX = (double)segment.StartX;
+        var startY = (double)segment.StartY;
+        var endX = (double)segment.EndX;
+        var endY = (double)segment.EndY;
+        return new Point(
+            startX + ((endX - startX) * clamped),
+            startY + ((endY - startY) * clamped));
     }
 
     private static double DistanceSquared(Point start, Point end)

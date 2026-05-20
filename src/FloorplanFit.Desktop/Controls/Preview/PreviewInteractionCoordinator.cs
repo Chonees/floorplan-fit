@@ -7,6 +7,7 @@ namespace FloorplanFit.Desktop.Controls.Preview;
 internal static class PreviewInteractionCoordinator
 {
     private const double UserZoomStep = 1.12d;
+    private const double DimensionBodyDragThresholdPixels = 4d;
 
     internal readonly record struct MiddleButtonPanStartRequest(
         Point PointerPosition,
@@ -44,6 +45,7 @@ internal static class PreviewInteractionCoordinator
         GeometryHit? GeometryClick,
         FloorPlanPreviewGeometry.PreviewCompressionEdge? StartedEdgeDrag,
         FloorPlanPreviewControl.PreviewArtifactMoveState? StartedArtifactMove,
+        FloorPlanPreviewControl.PreviewPendingDimensionEditState? PendingDimensionEdit,
         FloorPlanPreviewControl.PreviewDimensionEditState? StartedDimensionEdit);
 
     internal readonly record struct InteractionState(
@@ -55,6 +57,7 @@ internal static class PreviewInteractionCoordinator
         Point DragStartPoint,
         decimal ActivePreviewTrimMm,
         FloorPlanPreviewControl.PreviewArtifactMoveState? ActiveArtifactMove,
+        FloorPlanPreviewControl.PreviewPendingDimensionEditState? PendingDimensionEdit,
         FloorPlanPreviewControl.PreviewDimensionEditState? ActiveDimensionEdit)
     {
         public static InteractionState Default { get; } = new(
@@ -65,6 +68,7 @@ internal static class PreviewInteractionCoordinator
             null,
             default,
             0m,
+            null,
             null,
             null);
 
@@ -80,6 +84,7 @@ internal static class PreviewInteractionCoordinator
                 default,
                 0m,
                 move,
+                null,
                 null);
     }
 
@@ -184,6 +189,7 @@ internal static class PreviewInteractionCoordinator
                     GeometryClick: null,
                     StartedEdgeDrag: edge,
                     StartedArtifactMove: null,
+                    PendingDimensionEdit: null,
                     StartedDimensionEdit: null);
             }
         }
@@ -201,10 +207,12 @@ internal static class PreviewInteractionCoordinator
                 GeometryClick: null,
                 StartedEdgeDrag: null,
                 StartedArtifactMove: null,
+                PendingDimensionEdit: null,
                 StartedDimensionEdit: FloorPlanPreviewControl.PreviewDimensionEditState.Start(
                     dimensionHandleHit.Dimension,
                     dimensionHandleHit.HandleKind,
-                    request.PointerPosition));
+                    request.PointerPosition,
+                    dimensionHandleHit.ReferenceWorldPoint));
         }
 
         if (!request.IsPinchPlacementArmed &&
@@ -220,10 +228,12 @@ internal static class PreviewInteractionCoordinator
                 GeometryClick: null,
                 StartedEdgeDrag: null,
                 StartedArtifactMove: null,
-                StartedDimensionEdit: FloorPlanPreviewControl.PreviewDimensionEditState.Start(
+                PendingDimensionEdit: FloorPlanPreviewControl.PreviewPendingDimensionEditState.Start(
                     dimensionHit.Dimension,
                     dimensionHit.SuggestedHandle,
-                    request.PointerPosition));
+                    request.PointerPosition,
+                    dimensionHit.ReferenceWorldPoint),
+                StartedDimensionEdit: null);
         }
 
         if (!request.IsPinchPlacementArmed &&
@@ -244,6 +254,7 @@ internal static class PreviewInteractionCoordinator
                     request.PointerPosition,
                     roomLabel.X,
                     roomLabel.Y),
+                PendingDimensionEdit: null,
                 StartedDimensionEdit: null);
         }
 
@@ -265,6 +276,7 @@ internal static class PreviewInteractionCoordinator
                     request.PointerPosition,
                     openingLabel.X,
                     openingLabel.Y),
+                PendingDimensionEdit: null,
                 StartedDimensionEdit: null);
         }
 
@@ -302,6 +314,7 @@ internal static class PreviewInteractionCoordinator
             GeometryClick: geometryHit,
             StartedEdgeDrag: null,
             StartedArtifactMove: startedArtifactMove,
+            PendingDimensionEdit: null,
             StartedDimensionEdit: null);
     }
 
@@ -336,6 +349,41 @@ internal static class PreviewInteractionCoordinator
                     {
                         CurrentDeltaX = delta.DeltaX,
                         CurrentDeltaY = delta.DeltaY
+                    }
+                });
+        }
+
+        if (state.PendingDimensionEdit is { } pendingDimensionEdit)
+        {
+            if (request.Viewport is null ||
+                request.Viewport.Value.Scale <= double.Epsilon ||
+                request.ResolveSnappedDimensionWorldPoint is null)
+            {
+                return new PointerMovedOutcome(false, false, state);
+            }
+
+            var pointerDelta = request.PointerPosition - pendingDimensionEdit.PointerStart;
+            var distanceSquared = (pointerDelta.X * pointerDelta.X) + (pointerDelta.Y * pointerDelta.Y);
+            if (distanceSquared < DimensionBodyDragThresholdPixels * DimensionBodyDragThresholdPixels)
+            {
+                return new PointerMovedOutcome(false, false, state);
+            }
+
+            var activeEdit = FloorPlanPreviewControl.PreviewDimensionEditState.Start(
+                pendingDimensionEdit.BaseDimension,
+                pendingDimensionEdit.HandleKind,
+                pendingDimensionEdit.PointerStart,
+                pendingDimensionEdit.ReferenceWorldPoint);
+            var snappedWorld = request.ResolveSnappedDimensionWorldPoint(activeEdit, request.PointerPosition);
+            return new PointerMovedOutcome(
+                Handled: true,
+                InvalidateVisual: true,
+                NextState: state with
+                {
+                    PendingDimensionEdit = null,
+                    ActiveDimensionEdit = activeEdit with
+                    {
+                        CurrentWorldPoint = snappedWorld
                     }
                 });
         }
@@ -417,6 +465,17 @@ internal static class PreviewInteractionCoordinator
                 ReleasePointerCapture: true,
                 NextState: state with { ActiveArtifactMove = null },
                 CommittedArtifactMove: movement,
+                CommittedDimensionEdit: null);
+        }
+
+        if (state.PendingDimensionEdit is not null)
+        {
+            return new PointerReleasedOutcome(
+                Handled: true,
+                InvalidateVisual: false,
+                ReleasePointerCapture: true,
+                NextState: state with { PendingDimensionEdit = null },
+                CommittedArtifactMove: null,
                 CommittedDimensionEdit: null);
         }
 

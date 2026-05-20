@@ -10,12 +10,20 @@ namespace FloorplanFit.Desktop.Tests.Controls;
 public sealed class PreviewInteractionCoordinatorTests
 {
     [Fact]
+    public void CalculateWheelZoomFactor_clamps_to_eighty_x_maximum()
+    {
+        var clampedMaximum = PreviewInteractionCoordinator.CalculateWheelZoomFactor(80d, wheelDeltaY: 10d);
+
+        Assert.Equal(80d, clampedMaximum);
+    }
+
+    [Fact]
     public void CalculateWheelZoomFactor_zooms_in_and_out_with_bounds()
     {
         var zoomedIn = PreviewInteractionCoordinator.CalculateWheelZoomFactor(1d, wheelDeltaY: 1d);
         var zoomedOut = PreviewInteractionCoordinator.CalculateWheelZoomFactor(1d, wheelDeltaY: -1d);
         var clampedMinimum = PreviewInteractionCoordinator.CalculateWheelZoomFactor(0.2d, wheelDeltaY: -10d);
-        var clampedMaximum = PreviewInteractionCoordinator.CalculateWheelZoomFactor(20d, wheelDeltaY: 10d);
+        var clampedMaximum = PreviewInteractionCoordinator.CalculateWheelZoomFactor(100d, wheelDeltaY: 10d);
 
         Assert.True(zoomedIn > 1d);
         Assert.True(zoomedOut < 1d);
@@ -69,10 +77,13 @@ public sealed class PreviewInteractionCoordinatorTests
                 ResolveEdgeDrag: (_, _) => null,
                 ResolveDimensionHandleHit: _ => new FloorPlanPreviewControl.DimensionHandleHit(
                     handleDimension,
-                    FloorPlanPreviewControl.DimensionHandleKind.TextAnchor),
+                    FloorPlanPreviewControl.DimensionHandleKind.FirstDefinitionPoint,
+                    new Point(100d, 140d)),
                 ResolveDimensionHit: _ => new FloorPlanPreviewControl.DimensionHit(
                     bodyDimension,
-                    FloorPlanPreviewControl.DimensionHandleKind.DimensionLinePoint),
+                    FloorPlanPreviewControl.DimensionHandleKind.DimensionLinePoint,
+                    FloorPlanPreviewControl.DimensionHitArea.BodyLine,
+                    new Point(160d, 140d)),
                 ResolveRoomLabelHit: _ => null,
                 ResolveOpeningLabelHit: _ => null,
                 ResolveGeometryHit: _ => null,
@@ -83,6 +94,34 @@ public sealed class PreviewInteractionCoordinatorTests
         Assert.Equal(handleDimension.DimensionId, outcome.DimensionClickedId);
         Assert.NotNull(outcome.StartedDimensionEdit);
         Assert.Equal("DIM-HANDLE", outcome.StartedDimensionEdit.Value.BaseDimension.SourceEntityRef);
+        Assert.Null(outcome.StartedArtifactMove);
+    }
+
+    [Fact]
+    public void HandleLeftButtonPressed_selects_dimension_body_without_starting_edit_until_the_drag_threshold_is_crossed()
+    {
+        var bodyDimension = CreateDimension("DIM-BODY");
+        var outcome = PreviewInteractionCoordinator.HandleLeftButtonPressed(
+            new PreviewInteractionCoordinator.LeftButtonPressRequest(
+                PointerPosition: new Point(320d, 160d),
+                AxisTag: PinchAxisTag.Width,
+                IsPinchPlacementArmed: false,
+                ResolveEdgeDrag: (_, _) => null,
+                ResolveDimensionHandleHit: _ => null,
+                ResolveDimensionHit: _ => new FloorPlanPreviewControl.DimensionHit(
+                    bodyDimension,
+                    FloorPlanPreviewControl.DimensionHandleKind.DimensionLinePoint,
+                    FloorPlanPreviewControl.DimensionHitArea.BodyLine,
+                    new Point(160d, 140d)),
+                ResolveRoomLabelHit: _ => null,
+                ResolveOpeningLabelHit: _ => null,
+                ResolveGeometryHit: _ => null,
+                ResolveMovableArtifact: _ => null));
+
+        Assert.True(outcome.Handled);
+        Assert.True(outcome.CapturePointer);
+        Assert.Equal(bodyDimension.DimensionId, outcome.DimensionClickedId);
+        Assert.Null(outcome.StartedDimensionEdit);
         Assert.Null(outcome.StartedArtifactMove);
     }
 
@@ -129,6 +168,7 @@ public sealed class PreviewInteractionCoordinatorTests
             DragStartPoint: new Point(420d, 200d),
             ActivePreviewTrimMm: 0m,
             ActiveArtifactMove: null,
+            PendingDimensionEdit: null,
             ActiveDimensionEdit: null);
 
         var outcome = PreviewInteractionCoordinator.HandlePointerMoved(
@@ -155,6 +195,7 @@ public sealed class PreviewInteractionCoordinatorTests
             DragStartPoint: new Point(200d, 120d),
             ActivePreviewTrimMm: 18m,
             ActiveArtifactMove: null,
+            PendingDimensionEdit: null,
             ActiveDimensionEdit: null);
 
         var outcome = PreviewInteractionCoordinator.HandlePointerReleased(

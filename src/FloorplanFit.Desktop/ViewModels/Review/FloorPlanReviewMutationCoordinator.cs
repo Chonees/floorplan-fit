@@ -67,6 +67,104 @@ internal sealed class FloorPlanReviewMutationCoordinator
         return await handler.HandleAsync(draftCurationId, groupName, axisTag, cancellationToken);
     }
 
+    public async Task<Guid> AddMeasurementCorridorAsync(
+        Guid draftCurationId,
+        string name,
+        PinchAxisTag axisTag,
+        Guid guideGeometryPathId,
+        decimal bandMinCoordinate,
+        decimal bandMaxCoordinate,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<AddMeasurementCorridorHandler>();
+        return await handler.HandleAsync(
+            draftCurationId,
+            name,
+            axisTag,
+            guideGeometryPathId,
+            bandMinCoordinate,
+            bandMaxCoordinate,
+            cancellationToken);
+    }
+
+    public async Task RemoveMeasurementCorridorAsync(
+        Guid draftCurationId,
+        Guid corridorId,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<RemoveMeasurementCorridorHandler>();
+        await handler.HandleAsync(draftCurationId, corridorId, cancellationToken);
+    }
+
+    public async Task<Guid> AddMeasurementNodeAsync(
+        Guid draftCurationId,
+        Guid corridorId,
+        string referenceKind,
+        string sourceArtifactKind,
+        Guid sourceArtifactId,
+        Guid geometryPathId,
+        string snapKind,
+        decimal anchorX,
+        decimal anchorY,
+        decimal axisCoordinate,
+        decimal offsetAlongAxis,
+        decimal offsetNormal,
+        decimal positionRatio,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<AddMeasurementNodeHandler>();
+        return await handler.HandleAsync(
+            draftCurationId,
+            corridorId,
+            referenceKind,
+            sourceArtifactKind,
+            sourceArtifactId,
+            geometryPathId,
+            snapKind,
+            anchorX,
+            anchorY,
+            axisCoordinate,
+            offsetAlongAxis,
+            offsetNormal,
+            positionRatio,
+            cancellationToken);
+    }
+
+    public async Task SaveDimensionIntervalBindingAsync(
+        Guid draftCurationId,
+        Guid dimensionId,
+        Guid corridorId,
+        Guid startNodeId,
+        Guid endNodeId,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<SaveDimensionIntervalBindingHandler>();
+        await handler.HandleAsync(
+            draftCurationId,
+            dimensionId,
+            corridorId,
+            startNodeId,
+            endNodeId,
+            cancellationToken);
+    }
+
+    public async Task RestoreDimensionIntervalBindingAsync(
+        Guid draftCurationId,
+        Guid dimensionId,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<RestoreDimensionIntervalBindingHandler>();
+        await handler.HandleAsync(
+            draftCurationId,
+            dimensionId,
+            cancellationToken);
+    }
+
     public async Task AddPinchMarkerAsync(
         Guid draftCurationId,
         Guid sourceCandidateId,
@@ -121,11 +219,12 @@ internal sealed class FloorPlanReviewMutationCoordinator
     public async Task SaveDimensionOverrideAsync(
         Guid draftCurationId,
         DimensionDto dimension,
+        DimensionBindingDto? manualBindingOverride,
         CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<SaveFloorPlanDimensionOverrideHandler>();
-        await handler.HandleAsync(draftCurationId, dimension, cancellationToken);
+        await handler.HandleAsync(draftCurationId, dimension, manualBindingOverride, cancellationToken);
     }
 
     public async Task RestoreArtifactPositionAsync(

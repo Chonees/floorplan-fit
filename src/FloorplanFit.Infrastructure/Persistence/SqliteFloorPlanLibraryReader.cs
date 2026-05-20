@@ -64,6 +64,7 @@ public sealed class SqliteFloorPlanLibraryReader : IFloorPlanLibraryReader
                 END AS active_published_curation_id
             FROM floorplan_templates t
             JOIN floorplan_versions v ON v.floorplan_template_id = t.id
+                AND v.deleted_at_utc IS NULL
             JOIN imported_documents d ON d.id = v.imported_document_id
             JOIN measurement_contexts mc ON mc.id = d.measurement_context_id
             WHERE t.is_active = 1

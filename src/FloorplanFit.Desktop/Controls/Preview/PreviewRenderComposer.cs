@@ -78,10 +78,28 @@ internal static class PreviewRenderComposer
                 scene.HighlightGeometryPathId);
         }
 
-        DimensionPreviewLayerRenderer.Render(context, viewport, scene.Dimensions, scene.HighlightDimensionId);
+        MeasurementBindingPreviewLayerRenderer.Render(context, viewport, scene);
+        var nodeBoundDimensionIds = ResolveNodeBoundDimensionIds(scene.DimensionIntervalBindings);
+        if (ShouldRenderDimensions(scene))
+        {
+            DimensionPreviewLayerRenderer.Render(
+                context,
+                viewport,
+                scene.Dimensions,
+                scene.HighlightDimensionId,
+                nodeBoundDimensionIds);
+        }
         CadTextPreviewLayerRenderer.RenderRoomLabels(context, viewport, scene.RoomLabels, scene.HighlightRoomLabelId);
         CadTextPreviewLayerRenderer.RenderOpeningLabels(context, viewport, scene.OpeningLabels, scene.HighlightOpeningLabelId);
-        CadTextPreviewLayerRenderer.RenderDimensions(context, viewport, scene.Dimensions, scene.HighlightDimensionId);
+        if (ShouldRenderDimensions(scene))
+        {
+            CadTextPreviewLayerRenderer.RenderDimensions(
+                context,
+                viewport,
+                scene.Dimensions,
+                scene.HighlightDimensionId,
+                nodeBoundDimensionIds);
+        }
         PinchMarkerPreviewLayerRenderer.Render(
             context,
             viewport,
@@ -89,12 +107,31 @@ internal static class PreviewRenderComposer
             scene.PinchMarkers,
             scene.PreviewPinchGroupId,
             scene.PreviewAxisTag);
-        DimensionPreviewLayerRenderer.RenderHandles(
-            context,
-            viewport,
-            scene.Dimensions,
-            scene.HighlightDimensionId,
-            scene.ActiveDimensionHandleKind);
+        if (ShouldRenderDimensions(scene))
+        {
+            DimensionPreviewLayerRenderer.RenderHandles(
+                context,
+                viewport,
+                scene.Dimensions,
+                scene.HighlightDimensionId,
+                scene.ActiveDimensionHandleKind);
+        }
+    }
+
+    internal static bool ShouldRenderDimensions(PreviewRenderScene scene)
+        => scene.AreDimensionsVisible && scene.Dimensions.Count > 0;
+
+    internal static IReadOnlySet<Guid> ResolveNodeBoundDimensionIds(
+        IReadOnlyList<DimensionIntervalBindingDto>? dimensionIntervalBindings)
+    {
+        if (dimensionIntervalBindings is not { Count: > 0 })
+        {
+            return new HashSet<Guid>();
+        }
+
+        return dimensionIntervalBindings
+            .Select(binding => binding.DimensionId)
+            .ToHashSet();
     }
 
     internal static IReadOnlyList<GeometryPathDto> ResolveOrderedBasePaths(

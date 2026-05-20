@@ -362,14 +362,33 @@
         <Grid RowDefinitions="Auto,Auto,*"
               RowSpacing="12"
               ClipToBounds="True">
-          <StackPanel Spacing="6">
-            <TextBlock FontSize="20"
-                       FontWeight="SemiBold"
-                       Text="Preview" />
-            <TextBlock Classes="muted"
-                       Text="{Binding PreviewSelectionLabel}"
-                       TextWrapping="Wrap" />
-          </StackPanel>
+          <Grid ColumnDefinitions="*,Auto"
+                ColumnSpacing="12">
+            <StackPanel Spacing="6">
+              <TextBlock FontSize="20"
+                         FontWeight="SemiBold"
+                         Text="Preview" />
+              <TextBlock Classes="muted"
+                         Text="{Binding PreviewSelectionLabel}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Border Grid.Column="1"
+                    Classes="metric-chip"
+                    VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal"
+                          Spacing="10">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Cotas"
+                           VerticalAlignment="Center" />
+                <ToggleSwitch Classes="preview-switch"
+                              IsChecked="{Binding ArePreviewDimensionsVisible}"
+                              OnContent="Visibles"
+                              OffContent="Ocultas"
+                              ToolTip.Tip="Mostr\u00E1 u ocult\u00E1 visualmente todas las cotas del preview." />
+              </StackPanel>
+            </Border>
+          </Grid>
 
           <Border Grid.Row="1"
                   Classes="section-card">
@@ -397,12 +416,23 @@
                                             OpeningCandidates="{Binding OpeningCandidates}"
                                             OpeningLabels="{Binding OpeningLabels}"
                                             HighlightOpeningLabelId="{Binding SelectedOpeningLabelId}"
-                                            Dimensions="{Binding Dimensions}"
-                                            DimensionAssociations="{Binding DimensionAssociations}"
-                                            HighlightDimensionId="{Binding SelectedDimensionId}"
-                                            FixedPlanComponents="{Binding FixedPlanComponents}"
-                                            ProtectedDetailAssemblies="{Binding ProtectedDetailAssemblies}"
-                                            CuratedPlanArtifacts="{Binding VisibleCuratedPlanArtifacts}"
+                                             Dimensions="{Binding Dimensions}"
+                                             MeasurementContext="{Binding MeasurementContext}"
+                                             DimensionBindings="{Binding DimensionBindings}"
+                                             DimensionAssociations="{Binding DimensionAssociations}"
+                                             MeasurementCorridors="{Binding MeasurementCorridors}"
+                                             MeasurementNodes="{Binding MeasurementNodes}"
+                                             DimensionIntervalBindings="{Binding DimensionIntervalBindings}"
+                                             ArticulationBands="{Binding ArticulationBands}"
+                                             SelectedMeasurementCorridorId="{Binding SelectedMeasurementCorridor.CorridorId}"
+                                             SelectedMeasurementNodeId="{Binding SelectedMeasurementNode.NodeId}"
+                                             SelectedMeasurementStartNodeId="{Binding SelectedMeasurementStartNode.NodeId}"
+                                            SelectedMeasurementEndNodeId="{Binding SelectedMeasurementEndNode.NodeId}"
+                                             HighlightDimensionId="{Binding SelectedDimensionId}"
+                                             AreDimensionsVisible="{Binding ArePreviewDimensionsVisible}"
+                                             FixedPlanComponents="{Binding FixedPlanComponents}"
+                                             ProtectedDetailAssemblies="{Binding ProtectedDetailAssemblies}"
+                                             CuratedPlanArtifacts="{Binding VisibleCuratedPlanArtifacts}"
                                             PreviewPinchGroupId="{Binding SelectedPinchGroupId}"
                                             PreviewAxisTag="{Binding SelectedPinchAxis}"
                                             IsPinchPlacementArmed="{Binding IsPinchPlacementArmed}" />
@@ -535,12 +565,12 @@
                       IsVisible="{Binding IsActionsToolSelected}">
                   <StackPanel Spacing="8">
                     <TextBlock FontWeight="SemiBold"
-                              Text="Selection Actions" />
-                    <Button Content="Export Adjusted DXF"
+                              Text="Acciones de selección" />
+                    <Button Content="Exportar DXF ajustado"
                             Click="ExportAdjustedDxfButton_OnClick" />
                     <Button Classes="danger"
                             IsEnabled="{Binding HasSelectedArtifact}"
-                            Content="Exclude from Curation"
+                            Content="Excluir del curado"
                           Click="ExcludeSelectedArtifactButton_OnClick" />
                 </StackPanel>
               </Border>
@@ -549,20 +579,20 @@
                           Spacing="12">
                 <TextBlock FontSize="20"
                            FontWeight="SemiBold"
-                           Text="Fit Constraints" />
+                           Text="Reglas de ajuste" />
 
                 <Border Classes="section-card">
                   <StackPanel Spacing="8">
                     <TextBlock FontWeight="SemiBold"
-                               Text="Pinch Groups" />
+                               Text="Grupos de ajuste" />
                     <TextBlock Classes="caption"
-                               Text="Group name" />
+                               Text="Nombre del grupo" />
                     <TextBox Text="{Binding NewPinchGroupName}" />
                     <TextBlock Classes="caption"
-                               Text="Axis" />
+                               Text="Eje" />
                     <ComboBox ItemsSource="{Binding PinchAxisOptions}"
                               SelectedItem="{Binding SelectedPinchAxis}" />
-                    <Button Content="Create Group"
+                    <Button Content="Crear grupo"
                             Click="AddPinchGroupButton_OnClick" />
                     <ListBox ItemsSource="{Binding PinchGroups}"
                              SelectedItem="{Binding SelectedPinchGroup}">
@@ -586,16 +616,16 @@
                 <Border Classes="section-card">
                   <StackPanel Spacing="8">
                     <TextBlock FontWeight="SemiBold"
-                               Text="Add Pinch" />
+                               Text="Agregar ajuste" />
                     <TextBlock Classes="caption"
-                               Text="Max trim (mm)" />
+                               Text="Ajuste máximo (mm)" />
                     <TextBox Text="{Binding NewPinchMaxTrimMm}" />
                     <Button Content="{Binding AddPinchButtonLabel}"
                             Click="AddPinchButton_OnClick" />
                     <TextBlock Classes="caption"
-                               Text="Preview Handles" />
+                               Text="Manijas de preview" />
                     <TextBlock Classes="muted"
-                               Text="Drag the visible handles directly on the canvas. Width uses left/right. Height uses top/bottom."
+                               Text="Arrastrá las manijas visibles directamente en el canvas. Ancho usa izquierda/derecha. Alto usa arriba/abajo."
                                TextWrapping="Wrap" />
                   </StackPanel>
                 </Border>
@@ -603,7 +633,7 @@
                 <Border Classes="section-card">
                   <StackPanel Spacing="8">
                     <TextBlock FontWeight="SemiBold"
-                               Text="Placed Pinches" />
+                               Text="Ajustes marcados" />
                     <ListBox ItemsSource="{Binding PinchMarkers}"
                              SelectedItem="{Binding SelectedPinchMarker}">
                       <ListBox.ItemTemplate>
@@ -615,18 +645,169 @@
                                          Text="{Binding PinchGroupName}" />
                               <TextBlock Classes="muted"
                                          Text="{Binding AxisTag}" />
-                              <TextBlock Classes="caption"
-                                         Text="{Binding MaxTrimMm, StringFormat='Max trim: {0} mm'}" />
-                              <TextBlock Classes="caption"
-                                         Text="{Binding PositionRatio, StringFormat='Line ratio: {0:F2}'}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding MaxTrimMm, StringFormat='Ajuste máximo: {0} mm'}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding PositionRatio, StringFormat='Posición sobre la línea: {0:F2}'}" />
                             </StackPanel>
                           </Border>
                         </DataTemplate>
                       </ListBox.ItemTemplate>
                     </ListBox>
                     <Button Classes="subtle"
-                            Content="Remove Pinch"
+                            Content="Quitar ajuste"
                             Click="RemovePinchButton_OnClick" />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Bandas de ajuste" />
+                    <TextBlock Classes="muted"
+                               Text="Rangos reducibles sugeridos (min-max) calculados desde los pinches seleccionados."
+                               TextWrapping="Wrap" />
+                    <ListBox ItemsSource="{Binding ArticulationBands}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:ArticulationBandDto">
+                          <Border Classes="section-card"
+                                  Margin="0,8,0,0">
+                            <StackPanel Spacing="4">
+                              <TextBlock FontWeight="SemiBold"
+                                         Text="{Binding PinchGroupName}" />
+                              <TextBlock Classes="muted"
+                                         Text="{Binding AxisTag}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding BandStartCoordinate, StringFormat='Inicio banda: {0:0.###}'}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding BandEndCoordinate, StringFormat='Fin banda: {0:0.###}'}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding MaxTrimMm, StringFormat='Ajuste máximo total: {0:0.###} mm'}" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                    <TextBlock Classes="muted"
+                               Text="{Binding SelectedPinchGroupImpactSummary}"
+                               TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Franjas de medida" />
+                    <TextBlock Classes="muted"
+                               Text="Primero seleccioná una línea del preview. Después creá la franja local donde vive esa medida."
+                               TextWrapping="Wrap" />
+                    <TextBlock Classes="caption"
+                               Text="Nombre de la franja" />
+                     <TextBox Text="{Binding NewMeasurementCorridorName}"
+                              Watermark="Patio-Width" />
+                     <StackPanel Orientation="Horizontal"
+                                 Spacing="8">
+                       <Button Content="Crear franja"
+                               Click="AddMeasurementCorridorButton_OnClick" />
+                       <Button Classes="subtle"
+                               Content="Eliminar franja"
+                               IsEnabled="{Binding CanRemoveSelectedMeasurementCorridor}"
+                               Click="RemoveMeasurementCorridorButton_OnClick" />
+                     </StackPanel>
+                     <ListBox ItemsSource="{Binding MeasurementCorridors}"
+                              SelectedItem="{Binding SelectedMeasurementCorridor}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:MeasurementCorridorDto">
+                          <Border Classes="section-card"
+                                  Margin="0,8,0,0">
+                            <StackPanel Spacing="4">
+                              <TextBlock FontWeight="SemiBold"
+                                         Text="{Binding Name}" />
+                              <TextBlock Classes="muted"
+                                         Text="{Binding AxisTag}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding BandMinCoordinate, StringFormat='Inicio franja: {0:0.###}'}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding BandMaxCoordinate, StringFormat='Fin franja: {0:0.###}'}" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Puntos de medida" />
+                    <TextBlock Classes="muted"
+                               Text="Primero elegí una franja. Después tocá 'Elegir punto' y hacé click sobre una geometría válida del preview."
+                               TextWrapping="Wrap" />
+                    <TextBlock Classes="caption"
+                               Text="{Binding SelectedMeasurementCorridor.Name, FallbackValue='No hay franja seleccionada'}" />
+                    <Button Content="{Binding AddMeasurementNodeButtonLabel}"
+                            Click="AddMeasurementNodeButton_OnClick" />
+                    <ListBox ItemsSource="{Binding SelectedMeasurementCorridorNodes}"
+                             SelectedItem="{Binding SelectedMeasurementNode}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:MeasurementNodeDto">
+                          <Border Classes="section-card"
+                                  Margin="0,8,0,0">
+                            <StackPanel Spacing="4">
+                              <TextBlock FontWeight="SemiBold"
+                                         Text="{Binding ReferenceKind}" />
+                              <TextBlock Classes="muted"
+                                         Text="{Binding SourceArtifactKind}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding AxisCoordinate, StringFormat='Coordenada eje: {0:0.###}'}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding PositionRatio, StringFormat='Posición sobre la línea: {0:F2}'}" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="section-card">
+                  <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Definir qué mide la cota" />
+                    <TextBlock Classes="muted"
+                               Text="{Binding SelectedDimensionIntervalBindingSummary}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Classes="muted"
+                               Text="{Binding SelectedDimensionImpactSummary}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Classes="caption"
+                               Text="Punto inicial" />
+                    <ComboBox ItemsSource="{Binding SelectedMeasurementCorridorNodes}"
+                              SelectedItem="{Binding SelectedMeasurementStartNode}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:MeasurementNodeDto">
+                          <TextBlock Text="{Binding AxisCoordinate, StringFormat='Punto {0:0.###}'}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Classes="caption"
+                               Text="Punto final" />
+                    <ComboBox ItemsSource="{Binding SelectedMeasurementCorridorNodes}"
+                              SelectedItem="{Binding SelectedMeasurementEndNode}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:MeasurementNodeDto">
+                          <TextBlock Text="{Binding AxisCoordinate, StringFormat='Punto {0:0.###}'}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Content="Guardar qué mide"
+                            IsEnabled="{Binding CanSaveSelectedDimensionIntervalBinding}"
+                            Click="SaveDimensionIntervalBindingButton_OnClick" />
+                    <Button Classes="subtle"
+                            Content="Volver a medida fija"
+                            IsEnabled="{Binding CanRestoreSelectedDimensionIntervalBinding}"
+                            Click="RestoreDimensionIntervalBindingButton_OnClick" />
                   </StackPanel>
                 </Border>
               </StackPanel>

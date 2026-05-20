@@ -23,7 +23,8 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
         var dimension = CreateDimension();
         var session = CreateSession(templateId, dimension);
         var repository = new InMemoryFloorPlanDimensionOverrideRepository();
-        var services = BuildServices(template, session, repository, new FakeExportAdjustedDxfHandler());
+        var bindingRepository = new InMemoryFloorPlanDimensionBindingOverrideRepository();
+        var services = BuildServices(template, session, repository, bindingRepository, new FakeExportAdjustedDxfHandler());
 
         using var provider = services.BuildServiceProvider();
         var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
@@ -34,13 +35,44 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
             new FloorPlanPreviewControl.DimensionEditedEventArgs(
                 dimension.DimensionId,
                 dimension.SourceHandle ?? dimension.SourceEntityRef,
-                dimension with { DisplayText = "11'-0\"", RenderTextX = 180m, IsEdited = true, IsDirty = true }),
+                dimension with { DisplayText = "11'-0\"", RenderTextX = 180m, IsEdited = true, IsDirty = true },
+                FloorPlanPreviewControl.DimensionHandleKind.DimensionLinePoint),
             CancellationToken.None);
 
         var saved = Assert.Single(repository.Items);
         Assert.Equal("AB12", saved.SourceDimensionKey);
         Assert.Equal("11'-0\"", saved.DisplayText);
         Assert.Equal(dimension.DimensionId, viewModel.SelectedDimension?.DimensionId);
+        Assert.Empty(bindingRepository.Items);
+    }
+
+    [Fact]
+    public async Task SaveEditedDimensionAsync_endpoint_drag_does_not_persist_proximity_based_binding_override()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var dimension = CreateDimension();
+        var session = CreateSession(templateId, dimension);
+        var repository = new InMemoryFloorPlanDimensionOverrideRepository();
+        var bindingRepository = new InMemoryFloorPlanDimensionBindingOverrideRepository();
+        var services = BuildServices(template, session, repository, bindingRepository, new FakeExportAdjustedDxfHandler());
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectDimension(dimension.DimensionId);
+
+        await viewModel.SaveEditedDimensionAsync(
+            new FloorPlanPreviewControl.DimensionEditedEventArgs(
+                dimension.DimensionId,
+                dimension.SourceHandle ?? dimension.SourceEntityRef,
+                dimension with { DefPoint2Y = 120m, IsEdited = true, IsDirty = true },
+                FloorPlanPreviewControl.DimensionHandleKind.SecondDefinitionPoint),
+            CancellationToken.None);
+
+        Assert.Empty(bindingRepository.Items);
     }
 
     [Fact]
@@ -53,7 +85,12 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
         var dimension = CreateDimension() with { IsEdited = true, IsDirty = true };
         var session = CreateSession(templateId, dimension);
         var exportHandler = new FakeExportAdjustedDxfHandler();
-        var services = BuildServices(template, session, new InMemoryFloorPlanDimensionOverrideRepository(), exportHandler);
+        var services = BuildServices(
+            template,
+            session,
+            new InMemoryFloorPlanDimensionOverrideRepository(),
+            new InMemoryFloorPlanDimensionBindingOverrideRepository(),
+            exportHandler);
 
         using var provider = services.BuildServiceProvider();
         var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
@@ -76,7 +113,7 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
         var dimension = CreateDimension() with { IsEdited = true, IsDirty = true };
         var session = CreateSession(templateId, dimension);
         var repository = new InMemoryFloorPlanDimensionOverrideRepository();
-        var services = BuildServices(template, session, repository, new FakeExportAdjustedDxfHandler());
+        var services = BuildServices(template, session, repository, new InMemoryFloorPlanDimensionBindingOverrideRepository(), new FakeExportAdjustedDxfHandler());
 
         using var provider = services.BuildServiceProvider();
         var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
@@ -155,21 +192,22 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
                 0m)
         };
         var session = CreateSession(templateId, dimension, [association]);
-        var services = BuildServices(template, session, new InMemoryFloorPlanDimensionOverrideRepository(), new FakeExportAdjustedDxfHandler());
+        var services = BuildServices(template, session, new InMemoryFloorPlanDimensionOverrideRepository(), new InMemoryFloorPlanDimensionBindingOverrideRepository(), new FakeExportAdjustedDxfHandler());
 
         using var provider = services.BuildServiceProvider();
         var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
         await viewModel.LoadAsync(CancellationToken.None);
         viewModel.SelectDimension(dimension.DimensionId);
 
-        Assert.Contains("Association: WallCandidate -> OpeningCandidate", viewModel.SelectedArtifactDetails, StringComparison.Ordinal);
-        Assert.Contains("assoc: start=WallCandidate:wall-a:path-a:1/Start", viewModel.SelectedArtifactPositionSummary, StringComparison.Ordinal);
+        Assert.Contains("Association inference (diagnostic only): WallCandidate -> OpeningCandidate", viewModel.SelectedArtifactDetails, StringComparison.Ordinal);
+        Assert.Contains("assoc inference: start=WallCandidate:wall-a:path-a:1/Start", viewModel.SelectedArtifactPositionSummary, StringComparison.Ordinal);
     }
 
     private static ServiceCollection BuildServices(
         FloorPlanTemplate template,
         FloorPlanReviewSessionDto session,
         InMemoryFloorPlanDimensionOverrideRepository dimensionOverrideRepository,
+        InMemoryFloorPlanDimensionBindingOverrideRepository dimensionBindingOverrideRepository,
         FakeExportAdjustedDxfHandler exportHandler)
     {
         var services = new ServiceCollection();
@@ -179,6 +217,7 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
         services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 11, 23, 0, 0, DateTimeKind.Utc)));
         services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(session));
         services.AddSingleton<IFloorPlanDimensionOverrideRepository>(dimensionOverrideRepository);
+        services.AddSingleton<IFloorPlanDimensionBindingOverrideRepository>(dimensionBindingOverrideRepository);
         services.AddSingleton<ExportAdjustedDxfHandler>(exportHandler);
         services.AddTransient<SaveFloorPlanDimensionOverrideHandler>();
         services.AddTransient<RestoreFloorPlanDimensionOverrideHandler>();
@@ -200,18 +239,26 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
             "Curated Draft",
             1,
             null,
+            [
+                new GeometryPathDto(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), false, [new GeometrySegmentDto(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), 1, 100m, 100m, 100m, 140m)]),
+                new GeometryPathDto(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), false, [new GeometrySegmentDto(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), 1, 224m, 100m, 224m, 140m)])
+            ],
+            [],
+            [
+                new OpeningCandidateDto(Guid.Parse("22222222-2222-2222-2222-222222222222"), "LINE:OPENING", "DOORS", "Door", "LINE", Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), 0.95m, null, 1)
+            ],
             [],
             [],
             [],
-            [],
-            [],
-            [],
-            [],
+            [
+                new WallCandidateDto(Guid.Parse("11111111-1111-1111-1111-111111111111"), "LINE:WALL", "WALLS", "Accepted", 0.95m, null, null, Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), 1)
+            ],
             [],
             [],
             [])
         {
             Dimensions = [dimension],
+            MeasurementContext = new MeasurementContextDto("Inch", 25.4m, 1m, 1m),
             DimensionAssociations = associations ?? []
         };
     }
@@ -361,6 +408,31 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
 
         public Task MarkExportedAsync(Guid floorPlanCurationId, IReadOnlyList<string> sourceDimensionKeys, DateTime exportedAtUtc, CancellationToken cancellationToken)
             => Task.CompletedTask;
+    }
+
+    private sealed class InMemoryFloorPlanDimensionBindingOverrideRepository : IFloorPlanDimensionBindingOverrideRepository
+    {
+        public List<FloorPlanDimensionBindingOverride> Items { get; } = [];
+
+        public Task<IReadOnlyList<FloorPlanDimensionBindingOverride>> ListByCurationAsync(Guid floorPlanCurationId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<FloorPlanDimensionBindingOverride>>(Items.Where(item => item.FloorPlanCurationId == floorPlanCurationId).ToArray());
+
+        public Task UpsertAsync(FloorPlanDimensionBindingOverride bindingOverride, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item =>
+                item.FloorPlanCurationId == bindingOverride.FloorPlanCurationId &&
+                string.Equals(item.SourceDimensionKey, bindingOverride.SourceDimensionKey, StringComparison.Ordinal));
+            Items.Add(bindingOverride);
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAsync(Guid floorPlanCurationId, string sourceDimensionKey, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item =>
+                item.FloorPlanCurationId == floorPlanCurationId &&
+                string.Equals(item.SourceDimensionKey, sourceDimensionKey, StringComparison.Ordinal));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeExportAdjustedDxfHandler : ExportAdjustedDxfHandler

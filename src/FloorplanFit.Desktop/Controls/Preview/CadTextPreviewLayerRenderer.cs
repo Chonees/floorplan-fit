@@ -59,7 +59,8 @@ internal static class CadTextPreviewLayerRenderer
         DrawingContext context,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
         IReadOnlyList<DimensionDto>? dimensions,
-        Guid? highlightedDimensionId = null)
+        Guid? highlightedDimensionId = null,
+        IReadOnlySet<Guid>? nodeBoundDimensionIds = null)
     {
         if (dimensions is not { Count: > 0 })
         {
@@ -73,7 +74,11 @@ internal static class CadTextPreviewLayerRenderer
                 continue;
             }
 
-            var plan = CreateDimensionRenderPlan(dimension, viewport, dimension.DimensionId == highlightedDimensionId);
+            var plan = CreateDimensionRenderPlan(
+                dimension,
+                viewport,
+                dimension.DimensionId == highlightedDimensionId,
+                nodeBoundDimensionIds?.Contains(dimension.DimensionId) == true);
             RenderText(context, plan, dimension.RenderTextStyleName);
         }
     }
@@ -148,7 +153,8 @@ internal static class CadTextPreviewLayerRenderer
     internal static TextRenderPlan CreateDimensionRenderPlan(
         DimensionDto dimension,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
-        bool isSelected = false)
+        bool isSelected = false,
+        bool isNodeBound = false)
     {
         var anchor = ResolveDimensionTextAnchor(dimension);
         var fontSize = dimension.RenderTextHeight is > 0m
@@ -162,9 +168,19 @@ internal static class CadTextPreviewLayerRenderer
             HorizontalAlignment: dimension.RenderTextHorizontalAlignment ?? "Center",
             VerticalAlignment: dimension.RenderTextVerticalAlignment ?? "Middle",
             AttachmentPoint: dimension.RenderTextAttachmentPoint,
-            isSelected
-                ? PreviewSemanticPalette.SelectionHighlightArgb
-                : PreviewSemanticPalette.ReadablePreviewLabelColorArgb);
+            ResolveDimensionTextColorArgb(isSelected, isNodeBound));
+    }
+
+    internal static string ResolveDimensionTextColorArgb(bool isSelected, bool isNodeBound)
+    {
+        if (isSelected)
+        {
+            return PreviewSemanticPalette.SelectionHighlightArgb;
+        }
+
+        return isNodeBound
+            ? PreviewSemanticPalette.DimensionNodeBoundArgb
+            : PreviewSemanticPalette.ReadablePreviewLabelColorArgb;
     }
 
     internal static Point ResolveTextOriginForMetrics(
@@ -348,11 +364,11 @@ internal static class CadTextPreviewLayerRenderer
         var p3 = new Point((double)dimension.DefPoint3X, (double)dimension.DefPoint3Y);
         var axis = ResolveDimensionAxis(dimension, p1, p2);
         var normal = new Vector(-axis.Y, axis.X);
-        var midpointAlongAxis = (Dot(p1, axis) + Dot(p2, axis)) / 2d;
-        var offsetFromDimensionLine = Dot(p3, normal);
+        var midpoint = new Point((p1.X + p2.X) / 2d, (p1.Y + p2.Y) / 2d);
+        var offsetAlongNormal = ((p3.X - p1.X) * normal.X) + ((p3.Y - p1.Y) * normal.Y);
         return new Point(
-            (midpointAlongAxis * axis.X) + (offsetFromDimensionLine * normal.X),
-            (midpointAlongAxis * axis.Y) + (offsetFromDimensionLine * normal.Y));
+            midpoint.X + (normal.X * offsetAlongNormal),
+            midpoint.Y + (normal.Y * offsetAlongNormal));
     }
 
     private static Vector ResolveDimensionAxis(DimensionDto dimension, Point p1, Point p2)

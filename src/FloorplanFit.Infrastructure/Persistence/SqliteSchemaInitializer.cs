@@ -306,6 +306,49 @@ public static class SqliteSchemaInitializer
                 sort_order INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS measurement_corridors (
+                id TEXT PRIMARY KEY,
+                floorplan_curation_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                axis_tag INTEGER NOT NULL,
+                guide_geometry_path_id TEXT NOT NULL,
+                band_min_coordinate TEXT NOT NULL,
+                band_max_coordinate TEXT NOT NULL,
+                status TEXT NOT NULL,
+                sort_order INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS measurement_nodes (
+                id TEXT PRIMARY KEY,
+                floorplan_curation_id TEXT NOT NULL,
+                corridor_id TEXT NOT NULL,
+                sort_order INTEGER NOT NULL,
+                reference_kind TEXT NOT NULL,
+                source_artifact_kind TEXT NOT NULL,
+                source_artifact_id TEXT NOT NULL,
+                geometry_path_id TEXT NOT NULL,
+                snap_kind TEXT NOT NULL,
+                anchor_x TEXT NOT NULL,
+                anchor_y TEXT NOT NULL,
+                axis_coordinate TEXT NOT NULL,
+                offset_along_axis TEXT NOT NULL,
+                offset_normal TEXT NOT NULL,
+                position_ratio TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS floorplan_dimension_interval_bindings (
+                floorplan_curation_id TEXT NOT NULL,
+                dimension_id TEXT NOT NULL,
+                corridor_id TEXT NOT NULL,
+                start_node_id TEXT NOT NULL,
+                end_node_id TEXT NOT NULL,
+                binding_status TEXT NOT NULL,
+                interval_start_coordinate TEXT NOT NULL,
+                interval_end_coordinate TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL,
+                PRIMARY KEY (floorplan_curation_id, dimension_id)
+            );
+
             CREATE TABLE IF NOT EXISTS floorplan_artifact_classifications (
                 floorplan_curation_id TEXT NOT NULL,
                 source_artifact_kind TEXT NOT NULL,
@@ -420,8 +463,52 @@ public static class SqliteSchemaInitializer
         EnsureArtifactPositionSchema(connection);
         EnsureLabelOverrideSchema(connection);
         EnsureDimensionOverrideSchema(connection);
+        EnsureMeasurementIntervalBindingSchema(connection);
         EnsurePinchMarkersSchema(connection);
+        EnsureFloorPlanVersionsSoftDeleteSchema(connection);
+        EnsureDeletionPipelineIndexes(connection);
         return Task.CompletedTask;
+    }
+
+    private static void EnsureFloorPlanVersionsSoftDeleteSchema(SqliteConnection connection)
+    {
+        EnsureColumnExists(connection, "floorplan_versions", "deleted_at_utc", "TEXT NULL");
+    }
+
+    private static void EnsureDeletionPipelineIndexes(SqliteConnection connection)
+    {
+        var indexStatements = new[]
+        {
+            "CREATE INDEX IF NOT EXISTS idx_floorplan_versions_template_active ON floorplan_versions(floorplan_template_id, deleted_at_utc)",
+            "CREATE INDEX IF NOT EXISTS idx_floorplan_versions_deleted_at ON floorplan_versions(deleted_at_utc)",
+            "CREATE INDEX IF NOT EXISTS idx_floorplan_curations_version ON floorplan_curations(floorplan_version_id)",
+            "CREATE INDEX IF NOT EXISTS idx_wall_extraction_runs_version ON wall_extraction_runs(floorplan_version_id)",
+            "CREATE INDEX IF NOT EXISTS idx_geometry_segments_path ON geometry_segments(geometry_path_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_wall_candidates_run ON extracted_wall_candidates(wall_extraction_run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_room_labels_run ON extracted_room_labels(wall_extraction_run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_opening_candidates_run ON extracted_opening_candidates(wall_extraction_run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_opening_labels_run ON extracted_opening_labels(wall_extraction_run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_fixed_plan_components_run ON extracted_fixed_plan_components(wall_extraction_run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_protected_detail_assemblies_run ON extracted_protected_detail_assemblies(wall_extraction_run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_dimensions_run ON extracted_dimensions(wall_extraction_run_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_dimension_line_segments_dim ON extracted_dimension_line_segments(dimension_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_dimension_primitives_dim ON extracted_dimension_primitives(dimension_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_fixed_plan_component_paths_component ON extracted_fixed_plan_component_paths(fixed_plan_component_id)",
+            "CREATE INDEX IF NOT EXISTS idx_extracted_protected_detail_assembly_paths_assembly ON extracted_protected_detail_assembly_paths(protected_detail_assembly_id)",
+            "CREATE INDEX IF NOT EXISTS idx_pinch_markers_curation ON pinch_markers(floorplan_curation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_pinch_groups_curation ON pinch_groups(floorplan_curation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_floorplan_dimension_overrides_curation ON floorplan_dimension_overrides(floorplan_curation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_floorplan_dimension_override_primitives_curation ON floorplan_dimension_override_primitives(floorplan_curation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_floorplan_dimension_binding_overrides_curation ON floorplan_dimension_binding_overrides(floorplan_curation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_floorplan_dimension_binding_override_anchors_curation ON floorplan_dimension_binding_override_anchors(floorplan_curation_id)"
+        };
+
+        foreach (var sql in indexStatements)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            command.ExecuteNonQuery();
+        }
     }
 
     private static void EnsureRoomLabelsSchema(SqliteConnection connection)
@@ -608,6 +695,70 @@ public static class SqliteSchemaInitializer
         {
             command.CommandText =
                 """
+                CREATE TABLE IF NOT EXISTS floorplan_dimension_binding_overrides (
+                    floorplan_curation_id TEXT NOT NULL,
+                    source_dimension_key TEXT NOT NULL,
+                    binding_kind TEXT NOT NULL,
+                    is_resolved INTEGER NOT NULL,
+                    confidence TEXT NOT NULL,
+                    notes TEXT NOT NULL,
+                    axis_tag TEXT NULL,
+                    start_coordinate TEXT NULL,
+                    end_coordinate TEXT NULL,
+                    orientation_degrees TEXT NULL,
+                    updated_at_utc TEXT NOT NULL,
+                    PRIMARY KEY (floorplan_curation_id, source_dimension_key)
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS floorplan_dimension_binding_override_anchors (
+                    floorplan_curation_id TEXT NOT NULL,
+                    source_dimension_key TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL,
+                    edge_key TEXT NOT NULL,
+                    source_artifact_kind TEXT NOT NULL,
+                    source_artifact_id TEXT NOT NULL,
+                    geometry_path_id TEXT NOT NULL,
+                    edge_anchor_kind TEXT NOT NULL,
+                    anchor_x TEXT NOT NULL,
+                    anchor_y TEXT NOT NULL,
+                    distance_source_units TEXT NOT NULL,
+                    segment_ratio TEXT NULL,
+                    PRIMARY KEY (floorplan_curation_id, source_dimension_key, sort_order)
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        EnsureColumnExists(connection, "floorplan_dimension_binding_overrides", "binding_kind", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_overrides", "is_resolved", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_overrides", "confidence", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_overrides", "notes", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_overrides", "axis_tag", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_overrides", "start_coordinate", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_overrides", "end_coordinate", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_overrides", "orientation_degrees", "TEXT NULL");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_overrides", "updated_at_utc", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_override_anchors", "edge_key", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_override_anchors", "source_artifact_kind", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_override_anchors", "source_artifact_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_override_anchors", "geometry_path_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_override_anchors", "edge_anchor_kind", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_override_anchors", "anchor_x", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_override_anchors", "anchor_y", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_override_anchors", "distance_source_units", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_binding_override_anchors", "segment_ratio", "TEXT NULL");
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
                 CREATE TABLE IF NOT EXISTS floorplan_dimension_override_primitives (
                     floorplan_curation_id TEXT NOT NULL,
                     source_dimension_key TEXT NOT NULL,
@@ -675,6 +826,102 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "floorplan_dimension_overrides", "render_text_attachment_point", "TEXT NULL");
         EnsureColumnExists(connection, "floorplan_dimension_overrides", "updated_at_utc", "TEXT NOT NULL DEFAULT ''");
         EnsureColumnExists(connection, "floorplan_dimension_overrides", "last_exported_at_utc", "TEXT NULL");
+    }
+
+    private static void EnsureMeasurementIntervalBindingSchema(SqliteConnection connection)
+    {
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS measurement_corridors (
+                    id TEXT PRIMARY KEY,
+                    floorplan_curation_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    axis_tag INTEGER NOT NULL,
+                    guide_geometry_path_id TEXT NOT NULL,
+                    band_min_coordinate TEXT NOT NULL,
+                    band_max_coordinate TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS measurement_nodes (
+                    id TEXT PRIMARY KEY,
+                    floorplan_curation_id TEXT NOT NULL,
+                    corridor_id TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL,
+                    reference_kind TEXT NOT NULL,
+                    source_artifact_kind TEXT NOT NULL,
+                    source_artifact_id TEXT NOT NULL,
+                    geometry_path_id TEXT NOT NULL,
+                    snap_kind TEXT NOT NULL,
+                    anchor_x TEXT NOT NULL,
+                    anchor_y TEXT NOT NULL,
+                    axis_coordinate TEXT NOT NULL,
+                    offset_along_axis TEXT NOT NULL,
+                    offset_normal TEXT NOT NULL,
+                    position_ratio TEXT NOT NULL
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS floorplan_dimension_interval_bindings (
+                    floorplan_curation_id TEXT NOT NULL,
+                    dimension_id TEXT NOT NULL,
+                    corridor_id TEXT NOT NULL,
+                    start_node_id TEXT NOT NULL,
+                    end_node_id TEXT NOT NULL,
+                    binding_status TEXT NOT NULL,
+                    interval_start_coordinate TEXT NOT NULL,
+                    interval_end_coordinate TEXT NOT NULL,
+                    updated_at_utc TEXT NOT NULL,
+                    PRIMARY KEY (floorplan_curation_id, dimension_id)
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        EnsureColumnExists(connection, "measurement_corridors", "name", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "measurement_corridors", "axis_tag", "INTEGER NOT NULL DEFAULT 1");
+        EnsureColumnExists(connection, "measurement_corridors", "guide_geometry_path_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "measurement_corridors", "band_min_coordinate", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "measurement_corridors", "band_max_coordinate", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "measurement_corridors", "status", "TEXT NOT NULL DEFAULT 'Draft'");
+        EnsureColumnExists(connection, "measurement_corridors", "sort_order", "INTEGER NOT NULL DEFAULT 1");
+
+        EnsureColumnExists(connection, "measurement_nodes", "corridor_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "measurement_nodes", "reference_kind", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "measurement_nodes", "source_artifact_kind", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "measurement_nodes", "source_artifact_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "measurement_nodes", "geometry_path_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "measurement_nodes", "snap_kind", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "measurement_nodes", "anchor_x", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "measurement_nodes", "anchor_y", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "measurement_nodes", "axis_coordinate", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "measurement_nodes", "offset_along_axis", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "measurement_nodes", "offset_normal", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "measurement_nodes", "position_ratio", "TEXT NOT NULL DEFAULT '0'");
+
+        EnsureColumnExists(connection, "floorplan_dimension_interval_bindings", "corridor_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_interval_bindings", "start_node_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_interval_bindings", "end_node_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "floorplan_dimension_interval_bindings", "binding_status", "TEXT NOT NULL DEFAULT 'Diagnostic'");
+        EnsureColumnExists(connection, "floorplan_dimension_interval_bindings", "interval_start_coordinate", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_interval_bindings", "interval_end_coordinate", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "floorplan_dimension_interval_bindings", "updated_at_utc", "TEXT NOT NULL DEFAULT ''");
     }
 
     private static void EnsureColumnExists(SqliteConnection connection, string tableName, string columnName, string columnDefinition)

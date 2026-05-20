@@ -32,6 +32,7 @@ public static class DesktopServiceRegistration
         services.AddSingleton<IFileHashService, Sha256FileHashService>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<ImportFloorPlanResultFactory>();
+        services.AddSingleton<IFloorPlanVersionCleanupService, SqliteFloorPlanVersionCleanupService>();
 
         services.AddScoped<SqliteSession>(provider =>
             SqliteSession.OpenAsync(
@@ -55,6 +56,10 @@ public static class DesktopServiceRegistration
         services.AddScoped<IFloorPlanArtifactPositionRepository, SqliteFloorPlanArtifactPositionRepository>();
         services.AddScoped<IFloorPlanLabelOverrideRepository, SqliteFloorPlanLabelOverrideRepository>();
         services.AddScoped<IFloorPlanDimensionOverrideRepository, SqliteFloorPlanDimensionOverrideRepository>();
+        services.AddScoped<IFloorPlanDimensionBindingOverrideRepository, SqliteFloorPlanDimensionBindingOverrideRepository>();
+        services.AddScoped<IMeasurementCorridorRepository, SqliteMeasurementCorridorRepository>();
+        services.AddScoped<IMeasurementNodeRepository, SqliteMeasurementNodeRepository>();
+        services.AddScoped<IDimensionIntervalBindingRepository, SqliteDimensionIntervalBindingRepository>();
         services.AddScoped<IFloorPlanCurationRepository, SqliteFloorPlanCurationRepository>();
         services.AddScoped<IPinchGroupRepository, SqlitePinchGroupRepository>();
         services.AddScoped<IPinchMarkerRepository, SqlitePinchMarkerRepository>();
@@ -71,6 +76,11 @@ public static class DesktopServiceRegistration
         services.AddScoped<StartOrResumeCurationHandler>();
         services.AddScoped<AddPinchGroupHandler>();
         services.AddScoped<AddPinchMarkerHandler>();
+        services.AddScoped<AddMeasurementCorridorHandler>();
+        services.AddScoped<AddMeasurementNodeHandler>();
+        services.AddScoped<SaveDimensionIntervalBindingHandler>();
+        services.AddScoped<RestoreDimensionIntervalBindingHandler>();
+        services.AddScoped<RemoveMeasurementCorridorHandler>();
         services.AddScoped<RemovePinchMarkerHandler>();
         services.AddScoped<RemoveRoomLabelHandler>();
         services.AddScoped<RemoveOpeningCandidateHandler>();

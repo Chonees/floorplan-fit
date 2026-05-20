@@ -52,6 +52,56 @@ public partial class ReviewFloorPlanWindow : Window
         await viewModel.AddPinchGroupAsync(CancellationToken.None);
     }
 
+    private async void AddMeasurementCorridorButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.AddMeasurementCorridorAsync(CancellationToken.None);
+    }
+
+    private async void RemoveMeasurementCorridorButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RemoveSelectedMeasurementCorridorAsync(CancellationToken.None);
+    }
+
+    private void AddMeasurementNodeButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        viewModel.ToggleMeasurementNodePlacement();
+    }
+
+    private async void SaveDimensionIntervalBindingButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.SaveSelectedDimensionIntervalBindingAsync(CancellationToken.None);
+    }
+
+    private async void RestoreDimensionIntervalBindingButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RestoreSelectedDimensionIntervalBindingAsync(CancellationToken.None);
+    }
+
     private async void SaveClassificationButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is not FloorPlanReviewViewModel viewModel)

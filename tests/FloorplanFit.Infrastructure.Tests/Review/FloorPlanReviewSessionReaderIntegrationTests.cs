@@ -89,6 +89,9 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
             Assert.Equal("DIMS", dimension.SourceLayer);
             Assert.Equal(123.810387305188m, dimension.MeasurementSourceUnits);
             Assert.Equal("AB12", dimension.SourceHandle);
+            Assert.Single(reviewSession.DimensionBindings);
+            Assert.Equal(dimension.DimensionId, reviewSession.DimensionBindings[0].DimensionId);
+            Assert.Equal("LinearSpan", reviewSession.DimensionBindings[0].BindingKind);
             Assert.Equal(408.8391899621098m, dimension.RenderTextX);
             Assert.Equal(518.9677806582538m, dimension.RenderTextY);
             Assert.Equal(3.5m, dimension.RenderTextHeight);

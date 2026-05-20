@@ -21,7 +21,12 @@ public sealed class PreviewCollectionObserverHubTests
             OpeningCandidates: null,
             OpeningLabels: null,
             Dimensions: null,
+            DimensionBindings: null,
             DimensionAssociations: null,
+            MeasurementCorridors: null,
+            MeasurementNodes: null,
+            DimensionIntervalBindings: null,
+            ArticulationBands: null,
             FixedPlanComponents: null,
             ProtectedDetailAssemblies: null,
             CuratedPlanArtifacts: null));

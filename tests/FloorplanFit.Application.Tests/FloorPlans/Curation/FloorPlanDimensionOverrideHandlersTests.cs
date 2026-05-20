@@ -21,9 +21,10 @@ public sealed class FloorPlanDimensionOverrideHandlersTests
             null);
         var curationRepository = new InMemoryFloorPlanCurationRepository(curation);
         var overrideRepository = new InMemoryFloorPlanDimensionOverrideRepository();
+        var bindingOverrideRepository = new InMemoryFloorPlanDimensionBindingOverrideRepository();
         var unitOfWork = new FakeUnitOfWork();
         var clock = new FakeClock(new DateTime(2026, 5, 11, 20, 5, 0, DateTimeKind.Utc));
-        var handler = new SaveFloorPlanDimensionOverrideHandler(curationRepository, overrideRepository, unitOfWork, clock);
+        var handler = new SaveFloorPlanDimensionOverrideHandler(curationRepository, overrideRepository, bindingOverrideRepository, unitOfWork, clock);
         var dimension = CreateDimensionDto();
 
         await handler.HandleAsync(
@@ -42,6 +43,7 @@ public sealed class FloorPlanDimensionOverrideHandlersTests
                     new DimensionLinePrimitiveDto("LINE-3", 3, 100m, 140m, 232m, 140m)
                 ]
             },
+            null,
             CancellationToken.None);
 
         var saved = Assert.Single(overrideRepository.Items);
@@ -51,11 +53,12 @@ public sealed class FloorPlanDimensionOverrideHandlersTests
         Assert.Equal(232m, saved.DefPoint2X);
         Assert.Equal(3, saved.LinePrimitives.Count);
         Assert.True(saved.IsDirty);
+        Assert.Empty(bindingOverrideRepository.Items);
         Assert.True(unitOfWork.SaveChangesCalled);
     }
 
     [Fact]
-    public async Task RestoreFloorPlanDimensionOverrideHandler_deletes_existing_override_and_saves_changes()
+    public async Task SaveFloorPlanDimensionOverrideHandler_upserts_manual_binding_override_for_endpoint_rebind()
     {
         var curation = new FloorPlanCuration(
             Guid.NewGuid(),
@@ -68,6 +71,60 @@ public sealed class FloorPlanDimensionOverrideHandlersTests
             null);
         var curationRepository = new InMemoryFloorPlanCurationRepository(curation);
         var overrideRepository = new InMemoryFloorPlanDimensionOverrideRepository();
+        var bindingOverrideRepository = new InMemoryFloorPlanDimensionBindingOverrideRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var clock = new FakeClock(new DateTime(2026, 5, 11, 20, 5, 0, DateTimeKind.Utc));
+        var handler = new SaveFloorPlanDimensionOverrideHandler(curationRepository, overrideRepository, bindingOverrideRepository, unitOfWork, clock);
+
+        await handler.HandleAsync(
+            curation.Id,
+            CreateDimensionDto() with { DefPoint2X = 260m },
+            new DimensionBindingDto(
+                Guid.NewGuid(),
+                "LinearSpan",
+                true,
+                0.95m,
+                "Manual endpoint rebind.",
+                true)
+            {
+                Anchors =
+                [
+                    new DimensionAnchorReferenceDto("edge-a", "WallCandidate", Guid.NewGuid(), Guid.NewGuid(), "Start", 100m, 100m, 0m),
+                    new DimensionAnchorReferenceDto("edge-b", "OpeningCandidate", Guid.NewGuid(), Guid.NewGuid(), "Projected", 260m, 120m, 0m)
+                    {
+                        SegmentRatio = 0.5m
+                    }
+                ],
+                MeasuredSpan = new DimensionMeasuredSpanDto("Width", 100m, 260m, 0m)
+            },
+            CancellationToken.None);
+
+        var saved = Assert.Single(bindingOverrideRepository.Items);
+        Assert.Equal(curation.Id, saved.FloorPlanCurationId);
+        Assert.Equal("AB12", saved.SourceDimensionKey);
+        Assert.Equal("LinearSpan", saved.BindingKind);
+        Assert.True(saved.IsResolved);
+        Assert.Equal("Width", saved.MeasuredSpan?.AxisTag);
+        Assert.Equal(2, saved.Anchors.Count);
+        Assert.Equal(0.5m, saved.Anchors[1].SegmentRatio);
+        Assert.True(unitOfWork.SaveChangesCalled);
+    }
+
+    [Fact]
+    public async Task RestoreFloorPlanDimensionOverrideHandler_deletes_existing_override_and_binding_override_and_saves_changes()
+    {
+        var curation = new FloorPlanCuration(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            1,
+            FloorPlanCurationStatus.Draft,
+            null,
+            null,
+            new DateTime(2026, 5, 11, 20, 0, 0, DateTimeKind.Utc),
+            null);
+        var curationRepository = new InMemoryFloorPlanCurationRepository(curation);
+        var overrideRepository = new InMemoryFloorPlanDimensionOverrideRepository();
+        var bindingOverrideRepository = new InMemoryFloorPlanDimensionBindingOverrideRepository();
         var unitOfWork = new FakeUnitOfWork();
         overrideRepository.Items.Add(FloorPlanDimensionOverride.CreateManualSnapshot(
             curation.Id,
@@ -100,11 +157,25 @@ public sealed class FloorPlanDimensionOverrideHandlersTests
             [],
             new DateTime(2026, 5, 11, 20, 4, 0, DateTimeKind.Utc),
             null));
-        var handler = new RestoreFloorPlanDimensionOverrideHandler(curationRepository, overrideRepository, unitOfWork);
+        bindingOverrideRepository.Items.Add(FloorPlanDimensionBindingOverride.CreateManualOverride(
+            curation.Id,
+            "AB12",
+            "LinearSpan",
+            true,
+            0.9m,
+            "Manual endpoint rebind.",
+            new FloorPlanDimensionMeasuredSpanOverride("Width", 100m, 232m, 0m),
+            [
+                new FloorPlanDimensionBindingAnchorOverride(1, "edge-a", "WallCandidate", Guid.NewGuid(), Guid.NewGuid(), "Start", 100m, 100m, 0m, null),
+                new FloorPlanDimensionBindingAnchorOverride(2, "edge-b", "OpeningCandidate", Guid.NewGuid(), Guid.NewGuid(), "Projected", 232m, 120m, 0m, 0.5m)
+            ],
+            new DateTime(2026, 5, 11, 20, 4, 30, DateTimeKind.Utc)));
+        var handler = new RestoreFloorPlanDimensionOverrideHandler(curationRepository, overrideRepository, bindingOverrideRepository, unitOfWork);
 
         await handler.HandleAsync(curation.Id, "AB12", CancellationToken.None);
 
         Assert.Empty(overrideRepository.Items);
+        Assert.Empty(bindingOverrideRepository.Items);
         Assert.True(unitOfWork.SaveChangesCalled);
     }
 
@@ -192,6 +263,31 @@ public sealed class FloorPlanDimensionOverrideHandlersTests
 
         public Task MarkExportedAsync(Guid floorPlanCurationId, IReadOnlyList<string> sourceDimensionKeys, DateTime exportedAtUtc, CancellationToken cancellationToken)
             => Task.CompletedTask;
+    }
+
+    private sealed class InMemoryFloorPlanDimensionBindingOverrideRepository : IFloorPlanDimensionBindingOverrideRepository
+    {
+        public List<FloorPlanDimensionBindingOverride> Items { get; } = [];
+
+        public Task<IReadOnlyList<FloorPlanDimensionBindingOverride>> ListByCurationAsync(Guid floorPlanCurationId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<FloorPlanDimensionBindingOverride>>(Items.Where(item => item.FloorPlanCurationId == floorPlanCurationId).ToArray());
+
+        public Task UpsertAsync(FloorPlanDimensionBindingOverride bindingOverride, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item =>
+                item.FloorPlanCurationId == bindingOverride.FloorPlanCurationId &&
+                string.Equals(item.SourceDimensionKey, bindingOverride.SourceDimensionKey, StringComparison.Ordinal));
+            Items.Add(bindingOverride);
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAsync(Guid floorPlanCurationId, string sourceDimensionKey, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item =>
+                item.FloorPlanCurationId == floorPlanCurationId &&
+                string.Equals(item.SourceDimensionKey, sourceDimensionKey, StringComparison.Ordinal));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class InMemoryFloorPlanCurationRepository : IFloorPlanCurationRepository

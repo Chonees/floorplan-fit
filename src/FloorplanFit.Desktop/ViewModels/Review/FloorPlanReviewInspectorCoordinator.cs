@@ -79,6 +79,7 @@ internal sealed class FloorPlanReviewInspectorCoordinator
             selectedCandidate,
             selectedRoomLabel,
             selectedOpeningLabel,
+            selectedDimension,
             selectedPinchGroup,
             selectedPinchAxis,
             isPinchPlacementArmed,
@@ -220,6 +221,7 @@ internal sealed class FloorPlanReviewInspectorCoordinator
         WallCandidateDto? selectedCandidate,
         RoomLabelDto? selectedRoomLabel,
         OpeningLabelDto? selectedOpeningLabel,
+        DimensionDto? selectedDimension,
         PinchGroupDto? selectedPinchGroup,
         string selectedPinchAxis,
         bool isPinchPlacementArmed,
@@ -246,6 +248,11 @@ internal sealed class FloorPlanReviewInspectorCoordinator
             return $"Selected opening label {selectedOpeningLabel.Text}. Press '{excludeSelectedArtifactLabel}' if this label should not persist.";
         }
 
+        if (selectedDimension is not null)
+        {
+            return "Selected native dimension. Drag either visible endpoint grip to stretch the measured extent, drag the dimension body or text to move the dimension line implicitly, and use Restore Position to go back to the detected AutoCAD geometry.";
+        }
+
         if (selectedPinchGroup is null)
         {
             return "Select an artifact to inspect it, or create/select a pinch group before placing pinches. Groups tell the fit engine which area may shrink together.";
@@ -270,21 +277,21 @@ internal sealed class FloorPlanReviewInspectorCoordinator
     {
         if (selectedDimensionAssociation is null)
         {
-            return "Association: unresolved";
+            return "Association inference (diagnostic only): unresolved";
         }
 
         var start = selectedDimensionAssociation.StartAnchor?.SourceArtifactKind ?? "?";
         var end = selectedDimensionAssociation.EndAnchor?.SourceArtifactKind ?? "?";
         return selectedDimensionAssociation.IsFullyResolved
-            ? $"Association: {start} -> {end} ({selectedDimensionAssociation.Confidence:P0})"
-            : $"Association: partial ({selectedDimensionAssociation.Confidence:P0})";
+            ? $"Association inference (diagnostic only): {start} -> {end} ({selectedDimensionAssociation.Confidence:P0})"
+            : $"Association inference (diagnostic only): partial ({selectedDimensionAssociation.Confidence:P0})";
     }
 
     private static string ResolveDimensionAssociationDebugSummary(DimensionAssociationDto? selectedDimensionAssociation)
     {
         if (selectedDimensionAssociation is null)
         {
-            return "assoc: unresolved";
+            return "assoc inference: unresolved";
         }
 
         var start = selectedDimensionAssociation.StartAnchor is null
@@ -293,7 +300,7 @@ internal sealed class FloorPlanReviewInspectorCoordinator
         var end = selectedDimensionAssociation.EndAnchor is null
             ? "end=?"
             : $"end={selectedDimensionAssociation.EndAnchor.EdgeKey}/{selectedDimensionAssociation.EndAnchor.EdgeAnchorKind}";
-        return $"assoc: {start} • {end}";
+        return $"assoc inference: {start} • {end}";
     }
 
     private static string FormatTextHeight(decimal? textHeight)

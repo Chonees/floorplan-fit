@@ -67,7 +67,138 @@ public sealed class PreviewRenderComposerTests
             PreviewRenderComposer.ResolveArtifactLayerMode(scene));
     }
 
-    private static PreviewRenderScene CreateScene(IReadOnlyList<CuratedPlanArtifactDto>? curatedPlanArtifacts = null)
+    [Fact]
+    public void ShouldRenderDimensions_returns_false_when_preview_switch_hides_them()
+    {
+        var scene = CreateScene(
+            areDimensionsVisible: false,
+            dimensions:
+            [
+                new DimensionDto(
+                    Guid.NewGuid(),
+                    "DIMENSION:1",
+                    "DIMS",
+                    "DIMENSION",
+                    "*D169",
+                    "10'-4\"",
+                    "GeometryBlock",
+                    string.Empty,
+                    123.81m,
+                    3144.78m,
+                    "Inch",
+                    0,
+                    0m,
+                    0m,
+                    0m,
+                    0m,
+                    0m,
+                    100m,
+                    0m,
+                    0m,
+                    0m,
+                    20m,
+                    0m,
+                    0.99m,
+                    null,
+                    1)
+            ]);
+
+        Assert.False(PreviewRenderComposer.ShouldRenderDimensions(scene));
+    }
+
+    [Fact]
+    public void ResolveNodeBoundDimensionIds_returns_dimensions_that_have_interval_bindings()
+    {
+        var boundDimensionId = Guid.NewGuid();
+        var unboundDimensionId = Guid.NewGuid();
+
+        var boundIds = PreviewRenderComposer.ResolveNodeBoundDimensionIds(
+            [
+                new DimensionIntervalBindingDto(
+                    boundDimensionId,
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    "ManualVerified",
+                    0m,
+                    100m)
+            ]);
+
+        Assert.Contains(boundDimensionId, boundIds);
+        Assert.DoesNotContain(unboundDimensionId, boundIds);
+    }
+
+    [Fact]
+    public void ResolveDimensionStrokeColor_uses_node_bound_color_when_dimension_has_interval_binding()
+    {
+        var color = DimensionPreviewLayerRenderer.ResolveDimensionStrokeColor(
+            isHighlighted: false,
+            isNodeBound: true);
+
+        Assert.Equal(PreviewSemanticPalette.DimensionNodeBound, color);
+    }
+
+    [Fact]
+    public void ResolveDimensionStrokeColor_prefers_selection_highlight_over_node_bound_color()
+    {
+        var color = DimensionPreviewLayerRenderer.ResolveDimensionStrokeColor(
+            isHighlighted: true,
+            isNodeBound: true);
+
+        Assert.Equal(PreviewSemanticPalette.SelectionHighlight, color);
+    }
+
+    [Fact]
+    public void CreateDimensionRenderPlan_uses_node_bound_color_for_bound_dimension_text()
+    {
+        var dimension = new DimensionDto(
+            Guid.NewGuid(),
+            "DIMENSION:1",
+            "DIMS",
+            "DIMENSION",
+            "*D169",
+            "10'-4\"",
+            "GeometryBlock",
+            string.Empty,
+            123.81m,
+            3144.78m,
+            "Inch",
+            0,
+            0m,
+            0m,
+            0m,
+            0m,
+            0m,
+            100m,
+            0m,
+            0m,
+            0m,
+            20m,
+            0m,
+            0.99m,
+            null,
+            1);
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0, 0, 800, 600),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 2d,
+            OffsetX: 0d,
+            OffsetY: 0d);
+
+        var plan = CadTextPreviewLayerRenderer.CreateDimensionRenderPlan(
+            dimension,
+            viewport,
+            isSelected: false,
+            isNodeBound: true);
+
+        Assert.Equal(PreviewSemanticPalette.DimensionNodeBoundArgb, plan.ColorArgb);
+    }
+
+    private static PreviewRenderScene CreateScene(
+        IReadOnlyList<CuratedPlanArtifactDto>? curatedPlanArtifacts = null,
+        IReadOnlyList<DimensionDto>? dimensions = null,
+        bool areDimensionsVisible = true)
     {
         return new PreviewRenderScene(
             Bounds: new Rect(0, 0, 800, 600),
@@ -77,13 +208,22 @@ public sealed class PreviewRenderComposerTests
             PreviewGeometry: [],
             RoomLabels: [],
             OpeningLabels: [],
-            Dimensions: [],
+            Dimensions: dimensions ?? [],
+            AreDimensionsVisible: areDimensionsVisible,
             ArtifactIndex: PreviewArtifactGeometryIndex.Create(openingCandidates: null, fixedPlanComponents: null),
             OpeningCandidates: [],
             FixedPlanComponents: [],
             ProtectedDetailAssemblies: [],
             CuratedPlanArtifacts: curatedPlanArtifacts,
             PinchMarkers: [],
+            MeasurementCorridors: [],
+            MeasurementNodes: [],
+            DimensionIntervalBindings: [],
+            ArticulationBands: [],
+            SelectedMeasurementCorridorId: null,
+            SelectedMeasurementNodeId: null,
+            SelectedMeasurementStartNodeId: null,
+            SelectedMeasurementEndNodeId: null,
             HighlightGeometryPathId: null,
             HighlightRoomLabelId: null,
             HighlightOpeningLabelId: null,

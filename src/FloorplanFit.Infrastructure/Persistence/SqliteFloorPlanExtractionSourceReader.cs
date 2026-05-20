@@ -28,6 +28,7 @@ public sealed class SqliteFloorPlanExtractionSourceReader : IFloorPlanExtraction
                 d.dxf_version
             FROM floorplan_templates t
             JOIN floorplan_versions v ON v.id = t.current_version_id
+                AND v.deleted_at_utc IS NULL
             JOIN imported_documents d ON d.id = v.imported_document_id
             WHERE t.id = $template_id
             LIMIT 1
@@ -71,6 +72,7 @@ public sealed class SqliteFloorPlanExtractionSourceReader : IFloorPlanExtraction
             JOIN floorplan_templates t ON t.id = v.floorplan_template_id
             JOIN imported_documents d ON d.id = v.imported_document_id
             WHERE v.id = $floorplan_version_id
+              AND v.deleted_at_utc IS NULL
             LIMIT 1
             """);
         command.Parameters.AddWithValue("$floorplan_version_id", floorPlanVersionId.ToString());

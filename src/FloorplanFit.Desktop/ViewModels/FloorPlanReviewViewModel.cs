@@ -65,7 +65,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     public ObservableCollection<DimensionDto> VisibleDimensions { get; } = [];
 
+    public ObservableCollection<DimensionBindingDto> DimensionBindings { get; } = [];
+
     public ObservableCollection<DimensionAssociationDto> DimensionAssociations { get; } = [];
+
+    [ObservableProperty]
+    private MeasurementContextDto? measurementContext;
 
     public ObservableCollection<FixedPlanComponentDto> FixedPlanComponents { get; } = [];
 
@@ -86,6 +91,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     public ObservableCollection<PinchGroupDto> PinchGroups { get; } = [];
 
     public ObservableCollection<PinchMarkerDto> PinchMarkers { get; } = [];
+
+    public ObservableCollection<MeasurementCorridorDto> MeasurementCorridors { get; } = [];
+
+    public ObservableCollection<MeasurementNodeDto> MeasurementNodes { get; } = [];
+
+    public ObservableCollection<DimensionIntervalBindingDto> DimensionIntervalBindings { get; } = [];
+
+    public ObservableCollection<ArticulationBandDto> ArticulationBands { get; } = [];
 
     public IReadOnlyList<string> PinchAxisOptions { get; } = Enum.GetNames<PinchAxisTag>();
 
@@ -183,10 +196,31 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private string newPinchGroupName = string.Empty;
 
     [ObservableProperty]
+    private string newMeasurementCorridorName = string.Empty;
+
+    [ObservableProperty]
+    private MeasurementCorridorDto? selectedMeasurementCorridor;
+
+    [ObservableProperty]
+    private MeasurementNodeDto? selectedMeasurementNode;
+
+    [ObservableProperty]
+    private MeasurementNodeDto? selectedMeasurementStartNode;
+
+    [ObservableProperty]
+    private MeasurementNodeDto? selectedMeasurementEndNode;
+
+    [ObservableProperty]
     private string newPinchMaxTrimMm = "120";
 
     [ObservableProperty]
     private bool isPinchPlacementArmed;
+
+    [ObservableProperty]
+    private bool isMeasurementNodePlacementArmed;
+
+    [ObservableProperty]
+    private bool arePreviewDimensionsVisible = true;
 
     [ObservableProperty]
     private bool isStructureQueueExpanded;
@@ -207,8 +241,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private string selectedInspectorTool = InspectorToolOverview;
 
     public string AddPinchButtonLabel => IsPinchPlacementArmed
-        ? "Cancel Add Pinch"
-        : "Add Pinch";
+        ? "Cancelar ajuste"
+        : "Agregar ajuste";
+
+    public string AddMeasurementNodeButtonLabel => IsMeasurementNodePlacementArmed
+        ? "Cancelar punto"
+        : "Elegir punto";
 
     public Guid? SelectedPinchGroupId => SelectedPinchGroup?.PinchGroupId;
 
@@ -217,6 +255,137 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     public Guid? SelectedOpeningLabelId => SelectedOpeningLabel?.OpeningLabelId;
 
     public Guid? SelectedDimensionId => SelectedDimension?.DimensionId;
+
+    public bool HasSelectedMeasurementCorridor => SelectedMeasurementCorridor is not null;
+
+    public bool CanRemoveSelectedMeasurementCorridor =>
+        DraftCurationId != Guid.Empty &&
+        SelectedMeasurementCorridor is not null;
+
+    public IReadOnlyList<MeasurementNodeDto> SelectedMeasurementCorridorNodes =>
+        SelectedMeasurementCorridor is null
+            ? []
+            : MeasurementNodes
+                .Where(item => item.CorridorId == SelectedMeasurementCorridor.CorridorId)
+                .OrderBy(item => item.SortOrder)
+                .ToArray();
+
+    public bool CanSaveSelectedDimensionIntervalBinding =>
+        DraftCurationId != Guid.Empty &&
+        SelectedDimension is not null &&
+        SelectedMeasurementCorridor is not null &&
+        SelectedMeasurementStartNode is not null &&
+        SelectedMeasurementEndNode is not null &&
+        SelectedMeasurementStartNode.NodeId != SelectedMeasurementEndNode.NodeId &&
+        SelectedMeasurementStartNode.CorridorId == SelectedMeasurementCorridor.CorridorId &&
+        SelectedMeasurementEndNode.CorridorId == SelectedMeasurementCorridor.CorridorId;
+
+    public bool CanRestoreSelectedDimensionIntervalBinding =>
+        DraftCurationId != Guid.Empty &&
+        SelectedDimension is not null &&
+        DimensionIntervalBindings.Any(item => item.DimensionId == SelectedDimension.DimensionId);
+
+    public string SelectedDimensionIntervalBindingSummary
+    {
+        get
+        {
+            if (SelectedDimension is null)
+            {
+                return "Seleccion\u00E1 una cota para definir qu\u00E9 mide.";
+            }
+
+            var binding = DimensionIntervalBindings.FirstOrDefault(item => item.DimensionId == SelectedDimension.DimensionId);
+            if (binding is null)
+            {
+                if (SelectedMeasurementCorridor is null)
+                {
+                    return "Estado: medida fija. Falta elegir una franja de medida.";
+                }
+
+                if (SelectedMeasurementStartNode is null || SelectedMeasurementEndNode is null)
+                {
+                    return "Estado: medida fija. Falta definir punto inicial y punto final.";
+                }
+
+                if (SelectedMeasurementStartNode.NodeId == SelectedMeasurementEndNode.NodeId)
+                {
+                    return "Estado: medida fija. El punto inicial y final no pueden ser el mismo.";
+                }
+
+                return "Estado: medida fija (lista para guardar relaci\u00F3n manual)";
+            }
+
+            var corridor = MeasurementCorridors.FirstOrDefault(item => item.CorridorId == binding.CorridorId);
+            var corridorName = corridor?.Name ?? "franja desconocida";
+            return $"Estado: relaci\u00F3n guardada en {corridorName} ({binding.IntervalStartCoordinate:0.###} a {binding.IntervalEndCoordinate:0.###})";
+        }
+    }
+
+    public string SelectedPinchGroupImpactSummary
+    {
+        get
+        {
+            if (SelectedPinchGroup is null)
+            {
+                return "Seleccion\u00E1 un grupo de ajuste para ver qu\u00E9 franjas de medida toca.";
+            }
+
+            var band = ArticulationBands.FirstOrDefault(item => item.PinchGroupId == SelectedPinchGroup.PinchGroupId);
+            if (band is null)
+            {
+                return "Franjas sugeridas: ninguna (el grupo elegido no tiene una banda reducible proyectada).";
+            }
+
+            var impactedCorridors = MeasurementCorridors
+                .Where(item =>
+                    string.Equals(item.AxisTag, band.AxisTag, StringComparison.OrdinalIgnoreCase) &&
+                    IntervalsOverlap(item.BandMinCoordinate, item.BandMaxCoordinate, band.BandStartCoordinate, band.BandEndCoordinate))
+                .OrderBy(item => item.SortOrder)
+                .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(item => item.Name)
+                .ToArray();
+
+            return impactedCorridors.Length == 0
+                ? $"Franjas sugeridas para {band.PinchGroupName}: ninguna."
+                : $"Franjas sugeridas para {band.PinchGroupName}: {string.Join(", ", impactedCorridors)}";
+        }
+    }
+
+    public string SelectedDimensionImpactSummary
+    {
+        get
+        {
+            if (SelectedDimension is null)
+            {
+                return "Seleccion\u00E1 una cota para ver qu\u00E9 grupos de ajuste podr\u00EDan afectarla.";
+            }
+
+            var binding = DimensionIntervalBindings.FirstOrDefault(item => item.DimensionId == SelectedDimension.DimensionId);
+            if (binding is null)
+            {
+                return "Grupos que la afectan: ninguno (la cota sigue fija)";
+            }
+
+            var corridor = MeasurementCorridors.FirstOrDefault(item => item.CorridorId == binding.CorridorId);
+            if (corridor is null)
+            {
+                return "Grupos que la afectan: franja desconocida";
+            }
+
+            var impactedPinchGroups = ArticulationBands
+                .Where(item =>
+                    string.Equals(item.AxisTag, corridor.AxisTag, StringComparison.OrdinalIgnoreCase) &&
+                    IntervalsOverlap(binding.IntervalStartCoordinate, binding.IntervalEndCoordinate, item.BandStartCoordinate, item.BandEndCoordinate))
+                .OrderBy(item => item.PinchGroupName, StringComparer.OrdinalIgnoreCase)
+                .Select(item => item.PinchGroupName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return impactedPinchGroups.Length == 0
+                ? "Grupos que la afectan: ninguno"
+                : $"Grupos que la afectan: {string.Join(", ", impactedPinchGroups)}";
+        }
+    }
 
     public int DoorOpeningCount => OpeningCandidates.Count(item => string.Equals(item.Kind, "Door", StringComparison.OrdinalIgnoreCase));
 
@@ -295,7 +464,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     public bool CanUsePositionTool => HasSelectedArtifact;
 
-    public bool CanUseTextTool => HasSelectedResizableLabel || SelectedDimension is not null;
+    public bool CanUseTextTool => HasSelectedResizableLabel;
 
     public bool CanUseClassificationTool => HasSelectedCuratedArtifact;
 
@@ -433,30 +602,97 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         StatusMessage = $"Created {groupName} pinch group";
     }
 
+    public async Task AddMeasurementCorridorAsync(CancellationToken cancellationToken)
+    {
+        if (DraftCurationId == Guid.Empty)
+        {
+            return;
+        }
+
+        var corridorName = NewMeasurementCorridorName.Trim();
+        if (string.IsNullOrWhiteSpace(corridorName))
+        {
+            StatusMessage = "Escrib\u00ED un nombre antes de crear la franja de medida.";
+            return;
+        }
+
+        if (HighlightGeometryPathId is not Guid guideGeometryPathId)
+        {
+            StatusMessage = "Primero seleccion\u00E1 una l\u00EDnea del preview para crear la franja de medida.";
+            return;
+        }
+
+        var path = GeometryPaths.FirstOrDefault(item => item.Id == guideGeometryPathId);
+        if (path is null || path.Segments.Count == 0)
+        {
+            StatusMessage = "La geometr\u00EDa elegida no sirve para crear una franja de medida.";
+            return;
+        }
+
+        var axisTag = Enum.Parse<PinchAxisTag>(SelectedPinchAxis);
+        var bandCoordinates = ResolveCorridorBandCoordinates(path, axisTag);
+        StatusMessage = $"Creando la franja de medida {corridorName}...";
+        var corridorId = await mutationCoordinator.AddMeasurementCorridorAsync(
+            DraftCurationId,
+            corridorName,
+            axisTag,
+            guideGeometryPathId,
+            bandCoordinates.Min,
+            bandCoordinates.Max,
+            cancellationToken);
+
+        NewMeasurementCorridorName = string.Empty;
+        await RefreshSessionAsync(SelectedCandidate?.CandidateId, null, SelectedPinchGroup?.PinchGroupId, GetSelectedCuratedArtifactSelection(), cancellationToken);
+        RestoreMeasurementBindingSelection(corridorId, null, null, null);
+        StatusMessage = $"Franja de medida {corridorName} creada.";
+    }
+
+    public void ToggleMeasurementNodePlacement()
+    {
+        if (SelectedMeasurementCorridor is null)
+        {
+            StatusMessage = "Seleccion\u00E1 una franja de medida antes de marcar puntos.";
+            return;
+        }
+
+        IsPinchPlacementArmed = false;
+        IsMeasurementNodePlacementArmed = !IsMeasurementNodePlacementArmed;
+        StatusMessage = IsMeasurementNodePlacementArmed
+            ? $"Ahora hac\u00E9 click en una l\u00EDnea o punto v\u00E1lido del preview para marcar un punto de medida en {SelectedMeasurementCorridor.Name}."
+            : "Selecci\u00F3n de punto cancelada.";
+    }
+
     public void TogglePinchPlacement()
     {
         if (SelectedPinchGroup is null)
         {
-            StatusMessage = "Create or select a pinch group before adding a pinch.";
+            StatusMessage = "Cre\u00E1 o seleccion\u00E1 un grupo de ajuste antes de marcar un ajuste.";
             return;
         }
 
         if (SelectedCandidate is null)
         {
-            StatusMessage = "Select a line before adding a pinch.";
+            StatusMessage = "Primero seleccion\u00E1 una l\u00EDnea antes de marcar un ajuste.";
             return;
         }
 
+        IsMeasurementNodePlacementArmed = false;
         IsPinchPlacementArmed = !IsPinchPlacementArmed;
         StatusMessage = IsPinchPlacementArmed
-            ? $"Click the preview to place a {SelectedPinchGroup.Name} pinch."
-            : "Add pinch cancelled.";
+            ? $"Ahora hac\u00E9 click en el preview para marcar un ajuste de {SelectedPinchGroup.Name}."
+            : "Selecci\u00F3n de ajuste cancelada.";
     }
 
     public async Task HandlePreviewInteractionAsync(Guid geometryPathId, decimal positionRatio, CancellationToken cancellationToken)
     {
         if (!SelectPreviewPath(geometryPathId))
         {
+            return;
+        }
+
+        if (IsMeasurementNodePlacementArmed)
+        {
+            await AddMeasurementNodeFromPreviewAsync(geometryPathId, positionRatio, cancellationToken);
             return;
         }
 
@@ -467,11 +703,11 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         if (!decimal.TryParse(NewPinchMaxTrimMm.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var maxTrimMm) || maxTrimMm <= 0m)
         {
-            StatusMessage = "Enter a valid positive max trim before placing a pinch.";
+            StatusMessage = "Escrib\u00ED un ajuste m\u00E1ximo v\u00E1lido antes de marcar el ajuste.";
             return;
         }
 
-        StatusMessage = $"Adding {SelectedPinchGroup.Name} pinch to {SelectedCandidate.SourceEntityRef}...";
+        StatusMessage = $"Guardando un ajuste de {SelectedPinchGroup.Name} sobre {SelectedCandidate.SourceEntityRef}...";
         await mutationCoordinator.AddPinchMarkerAsync(
             DraftCurationId,
             SelectedCandidate.CandidateId,
@@ -482,7 +718,112 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         IsPinchPlacementArmed = false;
         await RefreshSessionAsync(SelectedCandidate.CandidateId, null, SelectedPinchGroup.PinchGroupId, preferredCuratedArtifact: null, cancellationToken);
-        StatusMessage = $"Added {SelectedPinchGroup.Name} pinch to {SelectedCandidate.SourceEntityRef}";
+        StatusMessage = $"Ajuste de {SelectedPinchGroup.Name} agregado sobre {SelectedCandidate.SourceEntityRef}.";
+    }
+
+    public async Task SaveSelectedDimensionIntervalBindingAsync(CancellationToken cancellationToken)
+    {
+        var selectedDimension = SelectedDimension;
+        var selectedMeasurementCorridor = SelectedMeasurementCorridor;
+        var selectedMeasurementStartNode = SelectedMeasurementStartNode;
+        var selectedMeasurementEndNode = SelectedMeasurementEndNode;
+
+        if (!CanSaveSelectedDimensionIntervalBinding ||
+            selectedDimension is null ||
+            selectedMeasurementCorridor is null ||
+            selectedMeasurementStartNode is null ||
+            selectedMeasurementEndNode is null)
+        {
+            return;
+        }
+
+        var selection = selectionCoordinator.CaptureSelection(
+            SelectedCandidate,
+            SelectedPinchMarker,
+            SelectedPinchGroup,
+            SelectedRoomLabel,
+            SelectedOpeningLabel,
+            selectedDimension,
+            SelectedCuratedArtifact);
+        var selectedDimensionId = selectedDimension.DimensionId;
+        var selectedDimensionDisplayText = selectedDimension.DisplayText;
+        var selectedCorridorId = selectedMeasurementCorridor.CorridorId;
+        var selectedStartNodeId = selectedMeasurementStartNode.NodeId;
+        var selectedEndNodeId = selectedMeasurementEndNode.NodeId;
+        StatusMessage = $"Guardando qu\u00E9 mide {selectedDimensionDisplayText}...";
+        await mutationCoordinator.SaveDimensionIntervalBindingAsync(
+            DraftCurationId,
+            selectedDimensionId,
+            selectedCorridorId,
+            selectedStartNodeId,
+            selectedEndNodeId,
+            cancellationToken);
+
+        await RefreshSessionAsync(selection, cancellationToken);
+        RestoreMeasurementBindingSelection(
+            selectedCorridorId,
+            null,
+            selectedStartNodeId,
+            selectedEndNodeId);
+        StatusMessage = $"La cota {SelectedDimension?.DisplayText ?? selectedDimensionDisplayText} ya qued\u00F3 relacionada.";
+    }
+
+    public async Task RestoreSelectedDimensionIntervalBindingAsync(CancellationToken cancellationToken)
+    {
+        if (!CanRestoreSelectedDimensionIntervalBinding || SelectedDimension is null)
+        {
+            return;
+        }
+
+        var selection = selectionCoordinator.CaptureSelection(
+            SelectedCandidate,
+            SelectedPinchMarker,
+            SelectedPinchGroup,
+            SelectedRoomLabel,
+            SelectedOpeningLabel,
+            SelectedDimension,
+            SelectedCuratedArtifact);
+        StatusMessage = $"Quitando la relaci\u00F3n manual de {SelectedDimension.DisplayText}...";
+        await mutationCoordinator.RestoreDimensionIntervalBindingAsync(
+            DraftCurationId,
+            SelectedDimension.DimensionId,
+            cancellationToken);
+
+        await RefreshSessionAsync(selection, cancellationToken);
+        SelectedMeasurementStartNode = null;
+        SelectedMeasurementEndNode = null;
+        StatusMessage = $"La cota {SelectedDimension.DisplayText} volvi\u00F3 a medida fija.";
+    }
+
+    public async Task RemoveSelectedMeasurementCorridorAsync(CancellationToken cancellationToken)
+    {
+        if (!CanRemoveSelectedMeasurementCorridor || SelectedMeasurementCorridor is null)
+        {
+            return;
+        }
+
+        var removedCorridor = SelectedMeasurementCorridor;
+        var selection = selectionCoordinator.CaptureSelection(
+            SelectedCandidate,
+            SelectedPinchMarker,
+            SelectedPinchGroup,
+            SelectedRoomLabel,
+            SelectedOpeningLabel,
+            SelectedDimension,
+            SelectedCuratedArtifact);
+        IsMeasurementNodePlacementArmed = false;
+        StatusMessage = $"Eliminando la franja de medida {removedCorridor.Name}...";
+        await mutationCoordinator.RemoveMeasurementCorridorAsync(
+            DraftCurationId,
+            removedCorridor.CorridorId,
+            cancellationToken);
+
+        await RefreshSessionAsync(selection, cancellationToken);
+        SelectedMeasurementCorridor = null;
+        SelectedMeasurementNode = null;
+        SelectedMeasurementStartNode = null;
+        SelectedMeasurementEndNode = null;
+        StatusMessage = $"Franja de medida {removedCorridor.Name} eliminada.";
     }
 
     public void SelectRoomLabel(Guid roomLabelId)
@@ -518,7 +859,11 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             SelectedDimension,
             SelectedCuratedArtifact) with { DimensionId = e.DimensionId };
         StatusMessage = $"Saving native dimension {e.SourceDimensionKey}...";
-        await mutationCoordinator.SaveDimensionOverrideAsync(DraftCurationId, e.Dimension, cancellationToken);
+        await mutationCoordinator.SaveDimensionOverrideAsync(
+            DraftCurationId,
+            e.Dimension,
+            null,
+            cancellationToken);
 
         await RefreshSessionAsync(selection, cancellationToken);
         StatusMessage = "Saved native dimension override";
@@ -1007,8 +1352,13 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     partial void OnSelectedDimensionChanged(DimensionDto? value)
     {
+        TryAutoAssignMeasurementEndpoints();
         ApplySelectionPresentation(selectionCoordinator.ResolveDimensionPresentation(value));
         RaiseUxNotifications();
+        OnPropertyChanged(nameof(CanSaveSelectedDimensionIntervalBinding));
+        OnPropertyChanged(nameof(CanRestoreSelectedDimensionIntervalBinding));
+        OnPropertyChanged(nameof(SelectedDimensionIntervalBindingSummary));
+        OnPropertyChanged(nameof(SelectedDimensionImpactSummary));
     }
 
     partial void OnSelectedPinchGroupChanged(PinchGroupDto? value)
@@ -1019,12 +1369,67 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(SelectedPinchGroupId));
+        OnPropertyChanged(nameof(SelectedPinchGroupImpactSummary));
         RaiseUxNotifications();
     }
 
     partial void OnSelectedPinchAxisChanged(string value)
     {
         RaiseUxNotifications();
+    }
+
+    partial void OnSelectedMeasurementCorridorChanged(MeasurementCorridorDto? value)
+    {
+        if (value is null)
+        {
+            SelectedMeasurementNode = null;
+            SelectedMeasurementStartNode = null;
+            SelectedMeasurementEndNode = null;
+        }
+        else
+        {
+            if (SelectedMeasurementNode?.CorridorId != value.CorridorId)
+            {
+                SelectedMeasurementNode = null;
+            }
+
+            if (SelectedMeasurementStartNode?.CorridorId != value.CorridorId)
+            {
+                SelectedMeasurementStartNode = null;
+            }
+
+            if (SelectedMeasurementEndNode?.CorridorId != value.CorridorId)
+            {
+                SelectedMeasurementEndNode = null;
+            }
+        }
+
+        TryAutoAssignMeasurementEndpoints();
+
+        OnPropertyChanged(nameof(HasSelectedMeasurementCorridor));
+        OnPropertyChanged(nameof(CanRemoveSelectedMeasurementCorridor));
+        OnPropertyChanged(nameof(SelectedMeasurementCorridorNodes));
+        OnPropertyChanged(nameof(CanSaveSelectedDimensionIntervalBinding));
+        OnPropertyChanged(nameof(CanRestoreSelectedDimensionIntervalBinding));
+        OnPropertyChanged(nameof(SelectedDimensionIntervalBindingSummary));
+        OnPropertyChanged(nameof(SelectedPinchGroupImpactSummary));
+        OnPropertyChanged(nameof(SelectedDimensionImpactSummary));
+    }
+
+    partial void OnSelectedMeasurementStartNodeChanged(MeasurementNodeDto? value)
+    {
+        OnPropertyChanged(nameof(CanSaveSelectedDimensionIntervalBinding));
+        OnPropertyChanged(nameof(CanRestoreSelectedDimensionIntervalBinding));
+        OnPropertyChanged(nameof(SelectedDimensionIntervalBindingSummary));
+        OnPropertyChanged(nameof(SelectedDimensionImpactSummary));
+    }
+
+    partial void OnSelectedMeasurementEndNodeChanged(MeasurementNodeDto? value)
+    {
+        OnPropertyChanged(nameof(CanSaveSelectedDimensionIntervalBinding));
+        OnPropertyChanged(nameof(CanRestoreSelectedDimensionIntervalBinding));
+        OnPropertyChanged(nameof(SelectedDimensionIntervalBindingSummary));
+        OnPropertyChanged(nameof(SelectedDimensionImpactSummary));
     }
 
     partial void OnEditableCuratedArtifactFamilyChanged(string value)
@@ -1147,6 +1552,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         RaiseUxNotifications();
     }
 
+    partial void OnIsMeasurementNodePlacementArmedChanged(bool value)
+    {
+        RaiseUxNotifications();
+        OnPropertyChanged(nameof(AddMeasurementNodeButtonLabel));
+    }
+
     public void SelectInspectorTool(string tool)
     {
         if (string.IsNullOrWhiteSpace(tool))
@@ -1199,19 +1610,41 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         ReplaceItems(OpeningCandidates, applyPlan.Session.OpeningCandidates);
         ReplaceItems(OpeningLabels, applyPlan.Session.OpeningLabels);
         ReplaceItems(Dimensions, applyPlan.Session.Dimensions);
+        MeasurementContext = applyPlan.Session.MeasurementContext;
+        ReplaceItems(DimensionBindings, applyPlan.Session.DimensionBindings);
         ReplaceItems(DimensionAssociations, applyPlan.Session.DimensionAssociations);
         ReplaceItems(FixedPlanComponents, applyPlan.Session.FixedPlanComponents);
         ReplaceItems(ProtectedDetailAssemblies, applyPlan.Session.ProtectedDetailAssemblies);
         ReplaceItems(WallCandidates, applyPlan.Session.WallCandidates);
         ReplaceItems(PinchGroups, applyPlan.Session.PinchGroups);
         ReplaceItems(PinchMarkers, applyPlan.Session.PinchMarkers);
+        ReplaceItems(MeasurementCorridors, applyPlan.Session.MeasurementCorridors);
+        ReplaceItems(MeasurementNodes, applyPlan.Session.MeasurementNodes);
+        ReplaceItems(DimensionIntervalBindings, applyPlan.Session.DimensionIntervalBindings);
+        ReplaceItems(ArticulationBands, applyPlan.Session.ArticulationBands);
         ReplaceItems(CuratedPlanArtifacts, applyPlan.Session.CuratedPlanArtifacts);
         dimensionAssociationsById = applyPlan.Session.DimensionAssociationsById;
         ReplaceItems(VisibleCuratedPlanArtifacts, applyPlan.Session.VisibleCuratedPlanArtifacts);
         RefreshReviewQueue();
 
         NotifySessionProjectionCountsChanged();
+        OnPropertyChanged(nameof(SelectedMeasurementCorridorNodes));
+        OnPropertyChanged(nameof(CanRemoveSelectedMeasurementCorridor));
+        OnPropertyChanged(nameof(SelectedDimensionIntervalBindingSummary));
+        OnPropertyChanged(nameof(SelectedPinchGroupImpactSummary));
+        OnPropertyChanged(nameof(SelectedDimensionImpactSummary));
+        OnPropertyChanged(nameof(CanSaveSelectedDimensionIntervalBinding));
+        OnPropertyChanged(nameof(CanRestoreSelectedDimensionIntervalBinding));
         ApplySelectionReplay(applyPlan.SelectionReplay);
+    }
+
+    private static bool IntervalsOverlap(decimal startA, decimal endA, decimal startB, decimal endB, decimal tolerance = 0.001m)
+    {
+        var minA = Math.Min(startA, endA);
+        var maxA = Math.Max(startA, endA);
+        var minB = Math.Min(startB, endB);
+        var maxB = Math.Max(startB, endB);
+        return maxA > minB + tolerance && minA < maxB - tolerance;
     }
 
     private void NotifySessionProjectionCountsChanged()
@@ -1329,6 +1762,164 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private void RaiseReviewQueueNotifications()
     {
         RaisePropertyNotifications(notificationCoordinator.GetQueuePropertyNames());
+    }
+
+    private static (decimal Min, decimal Max) ResolveCorridorBandCoordinates(GeometryPathDto path, PinchAxisTag axisTag)
+    {
+        var values = path.Segments
+            .SelectMany(segment => axisTag == PinchAxisTag.Height
+                ? new[] { segment.StartX, segment.EndX }
+                : new[] { segment.StartY, segment.EndY })
+            .ToArray();
+
+        return (values.Min(), values.Max());
+    }
+
+    private async Task AddMeasurementNodeFromPreviewAsync(Guid geometryPathId, decimal positionRatio, CancellationToken cancellationToken)
+    {
+        if (DraftCurationId == Guid.Empty || SelectedMeasurementCorridor is null)
+        {
+            return;
+        }
+
+        var path = GeometryPaths.FirstOrDefault(item => item.Id == geometryPathId);
+        var worldPoint = path is null ? null : FloorPlanPreviewGeometry.GetPointAtRatio(path, positionRatio);
+        if (path is null || worldPoint is null)
+        {
+            StatusMessage = "No pude leer ese punto de la geometr\u00EDa seleccionada.";
+            return;
+        }
+
+        var sourceArtifact = ResolveSelectedMeasurementSourceArtifact();
+        if (sourceArtifact is null)
+        {
+            StatusMessage = "Esa geometr\u00EDa no sirve para marcar un punto de medida.";
+            return;
+        }
+
+        var axisCoordinate = string.Equals(SelectedMeasurementCorridor.AxisTag, nameof(PinchAxisTag.Height), StringComparison.OrdinalIgnoreCase)
+            ? decimal.Round((decimal)worldPoint.Value.Y, 3, MidpointRounding.AwayFromZero)
+            : decimal.Round((decimal)worldPoint.Value.X, 3, MidpointRounding.AwayFromZero);
+
+        var selection = selectionCoordinator.CaptureSelection(
+            SelectedCandidate,
+            SelectedPinchMarker,
+            SelectedPinchGroup,
+            SelectedRoomLabel,
+            SelectedOpeningLabel,
+            SelectedDimension,
+            SelectedCuratedArtifact);
+        var selectedCorridorId = SelectedMeasurementCorridor.CorridorId;
+        var selectedCorridorName = SelectedMeasurementCorridor.Name;
+        StatusMessage = $"Guardando un punto de medida en {selectedCorridorName}...";
+        var nodeId = await mutationCoordinator.AddMeasurementNodeAsync(
+            DraftCurationId,
+            selectedCorridorId,
+            referenceKind: "ProjectedGeometry",
+            sourceArtifact.Value.SourceArtifactKind,
+            sourceArtifact.Value.SourceArtifactId,
+            geometryPathId,
+            snapKind: "Projected",
+            decimal.Round((decimal)worldPoint.Value.X, 3, MidpointRounding.AwayFromZero),
+            decimal.Round((decimal)worldPoint.Value.Y, 3, MidpointRounding.AwayFromZero),
+            axisCoordinate,
+            offsetAlongAxis: 0m,
+            offsetNormal: 0m,
+            positionRatio,
+            cancellationToken);
+
+        IsMeasurementNodePlacementArmed = false;
+        await RefreshSessionAsync(selection, cancellationToken);
+        RestoreMeasurementBindingSelection(selectedCorridorId, nodeId, null, null);
+        StatusMessage = $"Punto de medida agregado a {SelectedMeasurementCorridor?.Name ?? selectedCorridorName}.";
+    }
+
+    private (string SourceArtifactKind, Guid SourceArtifactId)? ResolveSelectedMeasurementSourceArtifact()
+    {
+        if (SelectedCuratedArtifact is not null)
+        {
+            return (SelectedCuratedArtifact.SourceArtifactKind, SelectedCuratedArtifact.SourceArtifactId);
+        }
+
+        if (SelectedProtectedDetailAssembly is not null)
+        {
+            return (FloorPlanArtifactSourceKinds.ProtectedDetailAssembly, SelectedProtectedDetailAssembly.ProtectedDetailAssemblyId);
+        }
+
+        if (SelectedFixedPlanComponent is not null)
+        {
+            return (FloorPlanArtifactSourceKinds.FixedPlanComponent, SelectedFixedPlanComponent.FixedPlanComponentId);
+        }
+
+        if (SelectedOpeningCandidate is not null)
+        {
+            return (FloorPlanArtifactSourceKinds.OpeningCandidate, SelectedOpeningCandidate.OpeningCandidateId);
+        }
+
+        if (SelectedCandidate is not null)
+        {
+            return (FloorPlanArtifactSourceKinds.WallCandidate, SelectedCandidate.CandidateId);
+        }
+
+        return null;
+    }
+
+    private void RestoreMeasurementBindingSelection(
+        Guid? corridorId,
+        Guid? nodeId,
+        Guid? startNodeId,
+        Guid? endNodeId)
+    {
+        if (corridorId is Guid resolvedCorridorId)
+        {
+            SelectedMeasurementCorridor = MeasurementCorridors.FirstOrDefault(item => item.CorridorId == resolvedCorridorId);
+        }
+
+        if (nodeId is Guid resolvedNodeId)
+        {
+            SelectedMeasurementNode = MeasurementNodes.FirstOrDefault(item => item.NodeId == resolvedNodeId);
+        }
+
+        if (startNodeId is Guid resolvedStartNodeId)
+        {
+            SelectedMeasurementStartNode = MeasurementNodes.FirstOrDefault(item => item.NodeId == resolvedStartNodeId);
+        }
+
+        if (endNodeId is Guid resolvedEndNodeId)
+        {
+            SelectedMeasurementEndNode = MeasurementNodes.FirstOrDefault(item => item.NodeId == resolvedEndNodeId);
+        }
+    }
+
+    private void TryAutoAssignMeasurementEndpoints()
+    {
+        if (SelectedDimension is null || SelectedMeasurementCorridor is null)
+        {
+            return;
+        }
+
+        var corridorNodes = SelectedMeasurementCorridorNodes;
+        if (corridorNodes.Count != 2)
+        {
+            return;
+        }
+
+        var orderedNodes = corridorNodes
+            .OrderBy(item => item.SortOrder)
+            .ThenBy(item => item.AxisCoordinate)
+            .ToArray();
+        var startNode = orderedNodes[0];
+        var endNode = orderedNodes[1];
+
+        if (SelectedMeasurementStartNode is null)
+        {
+            SelectedMeasurementStartNode = startNode;
+        }
+
+        if (SelectedMeasurementEndNode is null)
+        {
+            SelectedMeasurementEndNode = endNode;
+        }
     }
 
     private void ApplySelectionPresentation(SelectionPresentationOutcome outcome)

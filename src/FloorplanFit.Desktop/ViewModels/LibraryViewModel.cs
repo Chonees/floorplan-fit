@@ -132,15 +132,129 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     public async Task DeleteVersionAsync(FloorPlanLibraryVersionDto version, CancellationToken cancellationToken)
     {
-        StatusMessage = $"Deleting v{version.VersionNumber}...";
+        var optimistic = RemoveVersionFromUi(version);
 
-        using var scope = scopeFactory.CreateScope();
-        var handler = scope.ServiceProvider.GetRequiredService<RemoveFloorPlanVersionHandler>();
-        await handler.HandleAsync(version.VersionId, cancellationToken);
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var handler = scope.ServiceProvider.GetRequiredService<RemoveFloorPlanVersionHandler>();
+            await handler.HandleAsync(version.VersionId, cancellationToken);
+        }
+        catch
+        {
+            RestoreVersionInUi(optimistic);
+            StatusMessage = $"Could not delete v{version.VersionNumber}";
+            throw;
+        }
 
-        await RefreshItemsAsync(cancellationToken);
         StatusMessage = $"Deleted v{version.VersionNumber}";
+        ScheduleBackgroundCleanup();
     }
+
+    private OptimisticDeletionSnapshot RemoveVersionFromUi(FloorPlanLibraryVersionDto version)
+    {
+        var hostItemIndex = -1;
+        FloorPlanLibraryItemDto? hostItem = null;
+        int? hostItemRemovalIndex = null;
+        for (var i = 0; i < Items.Count; i++)
+        {
+            if (Items[i].Versions.Any(v => v.VersionId == version.VersionId))
+            {
+                hostItem = Items[i];
+                hostItemIndex = i;
+                break;
+            }
+        }
+
+        if (hostItem is null)
+        {
+            return new OptimisticDeletionSnapshot(version, null, -1, null, SelectedItem, SelectedVersion);
+        }
+
+        var remainingVersions = hostItem.Versions.Where(v => v.VersionId != version.VersionId).ToArray();
+        if (remainingVersions.Length == 0)
+        {
+            hostItemRemovalIndex = hostItemIndex;
+            Items.RemoveAt(hostItemIndex);
+            if (SelectedItem == hostItem)
+            {
+                SelectedItem = Items.Count > 0 ? Items[Math.Min(hostItemIndex, Items.Count - 1)] : null;
+                SelectedVersion = SelectedItem?.Versions.FirstOrDefault(v => v.IsCurrent)
+                                  ?? SelectedItem?.Versions.FirstOrDefault();
+            }
+            return new OptimisticDeletionSnapshot(version, hostItem, hostItemIndex, hostItemRemovalIndex, SelectedItem, SelectedVersion);
+        }
+
+        var nextCurrentVersion = hostItem.CurrentVersionId == version.VersionId
+            ? remainingVersions.FirstOrDefault()
+            : remainingVersions.FirstOrDefault(v => v.VersionId == hostItem.CurrentVersionId);
+        var updated = hostItem with
+        {
+            VersionCount = remainingVersions.Length,
+            CurrentVersionId = nextCurrentVersion?.VersionId,
+            CurrentVersionNumber = nextCurrentVersion?.VersionNumber,
+            Versions = remainingVersions
+        };
+        Items[hostItemIndex] = updated;
+
+        if (SelectedItem?.TemplateId == updated.TemplateId)
+        {
+            SelectedItem = updated;
+            SelectedVersion = SelectedVersion?.VersionId == version.VersionId
+                ? updated.Versions.FirstOrDefault(v => v.IsCurrent) ?? updated.Versions.FirstOrDefault()
+                : SelectedVersion;
+        }
+
+        return new OptimisticDeletionSnapshot(version, hostItem, hostItemIndex, null, SelectedItem, SelectedVersion);
+    }
+
+    private void RestoreVersionInUi(OptimisticDeletionSnapshot snapshot)
+    {
+        if (snapshot.HostItem is null)
+        {
+            return;
+        }
+
+        if (snapshot.HostItemRemovalIndex is { } removalIndex)
+        {
+            var insertionIndex = Math.Min(removalIndex, Items.Count);
+            Items.Insert(insertionIndex, snapshot.HostItem);
+        }
+        else if (snapshot.HostItemIndex >= 0 && snapshot.HostItemIndex < Items.Count)
+        {
+            Items[snapshot.HostItemIndex] = snapshot.HostItem;
+        }
+
+        SelectedItem = snapshot.PriorSelectedItem;
+        SelectedVersion = snapshot.PriorSelectedVersion;
+    }
+
+    private void ScheduleBackgroundCleanup()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var cleanup = scope.ServiceProvider.GetRequiredService<IFloorPlanVersionCleanupService>();
+                await cleanup.CleanupAsync(CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "Floor plan version cleanup failed after delete: {0}",
+                    exception);
+            }
+        });
+    }
+
+    private sealed record OptimisticDeletionSnapshot(
+        FloorPlanLibraryVersionDto Version,
+        FloorPlanLibraryItemDto? HostItem,
+        int HostItemIndex,
+        int? HostItemRemovalIndex,
+        FloorPlanLibraryItemDto? PriorSelectedItem,
+        FloorPlanLibraryVersionDto? PriorSelectedVersion);
 
     private async Task RefreshItemsAsync(CancellationToken cancellationToken)
     {

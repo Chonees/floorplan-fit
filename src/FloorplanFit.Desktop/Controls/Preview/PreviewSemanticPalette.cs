@@ -34,5 +34,15 @@ internal static class PreviewSemanticPalette
     public static readonly Color ActivePinchAxis = Colors.DodgerBlue;
     public static readonly Color InactivePinch = Colors.SlateGray;
 
+    public static readonly Color MeasurementCorridorGuide = Color.FromRgb(245, 158, 11);
+    public static readonly Color MeasurementNode = Color.FromRgb(251, 191, 36);
+    public static readonly Color MeasurementNodeSelected = Color.FromRgb(250, 204, 21);
+    public static readonly Color MeasurementInterval = Color.FromRgb(249, 115, 22);
+    public static readonly Color MeasurementBandFill = Color.FromArgb(42, 46, 139, 87);
+    public static readonly Color MeasurementBandStroke = Color.FromArgb(180, 46, 139, 87);
+
+    public static readonly Color DimensionNodeBound = Color.FromRgb(14, 165, 233);
+    public const string DimensionNodeBoundArgb = "#FF0EA5E9";
+
     public static SolidColorBrush Brush(Color color) => new(color);
 }

@@ -62,6 +62,7 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
         var positionOverrides = GetArtifactPositionOverrides(curationContext.LineageCurationIds);
         var labelOverrides = GetLabelOverrides(curationContext.LineageCurationIds);
         var dimensionOverrides = GetDimensionOverrides(curationContext.LineageCurationIds);
+        var dimensionBindingOverrides = GetDimensionBindingOverrides(curationContext.LineageCurationIds);
         var wallCandidates = extractionRunId is null
             ? []
             : GetWallCandidates(extractionRunId.Value);
@@ -99,6 +100,15 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
         var pinchMarkers = curationContext.ActiveCurationId is null
             ? []
             : GetPinchMarkers(curationContext.ActiveCurationId.Value);
+        var measurementCorridors = curationContext.ActiveCurationId is null
+            ? []
+            : GetMeasurementCorridors(curationContext.ActiveCurationId.Value);
+        var measurementNodes = curationContext.ActiveCurationId is null
+            ? []
+            : GetMeasurementNodes(curationContext.ActiveCurationId.Value);
+        var dimensionIntervalBindings = curationContext.ActiveCurationId is null
+            ? []
+            : GetDimensionIntervalBindings(curationContext.ActiveCurationId.Value);
         var curatedPlanArtifacts = BuildCuratedPlanArtifacts(
             openingCandidates,
             fixedPlanComponents,
@@ -120,6 +130,7 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
         var geometryPaths = ResolvedFloorPlanArtifactPositionProjector.ApplyGeometryTranslations(
             GetGeometryPaths(geometryPathIds),
             curatedPlanArtifacts);
+        var articulationBands = ArticulationBandProjector.Build(pinchGroups, pinchMarkers, geometryPaths);
         var measurableEdges = MeasurableEdgeProjector.Build(
             geometryPaths,
             wallCandidates,
@@ -129,6 +140,16 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             dimensions,
             measurableEdges,
             measurementContext);
+        var detectedDimensionBindings = DimensionBindingProjector.Build(
+            dimensions,
+            dimensionAssociations);
+        var dimensionBindings = ResolveDimensionBindings(
+            dimensions,
+            detectedDimensionBindings,
+            dimensionBindingOverrides);
+        dimensionAssociations = ResolveDimensionAssociations(
+            dimensionAssociations,
+            dimensionBindings);
 
         return await Task.FromResult(new FloorPlanReviewSessionDto(
             summary.TemplateId,
@@ -151,8 +172,42 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             Dimensions = dimensions,
             MeasurementContext = measurementContext,
             MeasurableEdges = measurableEdges,
-            DimensionAssociations = dimensionAssociations
+            DimensionBindings = dimensionBindings,
+            DimensionAssociations = dimensionAssociations,
+            MeasurementCorridors = measurementCorridors,
+            MeasurementNodes = measurementNodes,
+            DimensionIntervalBindings = dimensionIntervalBindings,
+            ArticulationBands = articulationBands
         });
+    }
+
+    private static IReadOnlyList<DimensionBindingDto> ResolveDimensionBindings(
+        IReadOnlyList<DimensionDto> dimensions,
+        IReadOnlyList<DimensionBindingDto> detectedBindings,
+        IReadOnlyDictionary<string, FloorPlanDimensionBindingOverride> bindingOverrides)
+    {
+        var detectedBindingLookup = detectedBindings.ToDictionary(item => item.DimensionId);
+
+        return dimensions
+            .Select(dimension => ResolvedFloorPlanDimensionBindingProjector.Resolve(
+                dimension.DimensionId,
+                detectedBindingLookup.GetValueOrDefault(dimension.DimensionId),
+                bindingOverrides.GetValueOrDefault(ResolveSourceDimensionKey(dimension))))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<DimensionAssociationDto> ResolveDimensionAssociations(
+        IReadOnlyList<DimensionAssociationDto> detectedAssociations,
+        IReadOnlyList<DimensionBindingDto> dimensionBindings)
+    {
+        var detectedAssociationLookup = detectedAssociations.ToDictionary(item => item.DimensionId);
+
+        return dimensionBindings
+            .Select(binding => binding.HasManualBindingOverride
+                ? ResolvedFloorPlanDimensionBindingProjector.ToCompatibilityAssociation(binding)
+                : detectedAssociationLookup.GetValueOrDefault(binding.DimensionId)
+                    ?? ResolvedFloorPlanDimensionBindingProjector.ToCompatibilityAssociation(binding))
+            .ToArray();
     }
 
     private TemplateSummary? GetTemplateSummary(Guid templateId)
@@ -198,6 +253,7 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
                 END AS derived_status
             FROM floorplan_templates t
             JOIN floorplan_versions v ON v.id = t.current_version_id
+                AND v.deleted_at_utc IS NULL
             WHERE t.id = $template_id
             LIMIT 1
             """);
@@ -262,6 +318,7 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
                 END AS derived_status
             FROM floorplan_templates t
             JOIN floorplan_versions v ON v.floorplan_template_id = t.id
+                AND v.deleted_at_utc IS NULL
             WHERE t.id = $template_id
               AND v.id = $floorplan_version_id
             LIMIT 1
@@ -331,6 +388,7 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             JOIN imported_documents d ON d.id = v.imported_document_id
             JOIN measurement_contexts m ON m.id = d.measurement_context_id
             WHERE v.id = $floorplan_version_id
+              AND v.deleted_at_utc IS NULL
             LIMIT 1
             """);
         command.Parameters.AddWithValue("$floorplan_version_id", floorPlanVersionId.ToString());
@@ -793,7 +851,7 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             """);
         command.Parameters.AddWithValue("$wall_extraction_run_id", extractionRunId.ToString());
 
-        var items = new List<DimensionDto>();
+        var items = new List<(DimensionDto BaseDimension, DimensionDto ResolvedDimension)>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -843,10 +901,14 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
                 ArcPrimitives = GetDimensionArcPrimitives(dimensionId),
                 SolidPrimitives = GetDimensionSolidPrimitives(dimensionId)
             };
-            items.Add(ResolvedFloorPlanDimensionProjector.Resolve(baseDimension, overrides.GetValueOrDefault(ResolveSourceDimensionKey(baseDimension))));
+            items.Add((
+                baseDimension,
+                ResolvedFloorPlanDimensionProjector.Resolve(
+                    baseDimension,
+                    overrides.GetValueOrDefault(ResolveSourceDimensionKey(baseDimension)))));
         }
 
-        return items;
+        return DeduplicateDimensions(items);
     }
 
     private static string ResolveSourceDimensionKey(DimensionDto dimension)
@@ -855,6 +917,160 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             ? dimension.SourceHandle
             : dimension.SourceEntityRef;
     }
+
+    private static IReadOnlyList<DimensionDto> DeduplicateDimensions(
+        IReadOnlyList<(DimensionDto BaseDimension, DimensionDto ResolvedDimension)> items)
+    {
+        if (items.Count <= 1)
+        {
+            return items.Select(item => item.ResolvedDimension).ToArray();
+        }
+
+        var deduplicated = new Dictionary<string, DimensionDto>(StringComparer.Ordinal);
+        foreach (var item in items)
+        {
+            var signature = BuildDimensionDuplicateSignature(item.BaseDimension);
+            if (!deduplicated.TryGetValue(signature, out var current) ||
+                ShouldReplaceDeduplicatedDimension(current, item.ResolvedDimension))
+            {
+                deduplicated[signature] = item.ResolvedDimension;
+            }
+        }
+
+        return deduplicated.Values
+            .OrderBy(item => item.SortOrder)
+            .ThenBy(item => item.SourceEntityRef, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool ShouldReplaceDeduplicatedDimension(DimensionDto current, DimensionDto candidate)
+    {
+        if (candidate.IsEdited != current.IsEdited)
+        {
+            return candidate.IsEdited;
+        }
+
+        if (candidate.SortOrder != current.SortOrder)
+        {
+            return candidate.SortOrder > current.SortOrder;
+        }
+
+        var currentHandle = current.SourceHandle ?? string.Empty;
+        var candidateHandle = candidate.SourceHandle ?? string.Empty;
+        var handleComparison = StringComparer.OrdinalIgnoreCase.Compare(candidateHandle, currentHandle);
+        if (handleComparison != 0)
+        {
+            return handleComparison > 0;
+        }
+
+        return StringComparer.OrdinalIgnoreCase.Compare(candidate.SourceEntityRef, current.SourceEntityRef) > 0;
+    }
+
+    private static string BuildDimensionDuplicateSignature(DimensionDto dimension)
+    {
+        var parts = new List<string>
+        {
+            dimension.SourceLayer,
+            dimension.SourceEntityKind,
+            dimension.DisplayText,
+            dimension.DisplayTextSource,
+            dimension.RawTextOverride,
+            dimension.DimType.ToString(CultureInfo.InvariantCulture),
+            FormatDecimal(dimension.Angle),
+            FormatDecimal(dimension.ObliqueAngle),
+            FormatNullableDecimal(dimension.RenderTextX),
+            FormatNullableDecimal(dimension.RenderTextY),
+            FormatNullableDecimal(dimension.RenderTextHeight),
+            FormatNullableDecimal(dimension.RenderTextRotationDegrees),
+            dimension.RenderTextStyleName ?? string.Empty,
+            dimension.RenderTextHorizontalAlignment ?? string.Empty,
+            dimension.RenderTextVerticalAlignment ?? string.Empty,
+            dimension.RenderTextAttachmentPoint ?? string.Empty
+        };
+
+        AppendLinePrimitiveSignature(parts, dimension.LinePrimitives);
+        AppendTextPrimitiveSignature(parts, dimension.TextPrimitives);
+        AppendInsertPrimitiveSignature(parts, dimension.InsertPrimitives);
+        AppendCirclePrimitiveSignature(parts, dimension.CirclePrimitives);
+        AppendArcPrimitiveSignature(parts, dimension.ArcPrimitives);
+        AppendSolidPrimitiveSignature(parts, dimension.SolidPrimitives);
+
+        if (dimension.LinePrimitives.Count == 0 &&
+            dimension.TextPrimitives.Count == 0 &&
+            dimension.InsertPrimitives.Count == 0 &&
+            dimension.CirclePrimitives.Count == 0 &&
+            dimension.ArcPrimitives.Count == 0 &&
+            dimension.SolidPrimitives.Count == 0)
+        {
+            parts.Add(FormatDecimal(dimension.DefPointX));
+            parts.Add(FormatDecimal(dimension.DefPointY));
+            parts.Add(FormatDecimal(dimension.DefPointZ));
+            parts.Add(FormatDecimal(dimension.DefPoint2X));
+            parts.Add(FormatDecimal(dimension.DefPoint2Y));
+            parts.Add(FormatDecimal(dimension.DefPoint2Z));
+            parts.Add(FormatDecimal(dimension.DefPoint3X));
+            parts.Add(FormatDecimal(dimension.DefPoint3Y));
+            parts.Add(FormatDecimal(dimension.DefPoint3Z));
+        }
+
+        return string.Join("|", parts);
+    }
+
+    private static void AppendLinePrimitiveSignature(List<string> parts, IReadOnlyList<DimensionLinePrimitiveDto> primitives)
+    {
+        foreach (var primitive in primitives.OrderBy(item => item.SortOrder))
+        {
+            parts.Add($"LINE:{primitive.SortOrder.ToString(CultureInfo.InvariantCulture)}:{FormatDecimal(primitive.StartX)}:{FormatDecimal(primitive.StartY)}:{FormatDecimal(primitive.EndX)}:{FormatDecimal(primitive.EndY)}");
+        }
+    }
+
+    private static void AppendTextPrimitiveSignature(List<string> parts, IReadOnlyList<DimensionTextPrimitiveDto> primitives)
+    {
+        foreach (var primitive in primitives.OrderBy(item => item.SortOrder))
+        {
+            parts.Add($"TEXT:{primitive.SortOrder.ToString(CultureInfo.InvariantCulture)}:{primitive.Text}:{FormatDecimal(primitive.X)}:{FormatDecimal(primitive.Y)}:{FormatDecimal(primitive.Height)}:{FormatDecimal(primitive.RotationDegrees)}:{primitive.StyleName ?? string.Empty}:{primitive.HorizontalAlignment ?? string.Empty}:{primitive.VerticalAlignment ?? string.Empty}:{primitive.AttachmentPoint ?? string.Empty}");
+        }
+    }
+
+    private static void AppendInsertPrimitiveSignature(List<string> parts, IReadOnlyList<DimensionInsertPrimitiveDto> primitives)
+    {
+        foreach (var primitive in primitives.OrderBy(item => item.SortOrder))
+        {
+            parts.Add($"INSERT:{primitive.SortOrder.ToString(CultureInfo.InvariantCulture)}:{primitive.Name}:{FormatDecimal(primitive.X)}:{FormatDecimal(primitive.Y)}:{FormatDecimal(primitive.Z)}:{FormatDecimal(primitive.RotationDegrees)}:{FormatDecimal(primitive.ScaleX)}:{FormatDecimal(primitive.ScaleY)}:{FormatDecimal(primitive.ScaleZ)}");
+        }
+    }
+
+    private static void AppendCirclePrimitiveSignature(List<string> parts, IReadOnlyList<DimensionCirclePrimitiveDto> primitives)
+    {
+        foreach (var primitive in primitives.OrderBy(item => item.SortOrder))
+        {
+            parts.Add($"CIRCLE:{primitive.SortOrder.ToString(CultureInfo.InvariantCulture)}:{FormatDecimal(primitive.CenterX)}:{FormatDecimal(primitive.CenterY)}:{FormatDecimal(primitive.Radius)}");
+        }
+    }
+
+    private static void AppendArcPrimitiveSignature(List<string> parts, IReadOnlyList<DimensionArcPrimitiveDto> primitives)
+    {
+        foreach (var primitive in primitives.OrderBy(item => item.SortOrder))
+        {
+            parts.Add($"ARC:{primitive.SortOrder.ToString(CultureInfo.InvariantCulture)}:{FormatDecimal(primitive.CenterX)}:{FormatDecimal(primitive.CenterY)}:{FormatDecimal(primitive.Radius)}:{FormatDecimal(primitive.StartAngleDegrees)}:{FormatDecimal(primitive.EndAngleDegrees)}");
+        }
+    }
+
+    private static void AppendSolidPrimitiveSignature(List<string> parts, IReadOnlyList<DimensionSolidPrimitiveDto> primitives)
+    {
+        foreach (var primitive in primitives.OrderBy(item => item.SortOrder))
+        {
+            parts.Add($"SOLID:{primitive.SortOrder.ToString(CultureInfo.InvariantCulture)}:{FormatDecimal(primitive.Point1X)}:{FormatDecimal(primitive.Point1Y)}:{FormatDecimal(primitive.Point2X)}:{FormatDecimal(primitive.Point2Y)}:{FormatDecimal(primitive.Point3X)}:{FormatDecimal(primitive.Point3Y)}:{FormatDecimal(primitive.Point4X)}:{FormatDecimal(primitive.Point4Y)}");
+        }
+    }
+
+    private static string FormatDecimal(decimal value)
+        => value.ToString("0.###############", CultureInfo.InvariantCulture);
+
+    private static string FormatNullableDecimal(decimal? value)
+        => value.HasValue
+            ? FormatDecimal(value.Value)
+            : string.Empty;
 
     private IReadOnlyList<DimensionLineSegmentDto> GetDimensionLineSegments(Guid dimensionId)
     {
@@ -1446,6 +1662,100 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
         return items;
     }
 
+    private IReadOnlyDictionary<string, FloorPlanDimensionBindingOverride> GetDimensionBindingOverrides(IReadOnlyList<Guid> lineageCurationIds)
+    {
+        var items = new Dictionary<string, FloorPlanDimensionBindingOverride>(StringComparer.Ordinal);
+        foreach (var curationId in lineageCurationIds)
+        {
+            using var command = CreateCommand(
+                """
+                SELECT
+                    floorplan_curation_id,
+                    source_dimension_key,
+                    binding_kind,
+                    is_resolved,
+                    confidence,
+                    notes,
+                    axis_tag,
+                    start_coordinate,
+                    end_coordinate,
+                    orientation_degrees,
+                    updated_at_utc
+                FROM floorplan_dimension_binding_overrides
+                WHERE floorplan_curation_id = $floorplan_curation_id
+                ORDER BY updated_at_utc ASC, source_dimension_key ASC
+                """);
+            command.Parameters.AddWithValue("$floorplan_curation_id", curationId.ToString());
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var sourceDimensionKey = reader.GetString(1);
+                items[sourceDimensionKey] = FloorPlanDimensionBindingOverride.CreateManualOverride(
+                    Guid.Parse(reader.GetString(0)),
+                    sourceDimensionKey,
+                    reader.GetString(2),
+                    reader.GetInt32(3) == 1,
+                    decimal.Parse(reader.GetString(4), CultureInfo.InvariantCulture),
+                    reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                    reader.IsDBNull(6)
+                        ? null
+                        : new FloorPlanDimensionMeasuredSpanOverride(
+                            reader.GetString(6),
+                            decimal.Parse(reader.GetString(7), CultureInfo.InvariantCulture),
+                            decimal.Parse(reader.GetString(8), CultureInfo.InvariantCulture),
+                            decimal.Parse(reader.GetString(9), CultureInfo.InvariantCulture)),
+                    GetDimensionBindingOverrideAnchors(curationId, sourceDimensionKey),
+                    DateTime.Parse(reader.GetString(10), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+            }
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<FloorPlanDimensionBindingAnchorOverride> GetDimensionBindingOverrideAnchors(Guid curationId, string sourceDimensionKey)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT
+                sort_order,
+                edge_key,
+                source_artifact_kind,
+                source_artifact_id,
+                geometry_path_id,
+                edge_anchor_kind,
+                anchor_x,
+                anchor_y,
+                distance_source_units,
+                segment_ratio
+            FROM floorplan_dimension_binding_override_anchors
+            WHERE floorplan_curation_id = $floorplan_curation_id
+              AND source_dimension_key = $source_dimension_key
+            ORDER BY sort_order ASC
+            """);
+        command.Parameters.AddWithValue("$floorplan_curation_id", curationId.ToString());
+        command.Parameters.AddWithValue("$source_dimension_key", sourceDimensionKey);
+
+        var items = new List<FloorPlanDimensionBindingAnchorOverride>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            items.Add(new FloorPlanDimensionBindingAnchorOverride(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                Guid.Parse(reader.GetString(3)),
+                Guid.Parse(reader.GetString(4)),
+                reader.GetString(5),
+                decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(7), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(8), CultureInfo.InvariantCulture),
+                reader.IsDBNull(9) ? null : decimal.Parse(reader.GetString(9), CultureInfo.InvariantCulture)));
+        }
+
+        return items;
+    }
+
     private IReadOnlyList<CuratedPlanArtifactDto> BuildCuratedPlanArtifacts(
         IReadOnlyList<OpeningCandidateDto> openingCandidates,
         IReadOnlyList<FixedPlanComponentDto> fixedPlanComponents,
@@ -1655,6 +1965,127 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
                 decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
                 decimal.Parse(reader.GetString(7), CultureInfo.InvariantCulture),
                 reader.GetInt32(8)));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<MeasurementCorridorDto> GetMeasurementCorridors(Guid floorPlanCurationId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT
+                id,
+                name,
+                axis_tag,
+                guide_geometry_path_id,
+                band_min_coordinate,
+                band_max_coordinate,
+                status,
+                sort_order
+            FROM measurement_corridors
+            WHERE floorplan_curation_id = $floorplan_curation_id
+            ORDER BY sort_order ASC, id ASC
+            """);
+        command.Parameters.AddWithValue("$floorplan_curation_id", floorPlanCurationId.ToString());
+
+        using var reader = command.ExecuteReader();
+        var items = new List<MeasurementCorridorDto>();
+        while (reader.Read())
+        {
+            items.Add(new MeasurementCorridorDto(
+                Guid.Parse(reader.GetString(0)),
+                reader.GetString(1),
+                ((PinchAxisTag)reader.GetInt32(2)).ToString(),
+                Guid.Parse(reader.GetString(3)),
+                decimal.Parse(reader.GetString(4), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(5), CultureInfo.InvariantCulture),
+                reader.GetString(6),
+                reader.GetInt32(7)));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<MeasurementNodeDto> GetMeasurementNodes(Guid floorPlanCurationId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT
+                id,
+                corridor_id,
+                sort_order,
+                reference_kind,
+                source_artifact_kind,
+                source_artifact_id,
+                geometry_path_id,
+                snap_kind,
+                anchor_x,
+                anchor_y,
+                axis_coordinate,
+                offset_along_axis,
+                offset_normal,
+                position_ratio
+            FROM measurement_nodes
+            WHERE floorplan_curation_id = $floorplan_curation_id
+            ORDER BY corridor_id ASC, sort_order ASC
+            """);
+        command.Parameters.AddWithValue("$floorplan_curation_id", floorPlanCurationId.ToString());
+
+        using var reader = command.ExecuteReader();
+        var items = new List<MeasurementNodeDto>();
+        while (reader.Read())
+        {
+            items.Add(new MeasurementNodeDto(
+                Guid.Parse(reader.GetString(0)),
+                Guid.Parse(reader.GetString(1)),
+                reader.GetInt32(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                Guid.Parse(reader.GetString(5)),
+                Guid.Parse(reader.GetString(6)),
+                reader.GetString(7),
+                decimal.Parse(reader.GetString(8), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(9), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(10), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(11), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(12), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(13), CultureInfo.InvariantCulture)));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<DimensionIntervalBindingDto> GetDimensionIntervalBindings(Guid floorPlanCurationId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT
+                dimension_id,
+                corridor_id,
+                start_node_id,
+                end_node_id,
+                binding_status,
+                interval_start_coordinate,
+                interval_end_coordinate
+            FROM floorplan_dimension_interval_bindings
+            WHERE floorplan_curation_id = $floorplan_curation_id
+            ORDER BY updated_at_utc DESC
+            """);
+        command.Parameters.AddWithValue("$floorplan_curation_id", floorPlanCurationId.ToString());
+
+        using var reader = command.ExecuteReader();
+        var items = new List<DimensionIntervalBindingDto>();
+        while (reader.Read())
+        {
+            items.Add(new DimensionIntervalBindingDto(
+                Guid.Parse(reader.GetString(0)),
+                Guid.Parse(reader.GetString(1)),
+                Guid.Parse(reader.GetString(2)),
+                Guid.Parse(reader.GetString(3)),
+                reader.GetString(4),
+                decimal.Parse(reader.GetString(5), CultureInfo.InvariantCulture),
+                decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture)));
         }
 
         return items;

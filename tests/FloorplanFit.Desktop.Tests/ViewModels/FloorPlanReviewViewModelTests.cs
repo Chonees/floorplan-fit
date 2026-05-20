@@ -406,6 +406,83 @@ public sealed class FloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task Selecting_a_dimension_does_not_enable_the_text_tool()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "santa-barbara", "SANTA-BARBARA", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var dimensionId = Guid.NewGuid();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 13, 20, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "santa-barbara",
+                "SANTA-BARBARA",
+                "Curated Draft",
+                1,
+                null,
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [])
+            {
+                Dimensions =
+                [
+                    new DimensionDto(
+                        dimensionId,
+                        "DIMENSION:1",
+                        "DIMS",
+                        "DIMENSION",
+                        "*D169",
+                        "10'-4\"",
+                        "GeometryBlock",
+                        string.Empty,
+                        124m,
+                        3149.6m,
+                        "Inch",
+                        0,
+                        0m,
+                        0m,
+                        100m,
+                        100m,
+                        0m,
+                        224m,
+                        100m,
+                        0m,
+                        100m,
+                        140m,
+                        0m,
+                        0.99m,
+                        null,
+                        1)
+                ]
+            }));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectDimension(dimensionId);
+
+        Assert.NotNull(viewModel.SelectedDimension);
+        Assert.False(viewModel.CanUseTextTool);
+    }
+
+    [Fact]
     public async Task SelectPreviewPath_selects_the_matching_candidate_line()
     {
         var templateId = Guid.NewGuid();
