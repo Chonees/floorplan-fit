@@ -171,7 +171,7 @@ public sealed class FloorPlanPreviewGeometryTests
             geometryPaths,
             PinchAxisTag.Height,
             pinchMarkers,
-            requestedTrimMm: 40m,
+            requestedTrimSourceUnits: 40m,
             FloorPlanPreviewGeometry.PreviewCompressionEdge.Top);
 
         Assert.Equal(50m, preview.Single(path => path.Id == topPathId).Segments.Single().StartY);
@@ -206,12 +206,42 @@ public sealed class FloorPlanPreviewGeometryTests
             geometryPaths,
             PinchAxisTag.Height,
             pinchMarkers,
-            requestedTrimMm: 40m,
+            requestedTrimSourceUnits: 40m,
             FloorPlanPreviewGeometry.PreviewCompressionEdge.Bottom);
 
         Assert.Equal(90m, preview.Single(path => path.Id == topPathId).Segments.Single().StartY);
         Assert.Equal(70m, preview.Single(path => path.Id == middlePathId).Segments.Single().StartY);
         Assert.Equal(50m, preview.Single(path => path.Id == bottomPathId).Segments.Single().StartY);
+    }
+
+    [Fact]
+    public void CreatePreviewGeometry_converts_marker_max_trim_mm_to_source_units()
+    {
+        var markerPathId = Guid.NewGuid();
+        var pinchGroupId = Guid.NewGuid();
+        var affectedPathId = Guid.NewGuid();
+
+        GeometryPathDto[] geometryPaths =
+        [
+            new GeometryPathDto(markerPathId, false, [new GeometrySegmentDto(markerPathId, 1, 10m, 0m, 10m, 100m)]),
+            new GeometryPathDto(affectedPathId, false, [new GeometrySegmentDto(affectedPathId, 1, 20m, 0m, 20m, 100m)])
+        ];
+
+        PinchMarkerDto[] pinchMarkers =
+        [
+            new(Guid.NewGuid(), pinchGroupId, "Width", Guid.NewGuid(), markerPathId, nameof(PinchAxisTag.Width), 0.5m, 25.4m, 1)
+        ];
+
+        var preview = FloorPlanPreviewGeometry.CreatePreviewGeometry(
+            geometryPaths,
+            PinchAxisTag.Width,
+            pinchMarkers,
+            requestedTrimSourceUnits: 10m,
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Right,
+            sourceToMillimetersFactor: 25.4m);
+
+        Assert.Equal(19m, preview.Single(path => path.Id == affectedPathId).Segments.Single().StartX);
+        Assert.Equal(19m, preview.Single(path => path.Id == affectedPathId).Segments.Single().EndX);
     }
 
     [Fact]

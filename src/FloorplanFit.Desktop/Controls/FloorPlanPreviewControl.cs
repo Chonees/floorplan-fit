@@ -23,7 +23,7 @@ public sealed class FloorPlanPreviewControl : Control
     private FloorPlanPreviewGeometry.PreviewCompressionEdge? activeDragEdge;
     private PreviewArtifactMoveState? activeArtifactMove;
     private Point dragStartPoint;
-    private decimal activePreviewTrimMm;
+    private decimal activePreviewTrimSourceUnits;
     private PreviewZoomState previewZoomState = PreviewZoomState.Default;
     private bool isPanningPreview;
     private Point panStartPoint;
@@ -508,7 +508,7 @@ public sealed class FloorPlanPreviewControl : Control
             panStartPoint = panStart.PanStartPoint;
             panStartZoomState = panStart.PanStartZoomState;
             activeDragEdge = null;
-            activePreviewTrimMm = 0m;
+            activePreviewTrimSourceUnits = 0m;
             if (panStart.CapturePointer)
             {
                 e.Pointer.Capture(this);
@@ -604,7 +604,7 @@ public sealed class FloorPlanPreviewControl : Control
         {
             activeDragEdge = edge;
             dragStartPoint = pointerPosition;
-            activePreviewTrimMm = 0m;
+            activePreviewTrimSourceUnits = 0m;
             pendingDimensionEdit = null;
         }
 
@@ -772,8 +772,9 @@ public sealed class FloorPlanPreviewControl : Control
             GeometryPaths,
             axisTag.Value,
             PinchMarkerPreviewLayerRenderer.FilterForPreviewGroup(PinchMarkers, PreviewPinchGroupId),
-            activePreviewTrimMm,
-            activeDragEdge.Value);
+            activePreviewTrimSourceUnits,
+            activeDragEdge.Value,
+            MeasurementContext?.ToMillimetersFactor ?? 1m);
     }
 
     private FloorPlanPreviewGeometry.PreviewCompressionEdge? ResolveEdgeDrag(Point pointerPosition, PinchAxisTag axisTag)
@@ -1006,7 +1007,7 @@ public sealed class FloorPlanPreviewControl : Control
             panStartZoomState,
             activeDragEdge,
             dragStartPoint,
-            activePreviewTrimMm,
+            activePreviewTrimSourceUnits,
             activeArtifactMove,
             pendingDimensionEdit,
             activeDimensionEdit);
@@ -1019,7 +1020,7 @@ public sealed class FloorPlanPreviewControl : Control
         panStartZoomState = state.PanStartZoomState;
         activeDragEdge = state.ActiveDragEdge;
         dragStartPoint = state.DragStartPoint;
-        activePreviewTrimMm = state.ActivePreviewTrimMm;
+        activePreviewTrimSourceUnits = state.ActivePreviewTrimSourceUnits;
         activeArtifactMove = state.ActiveArtifactMove;
         pendingDimensionEdit = state.PendingDimensionEdit;
         activeDimensionEdit = state.ActiveDimensionEdit;

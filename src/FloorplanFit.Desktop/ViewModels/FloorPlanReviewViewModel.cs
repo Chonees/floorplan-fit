@@ -18,6 +18,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private const string InspectorToolFit = "Fit";
     private const string PublishRequiresPinchMarkerMessage = "Agregá al menos un pinche antes de publicar.";
     private const string ExportRequiresDirtyNativeDimensionsMessage = "No hay cotas modificadas para exportar.";
+    private const decimal MillimetersPerInch = 25.4m;
 
     private readonly FloorPlanReviewApplyCoordinator applyCoordinator;
     private readonly FloorPlanReviewMutationCoordinator mutationCoordinator;
@@ -216,7 +217,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private MeasurementNodeDto? selectedMeasurementEndNode;
 
     [ObservableProperty]
-    private string newPinchMaxTrimMm = "120";
+    private string newPinchMaxTrimInches = "1";
 
     [ObservableProperty]
     private bool isPinchPlacementArmed;
@@ -857,12 +858,13 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return;
         }
 
-        if (!decimal.TryParse(NewPinchMaxTrimMm.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var maxTrimMm) || maxTrimMm <= 0m)
+        if (!decimal.TryParse(NewPinchMaxTrimInches.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var maxTrimInches) || maxTrimInches <= 0m)
         {
-            StatusMessage = "Escrib\u00ED un ajuste m\u00E1ximo v\u00E1lido antes de marcar el ajuste.";
+            StatusMessage = "Escrib\u00ED un ajuste m\u00E1ximo en pulgadas v\u00E1lido antes de marcar el ajuste.";
             return;
         }
 
+        var maxTrimMm = decimal.Round(maxTrimInches * MillimetersPerInch, 3, MidpointRounding.AwayFromZero);
         StatusMessage = $"Guardando un ajuste de {SelectedPinchGroup.Name} sobre {SelectedCandidate.SourceEntityRef}...";
         await mutationCoordinator.AddPinchMarkerAsync(
             DraftCurationId,

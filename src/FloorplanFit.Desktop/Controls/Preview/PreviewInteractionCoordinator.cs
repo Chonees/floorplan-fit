@@ -55,7 +55,7 @@ internal static class PreviewInteractionCoordinator
         FloorPlanPreviewControl.PreviewZoomState PanStartZoomState,
         FloorPlanPreviewGeometry.PreviewCompressionEdge? ActiveDragEdge,
         Point DragStartPoint,
-        decimal ActivePreviewTrimMm,
+        decimal ActivePreviewTrimSourceUnits,
         FloorPlanPreviewControl.PreviewArtifactMoveState? ActiveArtifactMove,
         FloorPlanPreviewControl.PreviewPendingDimensionEditState? PendingDimensionEdit,
         FloorPlanPreviewControl.PreviewDimensionEditState? ActiveDimensionEdit)
@@ -434,7 +434,7 @@ internal static class PreviewInteractionCoordinator
             InvalidateVisual: true,
             NextState: state with
             {
-                ActivePreviewTrimMm = (decimal)(pixelDelta / request.Viewport.Value.Scale)
+                ActivePreviewTrimSourceUnits = (decimal)(pixelDelta / request.Viewport.Value.Scale)
             });
     }
 
@@ -499,7 +499,7 @@ internal static class PreviewInteractionCoordinator
                 NextState: state with
                 {
                     ActiveDragEdge = null,
-                    ActivePreviewTrimMm = 0m
+                    ActivePreviewTrimSourceUnits = 0m
                 },
                 CommittedArtifactMove: null,
                 CommittedDimensionEdit: null);

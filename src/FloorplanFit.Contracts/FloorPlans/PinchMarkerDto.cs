@@ -9,4 +9,9 @@ public sealed record PinchMarkerDto(
     string AxisTag,
     decimal PositionRatio,
     decimal MaxTrimMm,
-    int SortOrder);
+    int SortOrder)
+{
+    private const decimal MillimetersPerInch = 25.4m;
+
+    public decimal MaxTrimInches => decimal.Round(MaxTrimMm / MillimetersPerInch, 3, MidpointRounding.AwayFromZero);
+}

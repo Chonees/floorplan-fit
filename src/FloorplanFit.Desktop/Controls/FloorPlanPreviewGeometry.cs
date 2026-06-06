@@ -168,14 +168,18 @@ internal static class FloorPlanPreviewGeometry
         IReadOnlyList<GeometryPathDto>? geometryPaths,
         PinchAxisTag axisTag,
         IReadOnlyList<PinchMarkerDto>? pinchMarkers,
-        decimal requestedTrimMm,
-        PreviewCompressionEdge edge)
+        decimal requestedTrimSourceUnits,
+        PreviewCompressionEdge edge,
+        decimal sourceToMillimetersFactor = 1m)
     {
-        if (geometryPaths is not { Count: > 0 } || pinchMarkers is not { Count: > 0 } || requestedTrimMm <= 0m)
+        if (geometryPaths is not { Count: > 0 } || pinchMarkers is not { Count: > 0 } || requestedTrimSourceUnits <= 0m)
         {
             return geometryPaths ?? [];
         }
 
+        var effectiveSourceToMillimetersFactor = sourceToMillimetersFactor > 0m
+            ? sourceToMillimetersFactor
+            : 1m;
         var geometryLookup = geometryPaths.ToDictionary(item => item.Id);
         var axisMarkers = pinchMarkers
             .Where(item => string.Equals(item.AxisTag, axisTag.ToString(), StringComparison.OrdinalIgnoreCase))
@@ -195,9 +199,10 @@ internal static class FloorPlanPreviewGeometry
                 continue;
             }
 
+            var maxTrimSourceUnits = marker.MaxTrimMm / effectiveSourceToMillimetersFactor;
             activeMarkers.Add(new ResolvedMarker(
                 axisTag == PinchAxisTag.Width ? (decimal)point.Value.X : (decimal)point.Value.Y,
-                decimal.Min(marker.MaxTrimMm, requestedTrimMm / axisMarkers.Length)));
+                decimal.Min(maxTrimSourceUnits, requestedTrimSourceUnits / axisMarkers.Length)));
         }
 
         activeMarkers = activeMarkers
@@ -376,11 +381,11 @@ internal static class FloorPlanPreviewGeometry
             {
                 if (edge == PreviewCompressionEdge.Right && x >= marker.Coordinate)
                 {
-                    deltaX -= marker.TrimMm;
+                    deltaX -= marker.TrimSourceUnits;
                 }
                 else if (edge == PreviewCompressionEdge.Left && x <= marker.Coordinate)
                 {
-                    deltaX += marker.TrimMm;
+                    deltaX += marker.TrimSourceUnits;
                 }
             }
 
@@ -392,11 +397,11 @@ internal static class FloorPlanPreviewGeometry
         {
             if (edge == PreviewCompressionEdge.Top && y >= marker.Coordinate)
             {
-                deltaY -= marker.TrimMm;
+                deltaY -= marker.TrimSourceUnits;
             }
             else if (edge == PreviewCompressionEdge.Bottom && y <= marker.Coordinate)
             {
-                deltaY += marker.TrimMm;
+                deltaY += marker.TrimSourceUnits;
             }
         }
 
@@ -447,7 +452,7 @@ internal static class FloorPlanPreviewGeometry
 
     private readonly record struct SegmentProjection(double DistanceSquared, double ProjectionRatio);
 
-    private readonly record struct ResolvedMarker(decimal Coordinate, decimal TrimMm);
+    private readonly record struct ResolvedMarker(decimal Coordinate, decimal TrimSourceUnits);
 
     private readonly record struct TransformedPoint(decimal X, decimal Y);
 }

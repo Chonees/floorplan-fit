@@ -168,7 +168,11 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("SelectedMeasurementNodeId=\"{Binding SelectedMeasurementNodeId}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedMeasurementStartNodeId=\"{Binding SelectedMeasurementStartNodeId}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedMeasurementEndNodeId=\"{Binding SelectedMeasurementEndNodeId}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Text=\"mm\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"in\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("NewPinchMaxTrimInches", xaml, StringComparison.Ordinal);
+        Assert.Contains("MaxTrimInches", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("NewPinchMaxTrimMm", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("MaxTrimMm, StringFormat='Max: {0} mm'", xaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"Herramientas Fit\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"Existente\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"Grupos de pinches\"", xaml, StringComparison.Ordinal);

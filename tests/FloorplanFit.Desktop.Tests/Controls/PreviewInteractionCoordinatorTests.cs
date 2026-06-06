@@ -166,7 +166,7 @@ public sealed class PreviewInteractionCoordinatorTests
             PanStartZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
             ActiveDragEdge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Right,
             DragStartPoint: new Point(420d, 200d),
-            ActivePreviewTrimMm: 0m,
+            ActivePreviewTrimSourceUnits: 0m,
             ActiveArtifactMove: null,
             PendingDimensionEdit: null,
             ActiveDimensionEdit: null);
@@ -180,7 +180,7 @@ public sealed class PreviewInteractionCoordinatorTests
 
         Assert.False(outcome.Handled);
         Assert.True(outcome.InvalidateVisual);
-        Assert.Equal(15m, outcome.NextState.ActivePreviewTrimMm);
+        Assert.Equal(15m, outcome.NextState.ActivePreviewTrimSourceUnits);
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public sealed class PreviewInteractionCoordinatorTests
             PanStartZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
             ActiveDragEdge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Left,
             DragStartPoint: new Point(200d, 120d),
-            ActivePreviewTrimMm: 18m,
+            ActivePreviewTrimSourceUnits: 18m,
             ActiveArtifactMove: null,
             PendingDimensionEdit: null,
             ActiveDimensionEdit: null);
@@ -209,7 +209,7 @@ public sealed class PreviewInteractionCoordinatorTests
         Assert.True(outcome.ReleasePointerCapture);
         Assert.True(outcome.InvalidateVisual);
         Assert.Null(outcome.NextState.ActiveDragEdge);
-        Assert.Equal(0m, outcome.NextState.ActivePreviewTrimMm);
+        Assert.Equal(0m, outcome.NextState.ActivePreviewTrimSourceUnits);
     }
 
     [Fact]

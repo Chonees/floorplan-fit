@@ -1,5 +1,15 @@
 # Current State
 
+## 2026-06-06 - Pinch max trim uses inches in UI and mm internally
+- Current truth: the reduction limit belongs to each **pinch marker**, not to the dimension franja/binding itself.
+- Desktop now shows the new pinch limit in inches via `NewPinchMaxTrimInches`, with default `"1"`.
+- Persistence remains metric/internal: the value is converted to millimeters before saving (`1 in = 25.4 mm`) and stored as `PinchMarker.MaxTrimMm` / `pinch_markers.max_trim_mm`.
+- Existing pinches display their cap as inches using `PinchMarkerDto.MaxTrimInches`, while the contract still exposes `MaxTrimMm` for storage/logic compatibility.
+- Preview compression now treats the drag delta as **source drawing units** and converts each marker cap from `MaxTrimMm` to source units via `MeasurementContext.ToMillimetersFactor`; for SEMINOLE2000 (`$INSUNITS=1` / Inch), `25.4 mm` clamps to `1` source unit.
+- Dimension franjas/bindings still store interval/corridor coordinates and define **what dimension span reacts**; they do not own the pinch reduction cap.
+- Verification: focused Desktop tests passed 91/91 for preview geometry, review ViewModel, layout, and interaction coordinator; `git diff --check` exited 0 with only LF-to-CRLF warnings.
+
+
 ## 2026-05-16
 - Review ahora permite **Eliminar franja**.
 - El delete de franja hace cascade manual sobre:
