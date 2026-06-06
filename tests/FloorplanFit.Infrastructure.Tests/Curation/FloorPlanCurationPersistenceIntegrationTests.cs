@@ -620,6 +620,61 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Pinch_repositories_remove_a_group_and_only_its_markers()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            var curationId = Guid.NewGuid();
+            var groupId = Guid.NewGuid();
+            var otherGroupId = Guid.NewGuid();
+            var markerId = Guid.NewGuid();
+            var otherMarkerId = Guid.NewGuid();
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                var groupRepository = new SqlitePinchGroupRepository(session);
+                await groupRepository.AddAsync(new PinchGroup(groupId, curationId, "Patio", PinchAxisTag.Width, 1), CancellationToken.None);
+                await groupRepository.AddAsync(new PinchGroup(otherGroupId, curationId, "Hall", PinchAxisTag.Width, 2), CancellationToken.None);
+
+                var markerRepository = new SqlitePinchMarkerRepository(session);
+                await markerRepository.AddAsync(
+                    new PinchMarker(markerId, curationId, groupId, Guid.NewGuid(), Guid.NewGuid(), 0.5m, 120m, 1),
+                    CancellationToken.None);
+                await markerRepository.AddAsync(
+                    new PinchMarker(otherMarkerId, curationId, otherGroupId, Guid.NewGuid(), Guid.NewGuid(), 0.25m, 80m, 2),
+                    CancellationToken.None);
+                await session.CommitAsync(CancellationToken.None);
+            }
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                await new SqlitePinchMarkerRepository(session).RemoveByGroupAsync(curationId, groupId, CancellationToken.None);
+                await new SqlitePinchGroupRepository(session).RemoveAsync(groupId, CancellationToken.None);
+                await session.CommitAsync(CancellationToken.None);
+            }
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                var groups = await new SqlitePinchGroupRepository(session).ListByCurationAsync(curationId, CancellationToken.None);
+                var markers = await new SqlitePinchMarkerRepository(session).ListByCurationAsync(curationId, CancellationToken.None);
+
+                Assert.Equal([otherGroupId], groups.Select(item => item.Id).ToArray());
+                Assert.Equal([otherMarkerId], markers.Select(item => item.Id).ToArray());
+            }
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task InitializeAsync_migrates_legacy_pinch_markers_schema_to_the_pinch_native_shape()
     {
         var tempRoot = CreateTempRoot();

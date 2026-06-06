@@ -6,7 +6,7 @@ internal readonly record struct CadViewportContext(
     double MajorGridSpacingWorld,
     double SnappingToleranceWorld)
 {
-    private const double TargetMinorGridSpacingPixels = 32d;
+    private const double TargetMinorGridSpacingPixels = 16d;
     private const double SnappingTolerancePixels = 8d;
 
     public static CadViewportContext Create(FloorPlanPreviewGeometry.PreviewViewport viewport)

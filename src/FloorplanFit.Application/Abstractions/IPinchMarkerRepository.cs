@@ -12,5 +12,7 @@ public interface IPinchMarkerRepository
 
     Task RemoveAsync(Guid pinchMarkerId, CancellationToken cancellationToken);
 
+    Task RemoveByGroupAsync(Guid curationId, Guid pinchGroupId, CancellationToken cancellationToken);
+
     Task RemoveBySourceCandidateAsync(Guid curationId, Guid sourceCandidateId, CancellationToken cancellationToken);
 }

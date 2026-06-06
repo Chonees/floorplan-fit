@@ -778,7 +778,20 @@ public sealed class FloorPlanPreviewControl : Control
 
     private FloorPlanPreviewGeometry.PreviewCompressionEdge? ResolveEdgeDrag(Point pointerPosition, PinchAxisTag axisTag)
     {
-        return FloorPlanPreviewGeometry.TryResolveCompressionHandle(pointerPosition, GetLocalRenderBounds(Bounds), axisTag);
+        foreach (var handle in CompressionHandlePreviewLayerRenderer.GetVisibleHandles(
+                     GetLocalRenderBounds(Bounds),
+                     axisTag,
+                     IsPinchPlacementArmed,
+                     PinchMarkers,
+                     PreviewPinchGroupId))
+        {
+            if (handle.Rect.Contains(pointerPosition))
+            {
+                return handle.Edge;
+            }
+        }
+
+        return null;
     }
 
     private IReadOnlyList<GeometryPathDto> ApplyActiveArtifactMoveToGeometry(IReadOnlyList<GeometryPathDto> geometryPaths)
@@ -867,7 +880,8 @@ public sealed class FloorPlanPreviewControl : Control
         IReadOnlyList<MeasurementNodeDto>? measurementNodes = null,
         IReadOnlyList<DimensionIntervalBindingDto>? dimensionIntervalBindings = null,
         IReadOnlyList<ArticulationBandDto>? articulationBands = null,
-        Guid? previewPinchGroupId = null)
+        Guid? previewPinchGroupId = null,
+        IReadOnlyList<GeometryPathDto>? sourceGeometry = null)
     {
         var renderedDimensions = useReactivePreview &&
                                  dimensions is { Count: > 0 } &&
@@ -884,7 +898,8 @@ public sealed class FloorPlanPreviewControl : Control
                 measurementNodes,
                 dimensionIntervalBindings,
                 articulationBands,
-                previewPinchGroupId)
+                previewPinchGroupId,
+                sourceGeometry)
             : dimensions ?? [];
 
         return DimensionPreviewProjector.BuildRenderedDimensions(
@@ -918,7 +933,8 @@ public sealed class FloorPlanPreviewControl : Control
             measurementNodes: MeasurementNodes,
             dimensionIntervalBindings: DimensionIntervalBindings,
             articulationBands: ArticulationBands,
-            previewPinchGroupId: PreviewPinchGroupId);
+            previewPinchGroupId: PreviewPinchGroupId,
+            sourceGeometry: GeometryPaths);
     }
 
     private PreviewRenderScene BuildRenderScene(

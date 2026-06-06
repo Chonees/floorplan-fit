@@ -39,6 +39,8 @@ public sealed class DesktopServiceRegistrationTests
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<StartOrResumeCurationHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<AddPinchGroupHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<AddPinchMarkerHandler>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<ChangeMeasurementCorridorAxisHandler>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemovePinchGroupHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemovePinchMarkerHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemoveRoomLabelHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemoveProtectedDetailAssemblyHandler>());
@@ -56,5 +58,24 @@ public sealed class DesktopServiceRegistrationTests
                 Directory.Delete(workspaceRoot, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public void AddDesktopSlice1_routes_adjusted_dxf_exports_to_desktop_exports_folder()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-desktop-services-{Guid.NewGuid():N}");
+        var expectedExportDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            "exports");
+
+        var services = new ServiceCollection();
+        services.AddDesktopSlice1(workspaceRoot);
+
+        using var provider = services.BuildServiceProvider();
+        var workspace = provider.GetRequiredService<AppWorkspace>();
+
+        Assert.Equal(workspaceRoot, workspace.RootPath);
+        Assert.Equal(Path.Combine(workspaceRoot, "library", "raw-dxf"), workspace.LibraryRawDxfDirectory);
+        Assert.Equal(expectedExportDirectory, workspace.LibraryAdjustedDxfDirectory);
     }
 }

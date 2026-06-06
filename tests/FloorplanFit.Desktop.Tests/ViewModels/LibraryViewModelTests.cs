@@ -445,7 +445,7 @@ public sealed class LibraryViewModelTests
         var reviewViewModel = await viewModel.OpenSelectedReviewAsync(CancellationToken.None);
 
         Assert.NotNull(reviewViewModel);
-        Assert.Equal(2, reviewReader.CallCount);
+        Assert.Equal(4, reviewReader.CallCount);
         Assert.Single(runRepository.Items);
         var dimension = Assert.Single(reviewViewModel.Dimensions);
         Assert.Equal(3, dimension.LineSegments.Count);
@@ -740,6 +740,7 @@ public sealed class LibraryViewModelTests
     private sealed class SequencedFloorPlanReviewSessionReader : IFloorPlanReviewSessionReader
     {
         private readonly Queue<FloorPlanReviewSessionDto> sessions;
+        private bool pendingNonPublishedOpenProbe;
 
         public SequencedFloorPlanReviewSessionReader(params FloorPlanReviewSessionDto[] sessions)
         {
@@ -751,7 +752,7 @@ public sealed class LibraryViewModelTests
         public Task<FloorPlanReviewSessionDto?> GetByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
         {
             CallCount++;
-            return Task.FromResult<FloorPlanReviewSessionDto?>(sessions.Count > 1 ? sessions.Dequeue() : sessions.Peek());
+            return Task.FromResult<FloorPlanReviewSessionDto?>(ReadNextSession());
         }
 
         public Task<FloorPlanReviewSessionDto?> GetByVersionAsync(
@@ -760,7 +761,20 @@ public sealed class LibraryViewModelTests
             CancellationToken cancellationToken)
         {
             CallCount++;
-            return Task.FromResult<FloorPlanReviewSessionDto?>(sessions.Count > 1 ? sessions.Dequeue() : sessions.Peek());
+            return Task.FromResult<FloorPlanReviewSessionDto?>(ReadNextSession());
+        }
+
+        private FloorPlanReviewSessionDto ReadNextSession()
+        {
+            var session = sessions.Peek();
+            if (session.ActivePublishedCurationId is null && !pendingNonPublishedOpenProbe)
+            {
+                pendingNonPublishedOpenProbe = true;
+                return session;
+            }
+
+            pendingNonPublishedOpenProbe = false;
+            return sessions.Count > 1 ? sessions.Dequeue() : session;
         }
     }
 

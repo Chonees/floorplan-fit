@@ -1,3 +1,4 @@
+using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Domain.FloorPlans;
@@ -38,9 +39,11 @@ internal sealed class FloorPlanReviewSessionCoordinator
     {
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<GetFloorPlanReviewSessionHandler>();
-        FloorPlanReviewSessionDto? session = floorPlanVersionId is null
-            ? await handler.HandleAsync(templateId, cancellationToken)
-            : await handler.HandleAsync(templateId, floorPlanVersionId.Value, cancellationToken);
+        FloorPlanReviewSessionDto? session = currentDraftCurationId != Guid.Empty
+            ? await handler.HandleByCurationAsync(templateId, currentDraftCurationId, cancellationToken)
+            : floorPlanVersionId is null
+                ? await handler.HandleAsync(templateId, cancellationToken)
+                : await handler.HandleAsync(templateId, floorPlanVersionId.Value, cancellationToken);
 
         if (session is null)
         {
@@ -54,6 +57,22 @@ internal sealed class FloorPlanReviewSessionCoordinator
         return new ReviewSessionLoadResult(
             nextDraftCurationId,
             BuildProjection(session));
+    }
+
+    public async Task<ReviewSessionLoadResult> StartEditingPublishedAsync(
+        Guid templateId,
+        Guid? floorPlanVersionId,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<EditPublishedFloorPlanCurationHandler>();
+        var response = floorPlanVersionId is null
+            ? await handler.HandleAsync(templateId, cancellationToken)
+            : await handler.HandleAsync(templateId, floorPlanVersionId.Value, cancellationToken);
+
+        return new ReviewSessionLoadResult(
+            response.DraftCurationId,
+            BuildProjection(response.Session));
     }
 
     private static ReviewSessionProjection BuildProjection(FloorPlanReviewSessionDto session)

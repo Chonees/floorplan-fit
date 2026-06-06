@@ -7,6 +7,106 @@ namespace FloorplanFit.Application.Tests.FloorPlans.Curation;
 public sealed class DimensionIntervalBindingHandlersTests
 {
     [Fact]
+    public async Task ChangeMeasurementCorridorAxisHandler_updates_corridor_nodes_and_bindings()
+    {
+        var curationId = Guid.NewGuid();
+        var corridorId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var startNodeId = Guid.NewGuid();
+        var endNodeId = Guid.NewGuid();
+        var dimensionId = Guid.NewGuid();
+        var updatedAtUtc = new DateTime(2026, 5, 22, 15, 30, 0, DateTimeKind.Utc);
+        var measurementCorridorRepository = new InMemoryMeasurementCorridorRepository(
+            new MeasurementCorridor(
+                corridorId,
+                curationId,
+                "Franja 1",
+                PinchAxisTag.Width,
+                geometryPathId,
+                80m,
+                120m,
+                "Verified",
+                1));
+        var measurementNodeRepository = new InMemoryMeasurementNodeRepository(
+            new MeasurementNode(
+                startNodeId,
+                curationId,
+                corridorId,
+                1,
+                "ProjectedGeometry",
+                FloorPlanArtifactSourceKinds.WallCandidate,
+                Guid.NewGuid(),
+                geometryPathId,
+                "Projected",
+                100m,
+                240m,
+                100m,
+                0m,
+                0m,
+                0.25m),
+            new MeasurementNode(
+                endNodeId,
+                curationId,
+                corridorId,
+                2,
+                "ProjectedGeometry",
+                FloorPlanArtifactSourceKinds.WallCandidate,
+                Guid.NewGuid(),
+                geometryPathId,
+                "Projected",
+                140m,
+                360m,
+                140m,
+                0m,
+                0m,
+                0.75m));
+        var dimensionIntervalBindingRepository = new InMemoryDimensionIntervalBindingRepository(
+            new DimensionIntervalBinding(
+                curationId,
+                dimensionId,
+                corridorId,
+                startNodeId,
+                endNodeId,
+                "ManualVerified",
+                100m,
+                140m,
+                new DateTime(2026, 5, 22, 14, 0, 0, DateTimeKind.Utc)));
+        var unitOfWork = new FakeUnitOfWork();
+        var handler = new ChangeMeasurementCorridorAxisHandler(
+            measurementCorridorRepository,
+            measurementNodeRepository,
+            dimensionIntervalBindingRepository,
+            new FakeClock(updatedAtUtc),
+            unitOfWork);
+
+        await handler.HandleAsync(
+            curationId,
+            corridorId,
+            PinchAxisTag.Height,
+            bandMinCoordinate: 95m,
+            bandMaxCoordinate: 145m,
+            CancellationToken.None);
+
+        var corridor = Assert.Single(measurementCorridorRepository.Items);
+        Assert.Equal(PinchAxisTag.Height, corridor.AxisTag);
+        Assert.Equal(95m, corridor.BandMinCoordinate);
+        Assert.Equal(145m, corridor.BandMaxCoordinate);
+        Assert.True(measurementCorridorRepository.Updated);
+
+        var startNode = measurementNodeRepository.Items.Single(item => item.Id == startNodeId);
+        var endNode = measurementNodeRepository.Items.Single(item => item.Id == endNodeId);
+        Assert.Equal(240m, startNode.AxisCoordinate);
+        Assert.Equal(360m, endNode.AxisCoordinate);
+        Assert.True(measurementNodeRepository.Updated);
+
+        var binding = Assert.Single(dimensionIntervalBindingRepository.Items);
+        Assert.Equal(240m, binding.IntervalStartCoordinate);
+        Assert.Equal(360m, binding.IntervalEndCoordinate);
+        Assert.Equal(updatedAtUtc, binding.UpdatedAtUtc);
+        Assert.True(unitOfWork.SaveChangesCalled);
+    }
+
+    [Fact]
     public async Task RemoveMeasurementCorridorHandler_deletes_corridor_nodes_and_bindings_and_saves_changes()
     {
         var curation = new FloorPlanCuration(
@@ -119,6 +219,114 @@ public sealed class DimensionIntervalBindingHandlersTests
     }
 
     [Fact]
+    public async Task RemoveMeasurementNodeHandler_deletes_selected_node_and_bindings_that_reference_it()
+    {
+        var curation = new FloorPlanCuration(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            1,
+            FloorPlanCurationStatus.Draft,
+            null,
+            null,
+            new DateTime(2026, 6, 1, 16, 0, 0, DateTimeKind.Utc),
+            null);
+        var corridorId = Guid.NewGuid();
+        var nodeToRemoveId = Guid.NewGuid();
+        var remainingNodeId = Guid.NewGuid();
+        var unrelatedNodeId = Guid.NewGuid();
+        var dimensionId = Guid.NewGuid();
+        var otherDimensionId = Guid.NewGuid();
+        var floorPlanCurationRepository = new InMemoryFloorPlanCurationRepository(curation);
+        var measurementNodeRepository = new InMemoryMeasurementNodeRepository(
+            new MeasurementNode(
+                nodeToRemoveId,
+                curation.Id,
+                corridorId,
+                1,
+                "ProjectedGeometry",
+                FloorPlanArtifactSourceKinds.WallCandidate,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Projected",
+                100m,
+                120m,
+                100m,
+                0m,
+                0m,
+                0.5m),
+            new MeasurementNode(
+                remainingNodeId,
+                curation.Id,
+                corridorId,
+                2,
+                "ProjectedGeometry",
+                FloorPlanArtifactSourceKinds.WallCandidate,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Projected",
+                224m,
+                120m,
+                224m,
+                0m,
+                0m,
+                1m),
+            new MeasurementNode(
+                unrelatedNodeId,
+                curation.Id,
+                Guid.NewGuid(),
+                1,
+                "ProjectedGeometry",
+                FloorPlanArtifactSourceKinds.WallCandidate,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Projected",
+                300m,
+                120m,
+                300m,
+                0m,
+                0m,
+                1m));
+        var dimensionIntervalBindingRepository = new InMemoryDimensionIntervalBindingRepository(
+            new DimensionIntervalBinding(
+                curation.Id,
+                dimensionId,
+                corridorId,
+                nodeToRemoveId,
+                remainingNodeId,
+                "ManualVerified",
+                100m,
+                224m,
+                DateTime.UtcNow),
+            new DimensionIntervalBinding(
+                curation.Id,
+                otherDimensionId,
+                corridorId,
+                remainingNodeId,
+                unrelatedNodeId,
+                "ManualVerified",
+                224m,
+                300m,
+                DateTime.UtcNow));
+        var unitOfWork = new FakeUnitOfWork();
+        var handler = new RemoveMeasurementNodeHandler(
+            floorPlanCurationRepository,
+            measurementNodeRepository,
+            dimensionIntervalBindingRepository,
+            unitOfWork);
+
+        await handler.HandleAsync(curation.Id, nodeToRemoveId, CancellationToken.None);
+
+        Assert.DoesNotContain(measurementNodeRepository.Items, item => item.Id == nodeToRemoveId);
+        Assert.Contains(measurementNodeRepository.Items, item => item.Id == remainingNodeId);
+        Assert.Contains(measurementNodeRepository.Items, item => item.Id == unrelatedNodeId);
+        Assert.DoesNotContain(dimensionIntervalBindingRepository.Items, item => item.DimensionId == dimensionId);
+        Assert.Contains(dimensionIntervalBindingRepository.Items, item => item.DimensionId == otherDimensionId);
+        Assert.True(measurementNodeRepository.Deleted);
+        Assert.True(dimensionIntervalBindingRepository.DeletedByNode);
+        Assert.True(unitOfWork.SaveChangesCalled);
+    }
+
+    [Fact]
     public async Task RestoreDimensionIntervalBindingHandler_deletes_binding_and_saves_changes()
     {
         var curation = new FloorPlanCuration(
@@ -181,6 +389,7 @@ public sealed class DimensionIntervalBindingHandlersTests
         public List<DimensionIntervalBinding> Items { get; } = [];
         public bool Deleted { get; private set; }
         public bool DeletedByCorridor { get; private set; }
+        public bool DeletedByNode { get; private set; }
 
         public Task<IReadOnlyList<DimensionIntervalBinding>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<DimensionIntervalBinding>>(Items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
@@ -205,6 +414,15 @@ public sealed class DimensionIntervalBindingHandlersTests
             Items.RemoveAll(item => item.FloorPlanCurationId == floorPlanCurationId && item.CorridorId == corridorId);
             return Task.CompletedTask;
         }
+
+        public Task DeleteByNodeAsync(Guid floorPlanCurationId, Guid nodeId, CancellationToken cancellationToken)
+        {
+            DeletedByNode = true;
+            Items.RemoveAll(item =>
+                item.FloorPlanCurationId == floorPlanCurationId &&
+                (item.StartNodeId == nodeId || item.EndNodeId == nodeId));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class InMemoryMeasurementCorridorRepository : IMeasurementCorridorRepository
@@ -216,6 +434,7 @@ public sealed class DimensionIntervalBindingHandlersTests
 
         public List<MeasurementCorridor> Items { get; } = [];
         public bool Deleted { get; private set; }
+        public bool Updated { get; private set; }
 
         public Task AddAsync(MeasurementCorridor corridor, CancellationToken cancellationToken)
         {
@@ -227,6 +446,14 @@ public sealed class DimensionIntervalBindingHandlersTests
         {
             Deleted = true;
             Items.RemoveAll(item => item.Id == corridorId);
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateAsync(MeasurementCorridor corridor, CancellationToken cancellationToken)
+        {
+            Updated = true;
+            Items.RemoveAll(item => item.Id == corridor.Id);
+            Items.Add(corridor);
             return Task.CompletedTask;
         }
 
@@ -245,7 +472,9 @@ public sealed class DimensionIntervalBindingHandlersTests
         }
 
         public List<MeasurementNode> Items { get; } = [];
+        public bool Deleted { get; private set; }
         public bool DeletedByCorridor { get; private set; }
+        public bool Updated { get; private set; }
 
         public Task AddAsync(MeasurementNode node, CancellationToken cancellationToken)
         {
@@ -262,10 +491,25 @@ public sealed class DimensionIntervalBindingHandlersTests
         public Task<IReadOnlyList<MeasurementNode>> ListByCorridorAsync(Guid corridorId, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<MeasurementNode>>(Items.Where(item => item.CorridorId == corridorId).ToArray());
 
+        public Task DeleteAsync(Guid nodeId, CancellationToken cancellationToken)
+        {
+            Deleted = true;
+            Items.RemoveAll(item => item.Id == nodeId);
+            return Task.CompletedTask;
+        }
+
         public Task DeleteByCorridorAsync(Guid corridorId, CancellationToken cancellationToken)
         {
             DeletedByCorridor = true;
             Items.RemoveAll(item => item.CorridorId == corridorId);
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateAsync(MeasurementNode node, CancellationToken cancellationToken)
+        {
+            Updated = true;
+            Items.RemoveAll(item => item.Id == node.Id);
+            Items.Add(node);
             return Task.CompletedTask;
         }
     }
@@ -279,5 +523,15 @@ public sealed class DimensionIntervalBindingHandlersTests
             SaveChangesCalled = true;
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class FakeClock : IClock
+    {
+        public FakeClock(DateTime utcNow)
+        {
+            UtcNow = utcNow;
+        }
+
+        public DateTime UtcNow { get; }
     }
 }

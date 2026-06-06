@@ -156,6 +156,17 @@ public sealed class MeasurementBindingPreviewLayerRendererTests
         Assert.Equal(220m, overlay.ActiveArticulationBand.BandEndCoordinate);
     }
 
+
+    [Fact]
+    public void Render_no_longer_paints_the_green_articulation_band_rectangle()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var rendererPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "Controls", "Preview", "MeasurementBindingPreviewLayerRenderer.cs");
+        var source = File.ReadAllText(rendererPath);
+
+        Assert.DoesNotContain("RenderArticulationBand(context", source, StringComparison.Ordinal);
+    }
+
     private static PreviewRenderScene CreateScene(
         IReadOnlyList<GeometryPathDto>? geometry = null,
         IReadOnlyList<DimensionDto>? dimensions = null,
@@ -201,6 +212,24 @@ public sealed class MeasurementBindingPreviewLayerRendererTests
             PreviewPinchGroupId: previewPinchGroupId,
             PreviewAxisTag: previewAxisTag,
             ActiveDimensionHandleKind: null);
+    }
+
+
+    private static string FindSolutionRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "FloorplanFit.sln")))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        throw new InvalidOperationException("Could not locate FloorplanFit.sln from test base directory.");
     }
 
     private static DimensionDto CreateHorizontalDimension(Guid dimensionId)

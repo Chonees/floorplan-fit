@@ -45,6 +45,54 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
         return await GetByVersionSummaryAsync(summary, cancellationToken);
     }
 
+    public async Task<FloorPlanReviewSessionDto?> GetByCurationAsync(
+        Guid templateId,
+        Guid curationId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var floorPlanVersionId = GetCurationFloorPlanVersionId(curationId);
+        if (floorPlanVersionId is null)
+        {
+            return null;
+        }
+
+        return await GetByCurationAsync(templateId, floorPlanVersionId.Value, curationId, cancellationToken);
+    }
+
+    public async Task<FloorPlanReviewSessionDto?> GetByCurationAsync(
+        Guid templateId,
+        Guid floorPlanVersionId,
+        Guid curationId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var summary = GetCurationSummary(templateId, floorPlanVersionId, curationId);
+        if (summary is null)
+        {
+            return null;
+        }
+
+        return await GetByVersionSummaryAsync(summary, cancellationToken);
+    }
+
+    private Guid? GetCurationFloorPlanVersionId(Guid curationId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT floorplan_version_id
+            FROM floorplan_curations
+            WHERE id = $curation_id
+            LIMIT 1
+            """);
+        command.Parameters.AddWithValue("$curation_id", curationId.ToString());
+
+        var result = command.ExecuteScalar() as string;
+        return result is null ? null : Guid.Parse(result);
+    }
+
     private async Task<FloorPlanReviewSessionDto?> GetByVersionSummaryAsync(
         TemplateSummary? summary,
         CancellationToken cancellationToken)
@@ -58,7 +106,10 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
 
         var extractionRunId = GetLatestExtractionRunId(summary.FloorPlanVersionId);
         var measurementContext = GetMeasurementContext(summary.FloorPlanVersionId);
-        var curationContext = GetCurationContext(summary.FloorPlanVersionId, summary.ActivePublishedCurationId);
+        var curationContext = GetCurationContext(
+            summary.FloorPlanVersionId,
+            summary.ActivePublishedCurationId,
+            summary.PreferredCurationId);
         var positionOverrides = GetArtifactPositionOverrides(curationContext.LineageCurationIds);
         var labelOverrides = GetLabelOverrides(curationContext.LineageCurationIds);
         var dimensionOverrides = GetDimensionOverrides(curationContext.LineageCurationIds);
@@ -231,6 +282,13 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
                     ELSE NULL
                 END AS active_published_curation_id,
                 CASE
+                    WHEN t.active_published_curation_id IS NOT NULL
+                     AND EXISTS (
+                         SELECT 1
+                         FROM floorplan_curations c
+                         WHERE c.id = t.active_published_curation_id
+                           AND c.floorplan_version_id = v.id
+                     ) THEN 'Published'
                     WHEN EXISTS (
                         SELECT 1
                         FROM floorplan_curations c
@@ -272,7 +330,8 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             Guid.Parse(reader.GetString(3)),
             reader.GetInt32(4),
             reader.IsDBNull(5) ? null : Guid.Parse(reader.GetString(5)),
-            reader.GetString(6));
+            reader.GetString(6),
+            PreferredCurationId: null);
     }
 
     private TemplateSummary? GetVersionSummary(Guid templateId, Guid floorPlanVersionId)
@@ -296,6 +355,13 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
                     ELSE NULL
                 END AS active_published_curation_id,
                 CASE
+                    WHEN t.active_published_curation_id IS NOT NULL
+                     AND EXISTS (
+                         SELECT 1
+                         FROM floorplan_curations c
+                         WHERE c.id = t.active_published_curation_id
+                           AND c.floorplan_version_id = v.id
+                     ) THEN 'Published'
                     WHEN EXISTS (
                         SELECT 1
                         FROM floorplan_curations c
@@ -339,7 +405,63 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             Guid.Parse(reader.GetString(3)),
             reader.GetInt32(4),
             reader.IsDBNull(5) ? null : Guid.Parse(reader.GetString(5)),
-            reader.GetString(6));
+            reader.GetString(6),
+            PreferredCurationId: null);
+    }
+
+    private TemplateSummary? GetCurationSummary(Guid templateId, Guid floorPlanVersionId, Guid curationId)
+    {
+        using var command = CreateCommand(
+            $"""
+            SELECT
+                t.id,
+                t.code,
+                t.name,
+                v.id,
+                v.version_number,
+                CASE
+                    WHEN t.active_published_curation_id IS NOT NULL
+                     AND EXISTS (
+                         SELECT 1
+                         FROM floorplan_curations active
+                         WHERE active.id = t.active_published_curation_id
+                           AND active.floorplan_version_id = v.id
+                     ) THEN t.active_published_curation_id
+                    ELSE NULL
+                END AS active_published_curation_id,
+                CASE selected.status
+                    WHEN {(int)FloorPlanCurationStatus.Published} THEN 'Published'
+                    WHEN {(int)FloorPlanCurationStatus.Draft} THEN 'Curated Draft'
+                    ELSE 'Imported'
+                END AS derived_status
+            FROM floorplan_templates t
+            JOIN floorplan_versions v ON v.floorplan_template_id = t.id
+                AND v.deleted_at_utc IS NULL
+            JOIN floorplan_curations selected ON selected.floorplan_version_id = v.id
+            WHERE t.id = $template_id
+              AND v.id = $floorplan_version_id
+              AND selected.id = $curation_id
+            LIMIT 1
+            """);
+        command.Parameters.AddWithValue("$template_id", templateId.ToString());
+        command.Parameters.AddWithValue("$floorplan_version_id", floorPlanVersionId.ToString());
+        command.Parameters.AddWithValue("$curation_id", curationId.ToString());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        return new TemplateSummary(
+            Guid.Parse(reader.GetString(0)),
+            reader.GetString(1),
+            reader.GetString(2),
+            Guid.Parse(reader.GetString(3)),
+            reader.GetInt32(4),
+            reader.IsDBNull(5) ? null : Guid.Parse(reader.GetString(5)),
+            reader.GetString(6),
+            curationId);
     }
 
     private Guid? GetLatestExtractionRunId(Guid floorPlanVersionId)
@@ -406,8 +528,21 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             decimal.Parse(reader.GetString(3), CultureInfo.InvariantCulture));
     }
 
-    private CurationContext GetCurationContext(Guid floorPlanVersionId, Guid? activePublishedCurationId)
+    private CurationContext GetCurationContext(
+        Guid floorPlanVersionId,
+        Guid? activePublishedCurationId,
+        Guid? preferredCurationId)
     {
+        if (preferredCurationId is not null)
+        {
+            return GetPreferredCurationContext(preferredCurationId.Value);
+        }
+
+        if (activePublishedCurationId is not null)
+        {
+            return new CurationContext(activePublishedCurationId.Value, [activePublishedCurationId.Value]);
+        }
+
         using var command = CreateCommand(
             $"""
             SELECT
@@ -435,9 +570,34 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             return new CurationContext(draftId, lineageIds);
         }
 
-        return activePublishedCurationId is null
-            ? new CurationContext(null, [])
-            : new CurationContext(activePublishedCurationId.Value, [activePublishedCurationId.Value]);
+        return new CurationContext(null, []);
+    }
+
+    private CurationContext GetPreferredCurationContext(Guid preferredCurationId)
+    {
+        using var command = CreateCommand(
+            """
+            SELECT based_on_curation_id
+            FROM floorplan_curations
+            WHERE id = $curation_id
+            LIMIT 1
+            """);
+        command.Parameters.AddWithValue("$curation_id", preferredCurationId.ToString());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return new CurationContext(preferredCurationId, [preferredCurationId]);
+        }
+
+        var lineageIds = new List<Guid>();
+        if (!reader.IsDBNull(0))
+        {
+            lineageIds.Add(Guid.Parse(reader.GetString(0)));
+        }
+
+        lineageIds.Add(preferredCurationId);
+        return new CurationContext(preferredCurationId, lineageIds);
     }
 
     private IReadOnlyList<WallCandidateDto> GetWallCandidates(Guid extractionRunId)
@@ -2167,7 +2327,8 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
         Guid FloorPlanVersionId,
         int ActiveVersionNumber,
         Guid? ActivePublishedCurationId,
-        string Status);
+        string Status,
+        Guid? PreferredCurationId);
 
     private sealed record FixedPlanComponentRow(
         Guid Id,

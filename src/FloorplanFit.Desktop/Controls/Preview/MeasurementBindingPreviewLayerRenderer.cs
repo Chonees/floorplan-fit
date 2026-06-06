@@ -9,7 +9,6 @@ internal static class MeasurementBindingPreviewLayerRenderer
     public static void Render(DrawingContext context, FloorPlanPreviewGeometry.PreviewViewport viewport, PreviewRenderScene scene)
     {
         var overlay = ResolveOverlay(scene);
-        RenderArticulationBand(context, viewport, scene.PreviewGeometry, overlay.ActiveArticulationBand);
         RenderCorridorGuide(context, viewport, scene.PreviewGeometry, overlay.ActiveCorridor);
         RenderInterval(context, viewport, overlay.ActiveInterval);
         RenderNodes(context, viewport, overlay.CorridorNodes);

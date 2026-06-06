@@ -192,6 +192,11 @@ public sealed class PublishFloorPlanCurationHandlerTests
             throw new NotSupportedException();
         }
 
+        public Task RemoveByGroupAsync(Guid curationId, Guid pinchGroupId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
         public Task RemoveBySourceCandidateAsync(Guid curationId, Guid sourceCandidateId, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();

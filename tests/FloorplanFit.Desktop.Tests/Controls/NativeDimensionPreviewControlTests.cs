@@ -55,6 +55,34 @@ public sealed class NativeDimensionPreviewControlTests
     }
 
     [Fact]
+    public void ApplyDimensionHandleDelta_replaces_dimension_placeholder_override_and_preserves_suffix()
+    {
+        var dimension = CreateDimension() with
+        {
+            RawTextOverride = "<> TO CL. OF EXH. VENT",
+            DisplayText = "10'-4\" TO CL. OF EXH. VENT",
+            TextPrimitives =
+            [
+                new DimensionTextPrimitiveDto("TEXT-1", 1, "10'-4\" TO CL. OF EXH. VENT", 162m, 148m, 3.5m, 0m)
+                {
+                    StyleName = "ARCH",
+                    AttachmentPoint = "MiddleCenter"
+                }
+            ]
+        };
+
+        var edited = FloorPlanPreviewControl.ApplyDimensionHandleDelta(
+            dimension,
+            FloorPlanPreviewControl.DimensionHandleKind.SecondDefinitionPoint,
+            24m,
+            0m);
+
+        Assert.Equal(148m, edited.MeasurementSourceUnits);
+        Assert.Equal("12'-4\" TO CL. OF EXH. VENT", edited.DisplayText);
+        Assert.Equal("12'-4\" TO CL. OF EXH. VENT", edited.TextPrimitives[0].Text);
+    }
+
+    [Fact]
     public void ResolveHandles_exposes_only_the_two_visible_terminal_extents_without_a_center_grip()
     {
         var dimension = CreateDimension();

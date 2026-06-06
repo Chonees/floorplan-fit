@@ -46,7 +46,7 @@ internal static class PinchMarkerPreviewLayerRenderer
     {
         if (pinchMarkers is not { Count: > 0 } || previewPinchGroupId is null)
         {
-            return pinchMarkers;
+            return [];
         }
 
         return pinchMarkers

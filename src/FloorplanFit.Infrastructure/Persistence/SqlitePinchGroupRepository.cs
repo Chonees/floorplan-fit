@@ -98,6 +98,21 @@ public sealed class SqlitePinchGroupRepository : IPinchGroupRepository
         return Task.FromResult<IReadOnlyList<PinchGroup>>(items);
     }
 
+    public Task RemoveAsync(Guid pinchGroupId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            DELETE FROM pinch_groups
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", pinchGroupId.ToString());
+        command.ExecuteNonQuery();
+
+        return Task.CompletedTask;
+    }
+
     private static PinchGroup MapGroup(SqliteDataReader reader)
     {
         return new PinchGroup(

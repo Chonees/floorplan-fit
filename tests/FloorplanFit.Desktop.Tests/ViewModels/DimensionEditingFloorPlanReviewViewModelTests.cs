@@ -101,6 +101,37 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
 
         Assert.Single(exportHandler.Calls);
         Assert.Contains("adjusted DXF", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(@"C:\workspace\library\adjusted-dxf\SEMINOLE2000-adjusted.dxf", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExportAdjustedDxfAsync_reports_no_dirty_dimensions_without_throwing()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var dimension = CreateDimension() with { IsEdited = true, IsDirty = false };
+        var session = CreateSession(templateId, dimension);
+        var exportHandler = new FakeExportAdjustedDxfHandler
+        {
+            ExceptionToThrow = new InvalidOperationException("No dirty native dimensions are available to export.")
+        };
+        var services = BuildServices(
+            template,
+            session,
+            new InMemoryFloorPlanDimensionOverrideRepository(),
+            new InMemoryFloorPlanDimensionBindingOverrideRepository(),
+            exportHandler);
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        await viewModel.ExportAdjustedDxfAsync(CancellationToken.None);
+
+        Assert.Single(exportHandler.Calls);
+        Assert.Equal("No hay cotas modificadas para exportar.", viewModel.StatusMessage);
     }
 
     [Fact]
@@ -453,9 +484,16 @@ public sealed class DimensionEditingFloorPlanReviewViewModelTests
 
         public List<(Guid TemplateId, Guid? VersionId, Guid CurationId)> Calls { get; } = [];
 
+        public Exception? ExceptionToThrow { get; init; }
+
         public override Task<ExportAdjustedDxfResponse> HandleAsync(Guid templateId, Guid? floorPlanVersionId, Guid curationId, CancellationToken cancellationToken)
         {
             Calls.Add((templateId, floorPlanVersionId, curationId));
+            if (ExceptionToThrow is not null)
+            {
+                throw ExceptionToThrow;
+            }
+
             return Task.FromResult(new ExportAdjustedDxfResponse(Guid.NewGuid(), @"C:\workspace\library\adjusted-dxf\SEMINOLE2000-adjusted.dxf", 1));
         }
     }

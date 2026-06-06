@@ -9,4 +9,6 @@ public interface IPinchGroupRepository
     Task<PinchGroup?> GetByIdAsync(Guid pinchGroupId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<PinchGroup>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken);
+
+    Task RemoveAsync(Guid pinchGroupId, CancellationToken cancellationToken);
 }

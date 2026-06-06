@@ -62,6 +62,65 @@ public sealed class OpenFloorPlanReviewSessionHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_returns_the_active_published_session_without_creating_a_new_draft()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var publishedCurationId = Guid.NewGuid();
+        var existingTemplate = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        existingTemplate.SetCurrentVersion(versionId);
+        existingTemplate.SetActivePublishedCuration(publishedCurationId);
+
+        var templateRepository = new InMemoryFloorPlanTemplateRepository(existingTemplate);
+        var versionRepository = new InMemoryFloorPlanVersionRepository(
+            new FloorPlanVersion(
+                versionId,
+                templateId,
+                Guid.NewGuid(),
+                "fingerprint",
+                1,
+                new DateTime(2026, 6, 3, 14, 0, 0, DateTimeKind.Utc)));
+        var published = new FloorPlanCuration(
+            publishedCurationId,
+            versionId,
+            curationVersion: 1,
+            FloorPlanCurationStatus.Published,
+            basedOnCurationId: null,
+            notes: "published",
+            createdAtUtc: new DateTime(2026, 6, 3, 13, 0, 0, DateTimeKind.Utc),
+            publishedAtUtc: new DateTime(2026, 6, 3, 14, 0, 0, DateTimeKind.Utc));
+        var curationRepository = new InMemoryFloorPlanCurationRepository(published);
+        var unitOfWork = new FakeUnitOfWork();
+        var clock = new FakeClock(new DateTime(2026, 6, 3, 15, 0, 0, DateTimeKind.Utc));
+        var startOrResumeHandler = new StartOrResumeCurationHandler(curationRepository, clock, unitOfWork);
+        var expectedSession = new FloorPlanReviewSessionDto(
+            templateId,
+            "seminole2000",
+            "SEMINOLE2000",
+            "Published",
+            1,
+            publishedCurationId,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
+        var reviewReader = new FakeFloorPlanReviewSessionReader(expectedSession);
+        var handler = new OpenFloorPlanReviewSessionHandler(templateRepository, versionRepository, reviewReader, startOrResumeHandler);
+
+        var response = await handler.HandleAsync(templateId, CancellationToken.None);
+
+        Assert.Equal(Guid.Empty, response.DraftCurationId);
+        Assert.Equal(expectedSession, response.Session);
+        Assert.False(unitOfWork.SaveChangesCalled);
+        Assert.Null(await curationRepository.GetDraftAsync(versionId, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task HandleAsync_throws_when_the_template_has_no_current_version()
     {
         var template = new FloorPlanTemplate(Guid.NewGuid(), "santa-barbara", "SANTA-BARBARA", isActive: true);
@@ -180,7 +239,12 @@ public sealed class OpenFloorPlanReviewSessionHandlerTests
 
     private sealed class InMemoryFloorPlanCurationRepository : IFloorPlanCurationRepository
     {
-        private readonly List<FloorPlanCuration> items = [];
+        private readonly List<FloorPlanCuration> items;
+
+        public InMemoryFloorPlanCurationRepository(params FloorPlanCuration[] items)
+        {
+            this.items = items.ToList();
+        }
 
         public Task<FloorPlanCuration?> GetByIdAsync(Guid curationId, CancellationToken cancellationToken)
         {

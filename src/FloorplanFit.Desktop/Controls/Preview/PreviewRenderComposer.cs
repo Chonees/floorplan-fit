@@ -22,7 +22,9 @@ internal static class PreviewRenderComposer
                 context,
                 scene.Bounds,
                 axisTag,
-                scene.IsPinchPlacementArmed);
+                scene.IsPinchPlacementArmed,
+                scene.PinchMarkers,
+                scene.PreviewPinchGroupId);
         }
 
         if (!scene.HasGeometry || scene.Viewport is not { } viewport)

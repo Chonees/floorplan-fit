@@ -11,4 +11,6 @@ public interface IDimensionIntervalBindingRepository
     Task DeleteAsync(Guid floorPlanCurationId, Guid dimensionId, CancellationToken cancellationToken);
 
     Task DeleteByCorridorAsync(Guid floorPlanCurationId, Guid corridorId, CancellationToken cancellationToken);
+
+    Task DeleteByNodeAsync(Guid floorPlanCurationId, Guid nodeId, CancellationToken cancellationToken);
 }

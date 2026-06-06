@@ -18,7 +18,11 @@ public static class DesktopServiceRegistration
 {
     public static IServiceCollection AddDesktopSlice1(this IServiceCollection services, string workspaceRoot)
     {
-        services.AddSingleton(new AppWorkspace(workspaceRoot));
+        var adjustedDxfExportDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            "exports");
+
+        services.AddSingleton(new AppWorkspace(workspaceRoot, adjustedDxfExportDirectory));
         services.AddSingleton<IManagedFileStorage, ManagedFileStorage>();
         services.AddSingleton<IDxfGateway, IxMiliaDxfGateway>();
         services.AddSingleton(DxfExtractionProfile.PointeHomes);
@@ -66,6 +70,7 @@ public static class DesktopServiceRegistration
         services.AddScoped<IFloorPlanLibraryReader, SqliteFloorPlanLibraryReader>();
         services.AddScoped<IFloorPlanExtractionSourceReader, SqliteFloorPlanExtractionSourceReader>();
         services.AddScoped<IFloorPlanReviewSessionReader, SqliteFloorPlanReviewSessionReader>();
+        services.AddScoped<IFloorPlanCurationDataCloneService, SqliteFloorPlanCurationDataCloneService>();
         services.AddScoped<IUnitOfWork, SqliteUnitOfWork>();
         services.AddScoped<ImportFloorPlanHandler>();
         services.AddScoped<ExtractWallCandidatesHandler>();
@@ -73,14 +78,18 @@ public static class DesktopServiceRegistration
         services.AddScoped<RemoveFloorPlanVersionHandler>();
         services.AddScoped<GetFloorPlanReviewSessionHandler>();
         services.AddScoped<OpenFloorPlanReviewSessionHandler>();
+        services.AddScoped<EditPublishedFloorPlanCurationHandler>();
         services.AddScoped<StartOrResumeCurationHandler>();
         services.AddScoped<AddPinchGroupHandler>();
         services.AddScoped<AddPinchMarkerHandler>();
         services.AddScoped<AddMeasurementCorridorHandler>();
+        services.AddScoped<ChangeMeasurementCorridorAxisHandler>();
         services.AddScoped<AddMeasurementNodeHandler>();
         services.AddScoped<SaveDimensionIntervalBindingHandler>();
         services.AddScoped<RestoreDimensionIntervalBindingHandler>();
         services.AddScoped<RemoveMeasurementCorridorHandler>();
+        services.AddScoped<RemoveMeasurementNodeHandler>();
+        services.AddScoped<RemovePinchGroupHandler>();
         services.AddScoped<RemovePinchMarkerHandler>();
         services.AddScoped<RemoveRoomLabelHandler>();
         services.AddScoped<RemoveOpeningCandidateHandler>();

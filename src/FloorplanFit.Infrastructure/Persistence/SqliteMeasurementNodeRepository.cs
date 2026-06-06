@@ -87,6 +87,20 @@ public sealed class SqliteMeasurementNodeRepository : IMeasurementNodeRepository
         return Task.CompletedTask;
     }
 
+    public Task DeleteAsync(Guid nodeId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            DELETE FROM measurement_nodes
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", nodeId.ToString());
+        command.ExecuteNonQuery();
+        return Task.CompletedTask;
+    }
+
     public Task<MeasurementNode?> GetByIdAsync(Guid nodeId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -174,6 +188,49 @@ public sealed class SqliteMeasurementNodeRepository : IMeasurementNodeRepository
             """);
         command.Parameters.AddWithValue("$corridor_id", corridorId.ToString());
         return Task.FromResult<IReadOnlyList<MeasurementNode>>(ReadMany(command));
+    }
+
+    public Task UpdateAsync(MeasurementNode node, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            UPDATE measurement_nodes
+            SET
+                floorplan_curation_id = $floorplan_curation_id,
+                corridor_id = $corridor_id,
+                sort_order = $sort_order,
+                reference_kind = $reference_kind,
+                source_artifact_kind = $source_artifact_kind,
+                source_artifact_id = $source_artifact_id,
+                geometry_path_id = $geometry_path_id,
+                snap_kind = $snap_kind,
+                anchor_x = $anchor_x,
+                anchor_y = $anchor_y,
+                axis_coordinate = $axis_coordinate,
+                offset_along_axis = $offset_along_axis,
+                offset_normal = $offset_normal,
+                position_ratio = $position_ratio
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", node.Id.ToString());
+        command.Parameters.AddWithValue("$floorplan_curation_id", node.FloorPlanCurationId.ToString());
+        command.Parameters.AddWithValue("$corridor_id", node.CorridorId.ToString());
+        command.Parameters.AddWithValue("$sort_order", node.SortOrder);
+        command.Parameters.AddWithValue("$reference_kind", node.ReferenceKind);
+        command.Parameters.AddWithValue("$source_artifact_kind", node.SourceArtifactKind);
+        command.Parameters.AddWithValue("$source_artifact_id", node.SourceArtifactId.ToString());
+        command.Parameters.AddWithValue("$geometry_path_id", node.GeometryPathId.ToString());
+        command.Parameters.AddWithValue("$snap_kind", node.SnapKind);
+        command.Parameters.AddWithValue("$anchor_x", node.AnchorX.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$anchor_y", node.AnchorY.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$axis_coordinate", node.AxisCoordinate.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$offset_along_axis", node.OffsetAlongAxis.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$offset_normal", node.OffsetNormal.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$position_ratio", node.PositionRatio.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        command.ExecuteNonQuery();
+        return Task.CompletedTask;
     }
 
     private static List<MeasurementNode> ReadMany(SqliteCommand command)

@@ -1,5 +1,5 @@
-using System.Globalization;
 using Avalonia;
+using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Contracts.FloorPlans;
 
 namespace FloorplanFit.Desktop.Controls.Preview;
@@ -235,14 +235,14 @@ internal static class NativeDimensionEditor
             ? RoundMeasurement(measurementSourceUnits * ResolveMeasurementFactor(dimension))
             : dimension.MeasurementMillimeters;
         var displayText = recalculateMeasurement
-            ? ResolveDisplayText(dimension, measurementSourceUnits)
-            : dimension.DisplayText;
-        var displayTextSource = recalculateMeasurement
-            ? ResolveDisplayTextSource(dimension)
-            : dimension.DisplayTextSource;
+            ? DimensionDisplayTextFormatter.Resolve(
+                dimension,
+                measurementSourceUnits,
+                "ManualDefinitionEdit")
+            : new DimensionDisplayTextResult(dimension.DisplayText, dimension.DisplayTextSource);
 
         var updatedLinePrimitives = TransformLinePrimitives(dimension.LinePrimitives, transform);
-        var updatedTextPrimitives = TransformTextPrimitives(dimension.TextPrimitives, transform, displayText);
+        var updatedTextPrimitives = TransformTextPrimitives(dimension.TextPrimitives, transform, displayText.DisplayText);
         var updatedInsertPrimitives = TransformInsertPrimitives(dimension.InsertPrimitives, transform);
         var updatedCirclePrimitives = TransformCirclePrimitives(dimension.CirclePrimitives, transform);
         var updatedArcPrimitives = TransformArcPrimitives(dimension.ArcPrimitives, transform);
@@ -258,8 +258,8 @@ internal static class NativeDimensionEditor
             DefPoint3Y = RoundModelValue(dimensionLinePoint.Y),
             RenderTextX = RoundModelValue(resolvedRenderText.X),
             RenderTextY = RoundModelValue(resolvedRenderText.Y),
-            DisplayText = displayText,
-            DisplayTextSource = displayTextSource,
+            DisplayText = displayText.DisplayText,
+            DisplayTextSource = displayText.DisplayTextSource,
             MeasurementSourceUnits = measurementSourceUnits,
             MeasurementMillimeters = measurementMillimeters,
             LinePrimitives = updatedLinePrimitives,
@@ -481,28 +481,6 @@ internal static class NativeDimensionEditor
         return new NativeDimensionShape.Vec2((decimal)anchor.X, (decimal)anchor.Y);
     }
 
-    private static string ResolveDisplayText(DimensionDto dimension, decimal measurementSourceUnits)
-    {
-        if (!string.IsNullOrWhiteSpace(dimension.RawTextOverride) &&
-            !string.Equals(dimension.RawTextOverride.Trim(), "<>", StringComparison.Ordinal))
-        {
-            return dimension.DisplayText;
-        }
-
-        return string.Equals(dimension.SourceUnit, "Inch", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(dimension.SourceUnit, "Foot", StringComparison.OrdinalIgnoreCase)
-            ? FormatArchitecturalInches(measurementSourceUnits)
-            : measurementSourceUnits.ToString("0.###", CultureInfo.InvariantCulture);
-    }
-
-    private static string ResolveDisplayTextSource(DimensionDto dimension)
-    {
-        return !string.IsNullOrWhiteSpace(dimension.RawTextOverride) &&
-               !string.Equals(dimension.RawTextOverride.Trim(), "<>", StringComparison.Ordinal)
-            ? dimension.DisplayTextSource
-            : "ManualDefinitionEdit";
-    }
-
     private static decimal ResolveMeasurementFactor(DimensionDto dimension)
     {
         if (dimension.MeasurementSourceUnits > 0m)
@@ -519,16 +497,6 @@ internal static class NativeDimensionEditor
                     : string.Equals(dimension.SourceUnit, "Foot", StringComparison.OrdinalIgnoreCase)
                         ? 304.8m
                         : 25.4m;
-    }
-
-    private static string FormatArchitecturalInches(decimal totalInches)
-    {
-        var rounded = decimal.Round(totalInches, 0, MidpointRounding.AwayFromZero);
-        var feet = decimal.ToInt32(decimal.Truncate(rounded / 12m));
-        var inches = decimal.ToInt32(rounded % 12m);
-        return feet > 0
-            ? $"{feet}'-{inches}\""
-            : $"{inches}\"";
     }
 
     private static (decimal X, decimal Y) ResolveFallbackMeasureAxis(DimensionDto dimension)

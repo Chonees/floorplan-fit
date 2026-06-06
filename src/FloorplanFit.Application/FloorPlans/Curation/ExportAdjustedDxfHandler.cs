@@ -59,17 +59,17 @@ public class ExportAdjustedDxfHandler
             throw new InvalidOperationException("Floor plan review session was not found.");
         }
 
-        var dirtyDimensions = session.Dimensions
-            .Where(item => item.IsEdited && item.IsDirty)
+        var exportDimensions = session.Dimensions
+            .Where(item => item.IsEdited)
             .ToArray();
-        if (dirtyDimensions.Length == 0)
+        if (exportDimensions.Length == 0)
         {
-            throw new InvalidOperationException("No dirty native dimensions are available to export.");
+            throw new InvalidOperationException("No edited native dimensions are available to export.");
         }
 
         var fileName = source.OriginalFileName ?? Path.GetFileName(source.ManagedFilePath);
         var outputPath = await managedFileStorage.ReserveAdjustedDxfPathAsync(fileName, cancellationToken);
-        await adjustedDxfExporter.ExportAsync(source.ManagedFilePath, outputPath, dirtyDimensions, cancellationToken);
+        await adjustedDxfExporter.ExportAsync(source.ManagedFilePath, outputPath, exportDimensions, cancellationToken);
 
         var importedDocumentId = Guid.NewGuid();
         var measurementContextId = source.MeasurementContextId
@@ -87,7 +87,7 @@ public class ExportAdjustedDxfHandler
         await importedDocumentRepository.AddAsync(importedDocument, cancellationToken);
         await dimensionOverrideRepository.MarkExportedAsync(
             curationId,
-            dirtyDimensions
+            exportDimensions
                 .Select(SaveFloorPlanDimensionOverrideHandler.ResolveSourceDimensionKey)
                 .Distinct(StringComparer.Ordinal)
                 .ToArray(),
@@ -95,6 +95,6 @@ public class ExportAdjustedDxfHandler
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return new ExportAdjustedDxfResponse(importedDocumentId, outputPath, dirtyDimensions.Length);
+        return new ExportAdjustedDxfResponse(importedDocumentId, outputPath, exportDimensions.Length);
     }
 }

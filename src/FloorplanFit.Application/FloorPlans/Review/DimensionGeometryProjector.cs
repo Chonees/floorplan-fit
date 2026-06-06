@@ -1,4 +1,3 @@
-using System.Globalization;
 using FloorplanFit.Contracts.FloorPlans;
 
 namespace FloorplanFit.Application.FloorPlans.Review;
@@ -66,6 +65,32 @@ public static class DimensionGeometryProjector
         return BuildStylePreservingAssociatedDimension(dimension, transform);
     }
 
+    public static DimensionDto TranslateAssociatedDimensionFromAnchorDeltas(
+        DimensionDto dimension,
+        decimal authoredStartX,
+        decimal authoredStartY,
+        decimal liveStartX,
+        decimal liveStartY,
+        decimal authoredEndX,
+        decimal authoredEndY,
+        decimal liveEndX,
+        decimal liveEndY,
+        string activeAxisTag)
+    {
+        var translation = ResolveAverageActiveAxisTranslation(
+            authoredStartX,
+            authoredStartY,
+            liveStartX,
+            liveStartY,
+            authoredEndX,
+            authoredEndY,
+            liveEndX,
+            liveEndY,
+            activeAxisTag);
+
+        return TranslateAssociatedDimension(dimension, translation);
+    }
+
     private static DimensionDto BuildStylePreservingAssociatedDimension(
         DimensionDto dimension,
         Point2 liveStartPoint,
@@ -88,8 +113,10 @@ public static class DimensionGeometryProjector
         var updatedRenderTextPoint = ResolveStylePreservingRenderTextPoint(dimension, transform);
         var measurementSourceUnits = RoundMeasurement(decimal.Abs(transform.NewEndU - transform.NewStartU));
         var measurementMillimeters = RoundMeasurement(measurementSourceUnits * ResolveMeasurementFactor(dimension));
-        var displayText = ResolveDisplayText(dimension, measurementSourceUnits);
-        var displayTextSource = ResolveDisplayTextSource(dimension, "ReactiveAssociatedMeasurement");
+        var displayText = DimensionDisplayTextFormatter.Resolve(
+            dimension,
+            measurementSourceUnits,
+            "ReactiveAssociatedMeasurement");
         var updatedLines = dimension.LinePrimitives
             .Select(item => TransformLinePrimitive(item, transform))
             .ToArray();
@@ -101,7 +128,7 @@ public static class DimensionGeometryProjector
                 .Select(item => TransformLineSegment(item, transform))
                 .ToArray();
         var updatedText = dimension.TextPrimitives
-            .Select(item => TransformTextPrimitive(item, transform, displayText, dimension))
+            .Select(item => TransformTextPrimitive(item, transform, displayText.DisplayText, dimension))
             .ToArray();
         var updatedInserts = dimension.InsertPrimitives
             .Select(item => TransformInsertPrimitive(item, transform))
@@ -126,10 +153,10 @@ public static class DimensionGeometryProjector
             DefPoint3Y = RoundModelValue(updatedDimensionLinePoint.Y),
             RenderTextX = updatedRenderTextPoint?.X is decimal renderTextX ? RoundModelValue(renderTextX) : dimension.RenderTextX,
             RenderTextY = updatedRenderTextPoint?.Y is decimal renderTextY ? RoundModelValue(renderTextY) : dimension.RenderTextY,
-            DisplayText = displayText,
+            DisplayText = displayText.DisplayText,
             MeasurementSourceUnits = measurementSourceUnits,
             MeasurementMillimeters = measurementMillimeters,
-            DisplayTextSource = displayTextSource,
+            DisplayTextSource = displayText.DisplayTextSource,
             LinePrimitives = updatedLines,
             LineSegments = updatedLineSegments,
             TextPrimitives = updatedText,
@@ -137,6 +164,60 @@ public static class DimensionGeometryProjector
             CirclePrimitives = updatedCircles,
             ArcPrimitives = updatedArcs,
             SolidPrimitives = updatedSolids,
+            IsEdited = dimension.IsEdited,
+            IsDirty = dimension.IsDirty
+        };
+    }
+
+    private static DimensionDto TranslateAssociatedDimension(DimensionDto dimension, Vector2 delta)
+    {
+        if (delta.X == 0m && delta.Y == 0m)
+        {
+            return dimension;
+        }
+
+        var updatedLines = dimension.LinePrimitives
+            .Select(item => TranslateLinePrimitive(item, delta))
+            .ToArray();
+        var updatedLineSegments = updatedLines.Length > 0
+            ? updatedLines
+                .Select(item => new DimensionLineSegmentDto(item.StartX, item.StartY, item.EndX, item.EndY))
+                .ToArray()
+            : dimension.LineSegments
+                .Select(item => TranslateLineSegment(item, delta))
+                .ToArray();
+
+        return dimension with
+        {
+            DefPointX = RoundModelValue(dimension.DefPointX + delta.X),
+            DefPointY = RoundModelValue(dimension.DefPointY + delta.Y),
+            DefPoint2X = RoundModelValue(dimension.DefPoint2X + delta.X),
+            DefPoint2Y = RoundModelValue(dimension.DefPoint2Y + delta.Y),
+            DefPoint3X = RoundModelValue(dimension.DefPoint3X + delta.X),
+            DefPoint3Y = RoundModelValue(dimension.DefPoint3Y + delta.Y),
+            RenderTextX = dimension.RenderTextX is decimal renderTextX
+                ? RoundModelValue(renderTextX + delta.X)
+                : null,
+            RenderTextY = dimension.RenderTextY is decimal renderTextY
+                ? RoundModelValue(renderTextY + delta.Y)
+                : null,
+            LinePrimitives = updatedLines,
+            LineSegments = updatedLineSegments,
+            TextPrimitives = dimension.TextPrimitives
+                .Select(item => TranslateTextPrimitive(item, delta))
+                .ToArray(),
+            InsertPrimitives = dimension.InsertPrimitives
+                .Select(item => TranslateInsertPrimitive(item, delta))
+                .ToArray(),
+            CirclePrimitives = dimension.CirclePrimitives
+                .Select(item => TranslateCirclePrimitive(item, delta))
+                .ToArray(),
+            ArcPrimitives = dimension.ArcPrimitives
+                .Select(item => TranslateArcPrimitive(item, delta))
+                .ToArray(),
+            SolidPrimitives = dimension.SolidPrimitives
+                .Select(item => TranslateSolidPrimitive(item, delta))
+                .ToArray(),
             IsEdited = dimension.IsEdited,
             IsDirty = dimension.IsDirty
         };
@@ -232,8 +313,10 @@ public static class DimensionGeometryProjector
         var textAnchor = ResolveOrdinateTextAnchor(dimension, featureDelta);
         var measurementSourceUnits = RoundMeasurement(ComputeOrdinateDistance(datumPoint, featurePoint, bindingKind));
         var measurementMillimeters = RoundMeasurement(measurementSourceUnits * ResolveMeasurementFactor(dimension));
-        var displayText = ResolveDisplayText(dimension, measurementSourceUnits);
-        var displayTextSource = ResolveDisplayTextSource(dimension, "ReactiveAssociatedMeasurement");
+        var displayText = DimensionDisplayTextFormatter.Resolve(
+            dimension,
+            measurementSourceUnits,
+            "ReactiveAssociatedMeasurement");
 
         var updatedDimension = dimension with
         {
@@ -245,10 +328,10 @@ public static class DimensionGeometryProjector
             DefPoint3Y = RoundModelValue(leaderPoint.Y),
             RenderTextX = textAnchor?.X is decimal renderTextX ? RoundModelValue(renderTextX) : null,
             RenderTextY = textAnchor?.Y is decimal renderTextY ? RoundModelValue(renderTextY) : null,
-            DisplayText = displayText,
+            DisplayText = displayText.DisplayText,
             MeasurementSourceUnits = measurementSourceUnits,
             MeasurementMillimeters = measurementMillimeters,
-            DisplayTextSource = displayTextSource,
+            DisplayTextSource = displayText.DisplayTextSource,
             IsEdited = dimension.IsEdited,
             IsDirty = dimension.IsDirty
         };
@@ -263,7 +346,7 @@ public static class DimensionGeometryProjector
             : dimension.LineSegments
                 .Select(item => TranslateLineSegment(item, featureDelta))
                 .ToArray();
-        var updatedText = BuildOrdinateTextPrimitives(dimension, updatedDimension, featureDelta, displayText, textAnchor);
+        var updatedText = BuildOrdinateTextPrimitives(dimension, updatedDimension, featureDelta, displayText.DisplayText, textAnchor);
         var updatedInserts = dimension.InsertPrimitives
             .Select(item => TranslateInsertPrimitive(item, featureDelta))
             .ToArray();
@@ -303,8 +386,10 @@ public static class DimensionGeometryProjector
         var transform = ResolveSimilarityTransform(originalStart, originalEnd, newStart, newEnd);
         var measurementSourceUnits = RoundMeasurement(ComputeDistance(newStart, newEnd));
         var measurementMillimeters = RoundMeasurement(measurementSourceUnits * ResolveMeasurementFactor(dimension));
-        var displayText = ResolveDisplayText(dimension, measurementSourceUnits);
-        var displayTextSource = ResolveDisplayTextSource(dimension, "ReactiveAssociatedMeasurement");
+        var displayText = DimensionDisplayTextFormatter.Resolve(
+            dimension,
+            measurementSourceUnits,
+            "ReactiveAssociatedMeasurement");
         var transformedDefPoint3 = ApplySimilarityTransform(new Point2(dimension.DefPoint3X, dimension.DefPoint3Y), transform);
         var transformedTextAnchor = ResolveRadialTextAnchor(dimension, transform);
 
@@ -321,10 +406,10 @@ public static class DimensionGeometryProjector
             RenderTextRotationDegrees = dimension.RenderTextRotationDegrees is decimal renderRotation
                 ? NormalizeRotationDegrees(renderRotation + transform.RotationDegrees)
                 : null,
-            DisplayText = displayText,
+            DisplayText = displayText.DisplayText,
             MeasurementSourceUnits = measurementSourceUnits,
             MeasurementMillimeters = measurementMillimeters,
-            DisplayTextSource = displayTextSource,
+            DisplayTextSource = displayText.DisplayTextSource,
             IsEdited = dimension.IsEdited,
             IsDirty = dimension.IsDirty
         };
@@ -339,7 +424,7 @@ public static class DimensionGeometryProjector
             : dimension.LineSegments
                 .Select(item => TransformLineSegment(item, transform))
                 .ToArray();
-        var updatedText = BuildRadialTextPrimitives(dimension, updatedDimension, transform, displayText, transformedTextAnchor);
+        var updatedText = BuildRadialTextPrimitives(dimension, updatedDimension, transform, displayText.DisplayText, transformedTextAnchor);
         var updatedInserts = dimension.InsertPrimitives
             .Select(item => TransformInsertPrimitive(item, transform))
             .ToArray();
@@ -383,11 +468,11 @@ public static class DimensionGeometryProjector
             ? RoundMeasurement(measurementSourceUnits * ResolveMeasurementFactor(sourceDimension))
             : sourceDimension.MeasurementMillimeters;
         var displayText = recalculateMeasurement
-            ? ResolveDisplayText(sourceDimension, measurementSourceUnits)
-            : sourceDimension.DisplayText;
-        var displayTextSource = recalculateMeasurement
-            ? ResolveDisplayTextSource(sourceDimension, generatedDisplayTextSource)
-            : sourceDimension.DisplayTextSource;
+            ? DimensionDisplayTextFormatter.Resolve(
+                sourceDimension,
+                measurementSourceUnits,
+                generatedDisplayTextSource)
+            : new DimensionDisplayTextResult(sourceDimension.DisplayText, sourceDimension.DisplayTextSource);
 
         var updatedDimension = sourceDimension with
         {
@@ -399,10 +484,10 @@ public static class DimensionGeometryProjector
             DefPoint3Y = RoundModelValue(renderState.DimensionLinePoint.Y),
             RenderTextX = RoundModelValue(renderState.TextAnchor.X),
             RenderTextY = RoundModelValue(renderState.TextAnchor.Y),
-            DisplayText = displayText,
+            DisplayText = displayText.DisplayText,
             MeasurementSourceUnits = measurementSourceUnits,
             MeasurementMillimeters = measurementMillimeters,
-            DisplayTextSource = displayTextSource,
+            DisplayTextSource = displayText.DisplayTextSource,
             IsEdited = markEdited,
             IsDirty = markDirty
         };
@@ -444,11 +529,11 @@ public static class DimensionGeometryProjector
 
         var textTemplates = primitiveTemplateDimension.TextPrimitives.Count > 0
             ? primitiveTemplateDimension.TextPrimitives
-            : [new DimensionTextPrimitiveDto("TEXT-1", 1, displayText, updatedDimension.RenderTextX ?? 0m, updatedDimension.RenderTextY ?? 0m, updatedDimension.RenderTextHeight ?? 3.5m, updatedDimension.RenderTextRotationDegrees ?? 0m)];
+            : [new DimensionTextPrimitiveDto("TEXT-1", 1, displayText.DisplayText, updatedDimension.RenderTextX ?? 0m, updatedDimension.RenderTextY ?? 0m, updatedDimension.RenderTextHeight ?? 3.5m, updatedDimension.RenderTextRotationDegrees ?? 0m)];
         var updatedText = textTemplates
             .Select(template => template with
             {
-                Text = displayText,
+                Text = displayText.DisplayText,
                 X = RoundModelValue(renderState.TextAnchor.X),
                 Y = RoundModelValue(renderState.TextAnchor.Y),
                 Height = updatedDimension.RenderTextHeight ?? template.Height,
@@ -652,25 +737,6 @@ public static class DimensionGeometryProjector
                 AttachmentPoint = updatedDimension.RenderTextAttachmentPoint
             }
         ];
-    }
-
-    private static string ResolveDisplayText(DimensionDto dimension, decimal measurementSourceUnits)
-    {
-        if (!string.IsNullOrWhiteSpace(dimension.RawTextOverride) &&
-            !string.Equals(dimension.RawTextOverride.Trim(), "<>", StringComparison.Ordinal))
-        {
-            return dimension.DisplayText;
-        }
-
-        return FormatMeasurementFallback(measurementSourceUnits, dimension.SourceUnit);
-    }
-
-    private static string ResolveDisplayTextSource(DimensionDto dimension, string generatedDisplayTextSource)
-    {
-        return !string.IsNullOrWhiteSpace(dimension.RawTextOverride) &&
-               !string.Equals(dimension.RawTextOverride.Trim(), "<>", StringComparison.Ordinal)
-            ? dimension.DisplayTextSource
-            : generatedDisplayTextSource;
     }
 
     private static decimal ResolveMeasurementFactor(DimensionDto dimension)
@@ -936,6 +1002,33 @@ public static class DimensionGeometryProjector
         return (relative.X * axis.X) + (relative.Y * axis.Y);
     }
 
+    private static Vector2 ResolveAverageActiveAxisTranslation(
+        decimal authoredStartX,
+        decimal authoredStartY,
+        decimal liveStartX,
+        decimal liveStartY,
+        decimal authoredEndX,
+        decimal authoredEndY,
+        decimal liveEndX,
+        decimal liveEndY,
+        string activeAxisTag)
+    {
+        var averageDeltaX = ((liveStartX - authoredStartX) + (liveEndX - authoredEndX)) / 2m;
+        var averageDeltaY = ((liveStartY - authoredStartY) + (liveEndY - authoredEndY)) / 2m;
+
+        if (string.Equals(activeAxisTag, "Width", StringComparison.OrdinalIgnoreCase))
+        {
+            return new Vector2(averageDeltaX, 0m);
+        }
+
+        if (string.Equals(activeAxisTag, "Height", StringComparison.OrdinalIgnoreCase))
+        {
+            return new Vector2(0m, averageDeltaY);
+        }
+
+        return new Vector2(averageDeltaX, averageDeltaY);
+    }
+
     private static Point2 TranslatePoint(Point2 point, Vector2 delta)
         => new(point.X + delta.X, point.Y + delta.Y);
 
@@ -954,6 +1047,13 @@ public static class DimensionGeometryProjector
             RoundModelValue(segment.StartY + delta.Y),
             RoundModelValue(segment.EndX + delta.X),
             RoundModelValue(segment.EndY + delta.Y));
+
+    private static DimensionTextPrimitiveDto TranslateTextPrimitive(DimensionTextPrimitiveDto primitive, Vector2 delta)
+        => primitive with
+        {
+            X = RoundModelValue(primitive.X + delta.X),
+            Y = RoundModelValue(primitive.Y + delta.Y)
+        };
 
     private static DimensionInsertPrimitiveDto TranslateInsertPrimitive(DimensionInsertPrimitiveDto primitive, Vector2 delta)
         => primitive with
@@ -1174,24 +1274,6 @@ public static class DimensionGeometryProjector
             Point4X = RoundModelValue(point4.X),
             Point4Y = RoundModelValue(point4.Y)
         };
-    }
-
-    private static string FormatMeasurementFallback(decimal measurement, string sourceUnit)
-    {
-        return string.Equals(sourceUnit, "Inch", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(sourceUnit, "Foot", StringComparison.OrdinalIgnoreCase)
-            ? FormatArchitecturalInches(measurement)
-            : measurement.ToString("0.###", CultureInfo.InvariantCulture);
-    }
-
-    private static string FormatArchitecturalInches(decimal totalInches)
-    {
-        var rounded = decimal.Round(totalInches, 0, MidpointRounding.AwayFromZero);
-        var feet = decimal.ToInt32(decimal.Truncate(rounded / 12m));
-        var inches = decimal.ToInt32(rounded % 12m);
-        return feet > 0
-            ? $"{feet}'-{inches}\""
-            : $"{inches}\"";
     }
 
     private static decimal RoundMeasurement(decimal value)

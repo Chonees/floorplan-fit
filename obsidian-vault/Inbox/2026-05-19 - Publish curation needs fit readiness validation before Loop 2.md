@@ -35,3 +35,14 @@ Fresh focused verification passed:
 - Infrastructure tests: 2/2 pass for SQLite round-trip of corridors, nodes, and manual interval bindings.
 
 Conclusion: the raw information the user described is being saved correctly. The remaining risk is not persistence shape; it is publish readiness/quality validation before future Loop 2 consumes the data.
+
+## 2026-05-21 verification update
+Re-checked the current code before answering the publish question:
+
+- `PublishFloorPlanCurationHandler` still only checks: template exists, curation exists, curation is Draft, and the curation has at least one pinch marker. Then it calls `curation.Publish(...)`, `template.SetActivePublishedCuration(curation.Id)`, updates both rows, and saves.
+- `SaveDimensionIntervalBindingHandler` persists a manual cota relation only when the operator saves it: dimension id, corridor id, start node id, end node id, `ManualVerified`, and interval coordinates from the two nodes.
+- `SqliteFloorPlanReviewSessionReader` reads `pinch_groups`, `pinch_markers`, `measurement_corridors`, `measurement_nodes`, and `floorplan_dimension_interval_bindings` for the active curation id and exposes them in `FloorPlanReviewSessionDto`.
+- `DimensionIntervalReactiveProjector` consumes only `ManualVerified` interval bindings, resolves their start/end nodes against adjusted preview geometry, and adjusts the affected dimensions during pinch preview when the corridor axis matches the active articulation band.
+- The storage shape is still good enough for the intended pinches + A/B franja + cota relation model, but publish still does not certify completeness or quality.
+
+Extra caveat found: `StartOrResumeCurationHandler` creates a new draft with `basedOnCurationId = published?.Id`, but measurement corridors/nodes/bindings are currently loaded only from the active draft id, not from lineage. If a future flow expects published Fit relationships to be inherited into a new draft, add explicit copy/inheritance for Fit semantic tables.

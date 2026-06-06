@@ -15,6 +15,7 @@ internal sealed class FloorPlanReviewInspectorCoordinator
         DimensionDto? selectedDimension,
         PinchGroupDto? selectedPinchGroup,
         string selectedPinchAxis,
+        bool selectedPinchGroupHasPreviewDriver,
         bool isPinchPlacementArmed,
         string addPinchButtonLabel,
         string excludeSelectedArtifactLabel,
@@ -82,6 +83,7 @@ internal sealed class FloorPlanReviewInspectorCoordinator
             selectedDimension,
             selectedPinchGroup,
             selectedPinchAxis,
+            selectedPinchGroupHasPreviewDriver,
             isPinchPlacementArmed,
             addPinchButtonLabel,
             excludeSelectedArtifactLabel);
@@ -224,6 +226,7 @@ internal sealed class FloorPlanReviewInspectorCoordinator
         DimensionDto? selectedDimension,
         PinchGroupDto? selectedPinchGroup,
         string selectedPinchAxis,
+        bool selectedPinchGroupHasPreviewDriver,
         bool isPinchPlacementArmed,
         string addPinchButtonLabel,
         string excludeSelectedArtifactLabel)
@@ -259,6 +262,11 @@ internal sealed class FloorPlanReviewInspectorCoordinator
         }
 
         var handleHint = ResolveHandleHint(selectedPinchAxis);
+
+        if (!selectedPinchGroupHasPreviewDriver)
+        {
+            return $"El grupo {selectedPinchGroup.Name} todav\u00EDa no tiene pinches {selectedPinchAxis}. Presion\u00E1 '{addPinchButtonLabel}' y marc\u00E1 al menos un pinch sobre una l\u00EDnea; despu\u00E9s aparecen los handles de {handleHint}.";
+        }
 
         if (selectedCandidate is null)
         {

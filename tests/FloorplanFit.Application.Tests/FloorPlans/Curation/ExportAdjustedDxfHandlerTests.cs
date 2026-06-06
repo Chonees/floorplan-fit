@@ -9,7 +9,7 @@ namespace FloorplanFit.Application.Tests.FloorPlans.Curation;
 public sealed class ExportAdjustedDxfHandlerTests
 {
     [Fact]
-    public async Task HandleAsync_exports_dirty_dimensions_persists_imported_document_and_marks_overrides_clean()
+    public async Task HandleAsync_exports_edited_dimensions_persists_imported_document_and_marks_overrides_clean()
     {
         var templateId = Guid.NewGuid();
         var versionId = Guid.NewGuid();
@@ -74,8 +74,7 @@ public sealed class ExportAdjustedDxfHandlerTests
         var exportCall = exporter.ExportCalls.Single();
         Assert.Equal(source.ManagedFilePath, exportCall.SourceFilePath);
         Assert.Equal(response.ManagedFilePath, exportCall.OutputFilePath);
-        var exportedDimension = Assert.Single(exportCall.Dimensions);
-        Assert.Equal("AB12", exportedDimension.SourceHandle);
+        Assert.Equal(["AB12", "ZZ99"], exportCall.Dimensions.Select(item => item.SourceHandle!).ToArray());
 
         var importedDocument = Assert.Single(importedDocumentRepository.Items);
         Assert.Equal(ImportedDocumentType.ExportedAdjustedDxf, importedDocument.DocumentType);
@@ -85,9 +84,67 @@ public sealed class ExportAdjustedDxfHandlerTests
         Assert.Single(repository.MarkExportedCalls);
         var markExport = repository.MarkExportedCalls.Single();
         Assert.Equal(curationId, markExport.CurationId);
-        Assert.Equal(["AB12"], markExport.SourceDimensionKeys);
+        Assert.Equal(["AB12", "ZZ99"], markExport.SourceDimensionKeys);
         Assert.Equal(clock.UtcNow, markExport.ExportedAtUtc);
         Assert.True(unitOfWork.SaveChangesCalled);
+    }
+
+    [Fact]
+    public async Task HandleAsync_exports_edited_dimensions_even_when_overrides_are_not_dirty()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var curationId = Guid.NewGuid();
+        var measurementContextId = Guid.NewGuid();
+        var source = new FloorPlanExtractionSource(templateId, versionId, @"C:\workspace\library\raw-dxf\SEMINOLE2000.dxf")
+        {
+            MeasurementContextId = measurementContextId,
+            OriginalFileName = "SEMINOLE2000.dxf",
+            DxfVersion = "AC1027"
+        };
+        var reviewSession = new FloorPlanReviewSessionDto(
+            templateId,
+            "seminole2000",
+            "SEMINOLE2000",
+            "Curated Draft",
+            1,
+            null,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [])
+        {
+            Dimensions =
+            [
+                CreateDimension("AB12", isEdited: true, isDirty: false),
+                CreateDimension("ZZ99", isEdited: false, isDirty: false)
+            ]
+        };
+        var exporter = new FakeAdjustedDxfExporter();
+        var repository = new InMemoryFloorPlanDimensionOverrideRepository();
+        var handler = new ExportAdjustedDxfHandler(
+            new FakeFloorPlanExtractionSourceReader(source),
+            new FakeFloorPlanReviewSessionReader(reviewSession),
+            repository,
+            new InMemoryImportedDocumentRepository(),
+            new FakeManagedFileStorage(@"C:\workspace\library\adjusted-dxf\SEMINOLE2000-adjusted.dxf"),
+            exporter,
+            new FakeFileHashService("abc123"),
+            new FakeUnitOfWork(),
+            new FakeClock(new DateTime(2026, 6, 5, 21, 0, 0, DateTimeKind.Utc)));
+
+        await handler.HandleAsync(templateId, versionId, curationId, CancellationToken.None);
+
+        var exportedDimension = Assert.Single(exporter.ExportCalls.Single().Dimensions);
+        Assert.Equal("AB12", exportedDimension.SourceHandle);
+        var markExport = Assert.Single(repository.MarkExportedCalls);
+        Assert.Equal(["AB12"], markExport.SourceDimensionKeys);
     }
 
     [Fact]

@@ -53,16 +53,137 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
         using var provider = services.BuildServiceProvider();
         var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
         await viewModel.LoadAsync(CancellationToken.None);
-        viewModel.NewMeasurementCorridorName = "Patio-Width";
         viewModel.SelectedPinchAxis = nameof(PinchAxisTag.Width);
         Assert.True(viewModel.SelectPreviewPath(geometryPathId));
 
         await viewModel.AddMeasurementCorridorAsync(CancellationToken.None);
 
         var saved = Assert.Single(corridorRepository.Items);
-        Assert.Equal("Patio-Width", saved.Name);
+        Assert.Equal("Franja 1", saved.Name);
         Assert.Equal(geometryPathId, saved.GuideGeometryPathId);
         Assert.Equal(PinchAxisTag.Width, saved.AxisTag);
+    }
+
+    [Fact]
+    public async Task StartEditingPublishedCurationAsync_creates_editable_draft_and_allows_creating_measurement_corridor()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var publishedCurationId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        template.SetActivePublishedCuration(publishedCurationId);
+        var published = new FloorPlanCuration(
+            publishedCurationId,
+            versionId,
+            curationVersion: 1,
+            FloorPlanCurationStatus.Published,
+            basedOnCurationId: null,
+            notes: "published",
+            createdAtUtc: new DateTime(2026, 6, 3, 14, 0, 0, DateTimeKind.Utc),
+            publishedAtUtc: new DateTime(2026, 6, 3, 15, 0, 0, DateTimeKind.Utc));
+        var curationRepository = new InMemoryFloorPlanCurationRepository(published);
+        var cloneService = new FakeFloorPlanCurationDataCloneService();
+        var geometryPathId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var reader = new SequencedFloorPlanReviewSessionReader(
+            CreateSession(
+                templateId,
+                status: "Published",
+                activePublishedCurationId: publishedCurationId),
+            CreateSession(
+                templateId,
+                status: "Curated Draft",
+                activePublishedCurationId: publishedCurationId),
+            CreateSession(
+                templateId,
+                status: "Curated Draft",
+                activePublishedCurationId: publishedCurationId));
+        var corridorRepository = new InMemoryMeasurementCorridorRepository();
+        var services = BuildServices(
+            template,
+            reader,
+            corridorRepository,
+            new InMemoryMeasurementNodeRepository(),
+            new InMemoryDimensionIntervalBindingRepository(),
+            curationRepository,
+            cloneService);
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(Guid.Empty, viewModel.DraftCurationId);
+        Assert.True(viewModel.CanEditPublishedCuration);
+        Assert.False(viewModel.CanPublishCuration);
+
+        await viewModel.StartEditingPublishedCurationAsync(CancellationToken.None);
+
+        Assert.NotEqual(Guid.Empty, viewModel.DraftCurationId);
+        Assert.Equal((publishedCurationId, viewModel.DraftCurationId), cloneService.LastClone);
+        Assert.False(viewModel.CanEditPublishedCuration);
+        Assert.True(viewModel.CanPublishCuration);
+
+        viewModel.SelectedPinchAxis = nameof(PinchAxisTag.Width);
+        Assert.True(viewModel.SelectPreviewPath(geometryPathId));
+
+        await viewModel.AddMeasurementCorridorAsync(CancellationToken.None);
+
+        var saved = Assert.Single(corridorRepository.Items);
+        Assert.Equal(viewModel.DraftCurationId, saved.FloorPlanCurationId);
+        Assert.Equal(geometryPathId, saved.GuideGeometryPathId);
+    }
+
+    [Fact]
+    public async Task ChangeSelectedMeasurementCorridorAxisAsync_changes_selected_franja_axis_and_refreshes_bindings()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var geometryPathId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var corridorId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var startNodeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var endNodeId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        var dimensionId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+        var beforeCorridor = new MeasurementCorridorDto(corridorId, "Franja 1", nameof(PinchAxisTag.Width), geometryPathId, 100m, 100m, "Verified", 1);
+        var beforeStartNode = new MeasurementNodeDto(startNodeId, corridorId, 1, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 100m, 100m, 100m, 0m, 0m, 0m);
+        var beforeEndNode = new MeasurementNodeDto(endNodeId, corridorId, 2, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 100m, 140m, 100m, 0m, 0m, 1m);
+        var beforeBinding = new DimensionIntervalBindingDto(dimensionId, corridorId, startNodeId, endNodeId, "ManualVerified", 100m, 100m);
+        var afterCorridor = beforeCorridor with { AxisTag = nameof(PinchAxisTag.Height), BandMinCoordinate = 100m, BandMaxCoordinate = 100m };
+        var afterStartNode = beforeStartNode with { AxisCoordinate = 100m };
+        var afterEndNode = beforeEndNode with { AxisCoordinate = 140m };
+        var afterBinding = beforeBinding with { IntervalStartCoordinate = 100m, IntervalEndCoordinate = 140m };
+        var reader = new SequencedFloorPlanReviewSessionReader(
+            CreateSession(templateId, measurementCorridors: [beforeCorridor], measurementNodes: [beforeStartNode, beforeEndNode], dimensionIntervalBindings: [beforeBinding]),
+            CreateSession(templateId, measurementCorridors: [afterCorridor], measurementNodes: [afterStartNode, afterEndNode], dimensionIntervalBindings: [afterBinding]));
+        var corridorRepository = new InMemoryMeasurementCorridorRepository();
+        var nodeRepository = new InMemoryMeasurementNodeRepository();
+        var bindingRepository = new InMemoryDimensionIntervalBindingRepository();
+        var services = BuildServices(template, reader, corridorRepository, nodeRepository, bindingRepository);
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+        await viewModel.LoadAsync(CancellationToken.None);
+        corridorRepository.Items.Add(new MeasurementCorridor(corridorId, viewModel.DraftCurationId, "Franja 1", PinchAxisTag.Width, geometryPathId, 100m, 100m, "Verified", 1));
+        nodeRepository.Items.Add(new MeasurementNode(startNodeId, viewModel.DraftCurationId, corridorId, 1, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 100m, 100m, 100m, 0m, 0m, 0m));
+        nodeRepository.Items.Add(new MeasurementNode(endNodeId, viewModel.DraftCurationId, corridorId, 2, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 100m, 140m, 100m, 0m, 0m, 1m));
+        bindingRepository.Items.Add(new DimensionIntervalBinding(viewModel.DraftCurationId, dimensionId, corridorId, startNodeId, endNodeId, "ManualVerified", 100m, 100m, new DateTime(2026, 5, 22, 12, 0, 0, DateTimeKind.Utc)));
+        viewModel.SelectedMeasurementCorridor = Assert.Single(viewModel.MeasurementCorridors);
+
+        Assert.Equal(nameof(PinchAxisTag.Width), viewModel.SelectedMeasurementCorridorAxis);
+        viewModel.SelectedMeasurementCorridorAxis = nameof(PinchAxisTag.Height);
+        Assert.True(viewModel.CanChangeSelectedMeasurementCorridorAxis);
+
+        await viewModel.ChangeSelectedMeasurementCorridorAxisAsync(CancellationToken.None);
+
+        Assert.Equal(PinchAxisTag.Height, Assert.Single(corridorRepository.Items).AxisTag);
+        Assert.Equal(100m, nodeRepository.Items.Single(item => item.Id == startNodeId).AxisCoordinate);
+        Assert.Equal(140m, nodeRepository.Items.Single(item => item.Id == endNodeId).AxisCoordinate);
+        var binding = Assert.Single(bindingRepository.Items);
+        Assert.Equal(100m, binding.IntervalStartCoordinate);
+        Assert.Equal(140m, binding.IntervalEndCoordinate);
+        Assert.Equal(nameof(PinchAxisTag.Height), viewModel.SelectedMeasurementCorridor?.AxisTag);
+        Assert.Equal(nameof(PinchAxisTag.Height), viewModel.SelectedMeasurementCorridorAxis);
     }
 
     [Fact]
@@ -143,7 +264,7 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
         viewModel.SelectedMeasurementCorridor = Assert.Single(viewModel.MeasurementCorridors);
 
         viewModel.ToggleMeasurementNodePlacement();
-        Assert.Equal("Ahora hac\u00E9 click en una l\u00EDnea o punto v\u00E1lido del preview para marcar un punto de medida en Patio-Width.", viewModel.StatusMessage);
+        Assert.Equal("Ahora hac\u00E9 click en una l\u00EDnea o punto v\u00E1lido del preview para marcar un punto de medida en la franja seleccionada.", viewModel.StatusMessage);
 
         viewModel.ToggleMeasurementNodePlacement();
         Assert.Equal("Selecci\u00F3n de punto cancelada.", viewModel.StatusMessage);
@@ -578,6 +699,271 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task Measurement_group_options_are_visible_before_nodes_and_manual_a_b_assignment_drives_binding_selection()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var geometryPathId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var corridorId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var startNodeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var endNodeId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        var dimension = CreateDimension(Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"));
+        var corridor = new MeasurementCorridorDto(corridorId, "Patio-Width", nameof(PinchAxisTag.Width), geometryPathId, 95m, 145m, "Verified", 1);
+        var startNode = new MeasurementNodeDto(startNodeId, corridorId, 1, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 100m, 120m, 100m, 0m, 0m, 0.5m);
+        var endNode = new MeasurementNodeDto(endNodeId, corridorId, 2, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 224m, 120m, 224m, 0m, 0m, 1m);
+        var emptyGroupSession = CreateSession(templateId, dimensions: [dimension], measurementCorridors: [corridor]);
+        var groupOnlyServices = BuildServices(
+            template,
+            emptyGroupSession,
+            new InMemoryMeasurementCorridorRepository(),
+            new InMemoryMeasurementNodeRepository(),
+            new InMemoryDimensionIntervalBindingRepository());
+
+        using (var groupOnlyProvider = groupOnlyServices.BuildServiceProvider())
+        {
+            var groupOnlyViewModel = new FloorPlanReviewViewModel(groupOnlyProvider.GetRequiredService<IServiceScopeFactory>(), templateId);
+            await groupOnlyViewModel.LoadAsync(CancellationToken.None);
+
+            var emptyGroup = Assert.Single(groupOnlyViewModel.MeasurementNodeGroupOptions);
+            Assert.Equal("Franja 1", emptyGroup.Name);
+            Assert.Equal("Width - 0 nodos", emptyGroup.Details);
+
+            groupOnlyViewModel.SelectedMeasurementNodeGroupOption = emptyGroup;
+
+            Assert.Equal(corridorId, groupOnlyViewModel.SelectedMeasurementCorridor?.CorridorId);
+            Assert.Empty(groupOnlyViewModel.SelectedMeasurementGroupNodeOptions);
+        }
+
+        var oneNodeSession = CreateSession(templateId, dimensions: [dimension], measurementCorridors: [corridor], measurementNodes: [startNode]);
+        var oneNodeServices = BuildServices(
+            template,
+            oneNodeSession,
+            new InMemoryMeasurementCorridorRepository(),
+            new InMemoryMeasurementNodeRepository(),
+            new InMemoryDimensionIntervalBindingRepository());
+
+        using (var oneNodeProvider = oneNodeServices.BuildServiceProvider())
+        {
+            var oneNodeViewModel = new FloorPlanReviewViewModel(oneNodeProvider.GetRequiredService<IServiceScopeFactory>(), templateId);
+            await oneNodeViewModel.LoadAsync(CancellationToken.None);
+
+            var oneNodeGroup = Assert.Single(oneNodeViewModel.MeasurementNodeGroupOptions);
+            Assert.Equal("Width - 1 nodo", oneNodeGroup.Details);
+
+            oneNodeViewModel.SelectedMeasurementNodeGroupOption = oneNodeGroup;
+            oneNodeViewModel.ToggleMeasurementNodePlacement();
+
+            Assert.True(oneNodeViewModel.IsMeasurementNodePlacementArmed);
+            Assert.Equal("Ahora hacé click en una línea o punto válido del preview para marcar un punto de medida en la franja seleccionada.", oneNodeViewModel.StatusMessage);
+        }
+
+        var session = CreateSession(templateId, dimensions: [dimension], measurementCorridors: [corridor], measurementNodes: [startNode, endNode]);
+        var services = BuildServices(
+            template,
+            session,
+            new InMemoryMeasurementCorridorRepository(),
+            new InMemoryMeasurementNodeRepository(),
+            new InMemoryDimensionIntervalBindingRepository());
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectDimension(dimension.DimensionId);
+
+        var groupOption = Assert.Single(viewModel.MeasurementNodeGroupOptions);
+
+        Assert.Equal("Franja 1", groupOption.Name);
+        Assert.Equal("Width - 2 nodos", groupOption.Details);
+
+        viewModel.SelectedMeasurementNodeGroupOption = groupOption;
+
+        var nodeOptions = viewModel.SelectedMeasurementGroupNodeOptions;
+        Assert.Collection(
+            nodeOptions,
+            item =>
+            {
+                Assert.Equal("Nodo 1", item.Name);
+                Assert.Equal(startNodeId, item.NodeId);
+                Assert.Equal("WallCandidate - Width - eje 100 - linea 0.5", item.Details);
+            },
+            item =>
+            {
+                Assert.Equal("Nodo 2", item.Name);
+                Assert.Equal(endNodeId, item.NodeId);
+                Assert.Equal("WallCandidate - Width - eje 224 - linea 1", item.Details);
+            });
+
+        Assert.Equal(corridorId, viewModel.SelectedMeasurementCorridor?.CorridorId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementNode?.NodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNode?.NodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNode?.NodeId);
+        Assert.Equal("Nodo 1", viewModel.SelectedMeasurementGroupNodeOption?.Name);
+
+        viewModel.SelectedMeasurementGroupNodeOption = nodeOptions[1];
+
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementNode?.NodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNode?.NodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNode?.NodeId);
+
+        viewModel.SelectedMeasurementStartNodeOption = nodeOptions[1];
+        viewModel.SelectedMeasurementEndNodeOption = nodeOptions[0];
+
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementStartNode?.NodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementEndNode?.NodeId);
+        Assert.True(viewModel.CanSaveSelectedDimensionIntervalBinding);
+
+        viewModel.SelectedMeasurementStartNodeOption = nodeOptions[0];
+        viewModel.SelectedMeasurementEndNodeOption = nodeOptions[1];
+
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNode?.NodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNode?.NodeId);
+        Assert.True(viewModel.CanSaveSelectedDimensionIntervalBinding);
+    }
+
+    [Fact]
+    public async Task Measurement_group_selection_without_dimension_keeps_preview_nodes_and_interval_active()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var geometryPathId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var corridorId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var startNodeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var endNodeId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        var corridor = new MeasurementCorridorDto(corridorId, "Patio-Width", nameof(PinchAxisTag.Width), geometryPathId, 95m, 145m, "Verified", 1);
+        var startNode = new MeasurementNodeDto(startNodeId, corridorId, 1, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 100m, 120m, 100m, 0m, 0m, 0.5m);
+        var endNode = new MeasurementNodeDto(endNodeId, corridorId, 2, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 224m, 120m, 224m, 0m, 0m, 1m);
+        var session = CreateSession(templateId, measurementCorridors: [corridor], measurementNodes: [startNode, endNode]);
+        var services = BuildServices(
+            template,
+            session,
+            new InMemoryMeasurementCorridorRepository(),
+            new InMemoryMeasurementNodeRepository(),
+            new InMemoryDimensionIntervalBindingRepository());
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        var groupOption = Assert.Single(viewModel.MeasurementNodeGroupOptions);
+
+        viewModel.SelectedMeasurementNodeGroupOption = groupOption;
+
+        var groupOptionsAfterSelection = viewModel.MeasurementNodeGroupOptions;
+        Assert.Same(groupOption, Assert.Single(groupOptionsAfterSelection));
+        Assert.Same(groupOption, viewModel.SelectedMeasurementNodeGroupOption);
+
+        Assert.Equal(corridorId, viewModel.SelectedMeasurementCorridor?.CorridorId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementNode?.NodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNode?.NodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNode?.NodeId);
+        Assert.Equal(corridorId, viewModel.SelectedMeasurementCorridorId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementNodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNodeId);
+        Assert.Collection(
+            viewModel.SelectedMeasurementGroupNodeOptions,
+            item => Assert.Equal(startNodeId, item.NodeId),
+            item => Assert.Equal(endNodeId, item.NodeId));
+        var nodeOptionsAfterSelection = viewModel.SelectedMeasurementGroupNodeOptions;
+        Assert.Same(nodeOptionsAfterSelection[0], viewModel.SelectedMeasurementGroupNodeOption);
+
+        viewModel.SelectedMeasurementNodeGroupOption = null;
+        viewModel.SelectedMeasurementGroupNodeOption = null;
+        viewModel.SelectedMeasurementStartNodeOption = null;
+        viewModel.SelectedMeasurementEndNodeOption = null;
+
+        Assert.Equal(corridorId, viewModel.SelectedMeasurementCorridor?.CorridorId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementNode?.NodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNode?.NodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNode?.NodeId);
+        Assert.Equal(corridorId, viewModel.SelectedMeasurementCorridorId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementNodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNodeId);
+        Assert.Collection(
+            viewModel.SelectedMeasurementGroupNodeOptions,
+            item => Assert.Equal(startNodeId, item.NodeId),
+            item => Assert.Equal(endNodeId, item.NodeId));
+
+        viewModel.SelectedMeasurementGroupNodeOption = viewModel.SelectedMeasurementGroupNodeOptions[1];
+
+        var nodeOptionsAfterNavigation = viewModel.SelectedMeasurementGroupNodeOptions;
+        Assert.Same(nodeOptionsAfterNavigation[1], viewModel.SelectedMeasurementGroupNodeOption);
+
+        Assert.Equal(corridorId, viewModel.SelectedMeasurementCorridor?.CorridorId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementNode?.NodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNode?.NodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNode?.NodeId);
+        Assert.Equal(corridorId, viewModel.SelectedMeasurementCorridorId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementNodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNodeId);
+        Assert.Collection(
+            viewModel.SelectedMeasurementGroupNodeOptions,
+            item => Assert.Equal(startNodeId, item.NodeId),
+            item => Assert.Equal(endNodeId, item.NodeId));
+    }
+
+    [Fact]
+    public async Task SelectDimension_selects_the_bound_franja_and_nodes_in_the_fit_panel()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var geometryPathId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var unrelatedCorridorId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var boundCorridorId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var startNodeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var endNodeId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        var dimension = CreateDimension(Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"));
+        var unrelatedCorridor = new MeasurementCorridorDto(unrelatedCorridorId, "Franja 1", nameof(PinchAxisTag.Width), geometryPathId, 10m, 40m, "Verified", 1);
+        var boundCorridor = new MeasurementCorridorDto(boundCorridorId, "Franja 2", nameof(PinchAxisTag.Width), geometryPathId, 95m, 145m, "Verified", 2);
+        var startNode = new MeasurementNodeDto(startNodeId, boundCorridorId, 1, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 100m, 120m, 100m, 0m, 0m, 0.5m);
+        var endNode = new MeasurementNodeDto(endNodeId, boundCorridorId, 2, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 224m, 120m, 224m, 0m, 0m, 1m);
+        var binding = new DimensionIntervalBindingDto(dimension.DimensionId, boundCorridorId, startNodeId, endNodeId, "ManualVerified", 100m, 224m);
+        var session = CreateSession(
+            templateId,
+            dimensions: [dimension],
+            measurementCorridors: [unrelatedCorridor, boundCorridor],
+            measurementNodes: [startNode, endNode],
+            dimensionIntervalBindings: [binding]);
+        var services = BuildServices(
+            template,
+            session,
+            new InMemoryMeasurementCorridorRepository(),
+            new InMemoryMeasurementNodeRepository(),
+            new InMemoryDimensionIntervalBindingRepository());
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedMeasurementCorridor = viewModel.MeasurementCorridors.Single(item => item.CorridorId == unrelatedCorridorId);
+
+        viewModel.SelectDimension(dimension.DimensionId);
+
+        Assert.Equal(boundCorridorId, viewModel.SelectedMeasurementCorridor?.CorridorId);
+        Assert.Equal(boundCorridorId, viewModel.SelectedMeasurementCorridorId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementNode?.NodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementNodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNode?.NodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNode?.NodeId);
+        Assert.Equal(startNodeId, viewModel.SelectedMeasurementStartNodeId);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNodeId);
+        Assert.Same(
+            viewModel.MeasurementNodeGroupOptions.Single(item => item.CorridorId == boundCorridorId),
+            viewModel.SelectedMeasurementNodeGroupOption);
+        Assert.Same(
+            viewModel.SelectedMeasurementGroupNodeOptions.Single(item => item.NodeId == startNodeId),
+            viewModel.SelectedMeasurementGroupNodeOption);
+        Assert.Contains("Franja 2", viewModel.SelectedDimensionIntervalBindingSummary);
+    }
+
+    [Fact]
     public async Task RestoreSelectedDimensionIntervalBindingAsync_deletes_the_manual_verified_binding_for_the_selected_dimension()
     {
         var templateId = Guid.NewGuid();
@@ -777,6 +1163,163 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task RemoveSelectedMeasurementNodeAsync_deletes_selected_node_keeps_franja_and_clears_invalid_binding_selection()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var corridorId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var startNodeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var endNodeId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        var dimensionId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var corridor = new MeasurementCorridorDto(corridorId, "Patio-Width", nameof(PinchAxisTag.Width), geometryPathId, 95m, 145m, "Verified", 1);
+        var startNode = new MeasurementNodeDto(startNodeId, corridorId, 1, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 100m, 120m, 100m, 0m, 0m, 0.5m);
+        var endNode = new MeasurementNodeDto(endNodeId, corridorId, 2, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), geometryPathId, "Projected", 224m, 120m, 224m, 0m, 0m, 1m);
+        var initialSession = CreateSession(
+            templateId,
+            dimensions: [CreateDimension(dimensionId)],
+            measurementCorridors: [corridor],
+            measurementNodes: [startNode, endNode],
+            dimensionIntervalBindings:
+            [
+                new DimensionIntervalBindingDto(dimensionId, corridorId, startNodeId, endNodeId, "ManualVerified", 100m, 224m)
+            ]);
+        var refreshedSession = CreateSession(
+            templateId,
+            dimensions: [CreateDimension(dimensionId)],
+            measurementCorridors: [corridor],
+            measurementNodes: [endNode]);
+        var reader = new SequencedFloorPlanReviewSessionReader(initialSession, refreshedSession);
+        var corridorRepository = new InMemoryMeasurementCorridorRepository(
+            new MeasurementCorridor(
+                corridorId,
+                Guid.Empty,
+                "Patio-Width",
+                PinchAxisTag.Width,
+                geometryPathId,
+                95m,
+                145m,
+                "Verified",
+                1));
+        var nodeRepository = new InMemoryMeasurementNodeRepository(
+            new MeasurementNode(
+                startNodeId,
+                Guid.Empty,
+                corridorId,
+                1,
+                "ProjectedGeometry",
+                FloorPlanArtifactSourceKinds.WallCandidate,
+                Guid.NewGuid(),
+                geometryPathId,
+                "Projected",
+                100m,
+                120m,
+                100m,
+                0m,
+                0m,
+                0.5m),
+            new MeasurementNode(
+                endNodeId,
+                Guid.Empty,
+                corridorId,
+                2,
+                "ProjectedGeometry",
+                FloorPlanArtifactSourceKinds.WallCandidate,
+                Guid.NewGuid(),
+                geometryPathId,
+                "Projected",
+                224m,
+                120m,
+                224m,
+                0m,
+                0m,
+                1m));
+        var bindingRepository = new InMemoryDimensionIntervalBindingRepository(
+            new DimensionIntervalBinding(Guid.Empty, dimensionId, corridorId, startNodeId, endNodeId, "ManualVerified", 100m, 224m, DateTime.UtcNow));
+        var services = BuildServices(template, reader, corridorRepository, nodeRepository, bindingRepository);
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+        await viewModel.LoadAsync(CancellationToken.None);
+        corridorRepository.Items.Clear();
+        corridorRepository.Items.Add(new MeasurementCorridor(
+            corridorId,
+            viewModel.DraftCurationId,
+            "Patio-Width",
+            PinchAxisTag.Width,
+            geometryPathId,
+            95m,
+            145m,
+            "Verified",
+            1));
+        nodeRepository.Items.Clear();
+        nodeRepository.Items.Add(new MeasurementNode(
+            startNodeId,
+            viewModel.DraftCurationId,
+            corridorId,
+            1,
+            "ProjectedGeometry",
+            FloorPlanArtifactSourceKinds.WallCandidate,
+            Guid.NewGuid(),
+            geometryPathId,
+            "Projected",
+            100m,
+            120m,
+            100m,
+            0m,
+            0m,
+            0.5m));
+        nodeRepository.Items.Add(new MeasurementNode(
+            endNodeId,
+            viewModel.DraftCurationId,
+            corridorId,
+            2,
+            "ProjectedGeometry",
+            FloorPlanArtifactSourceKinds.WallCandidate,
+            Guid.NewGuid(),
+            geometryPathId,
+            "Projected",
+            224m,
+            120m,
+            224m,
+            0m,
+            0m,
+            1m));
+        bindingRepository.Items.Clear();
+        bindingRepository.Items.Add(new DimensionIntervalBinding(
+            viewModel.DraftCurationId,
+            dimensionId,
+            corridorId,
+            startNodeId,
+            endNodeId,
+            "ManualVerified",
+            100m,
+            224m,
+            DateTime.UtcNow));
+        viewModel.SelectDimension(dimensionId);
+        viewModel.SelectedMeasurementCorridor = Assert.Single(viewModel.MeasurementCorridors);
+        viewModel.SelectedMeasurementNode = viewModel.MeasurementNodes.Single(item => item.NodeId == startNodeId);
+        viewModel.SelectedMeasurementStartNode = viewModel.MeasurementNodes.Single(item => item.NodeId == startNodeId);
+        viewModel.SelectedMeasurementEndNode = viewModel.MeasurementNodes.Single(item => item.NodeId == endNodeId);
+
+        await viewModel.RemoveSelectedMeasurementNodeAsync(CancellationToken.None);
+
+        Assert.Single(corridorRepository.Items);
+        Assert.DoesNotContain(nodeRepository.Items, item => item.Id == startNodeId);
+        Assert.Contains(nodeRepository.Items, item => item.Id == endNodeId);
+        Assert.Empty(bindingRepository.Items);
+        Assert.Equal(corridorId, viewModel.SelectedMeasurementCorridor?.CorridorId);
+        Assert.Null(viewModel.SelectedMeasurementNode);
+        Assert.Null(viewModel.SelectedMeasurementStartNode);
+        Assert.Equal(endNodeId, viewModel.SelectedMeasurementEndNodeId);
+        Assert.False(viewModel.CanRemoveSelectedMeasurementNode);
+        Assert.False(viewModel.CanSaveSelectedDimensionIntervalBinding);
+        Assert.False(viewModel.CanRestoreSelectedDimensionIntervalBinding);
+    }
+
+    [Fact]
     public async Task SelectedPinchGroupImpactSummary_lists_overlapping_corridors_for_the_selected_band()
     {
         var templateId = Guid.NewGuid();
@@ -892,14 +1435,17 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
         IFloorPlanReviewSessionReader sessionReader,
         InMemoryMeasurementCorridorRepository corridorRepository,
         InMemoryMeasurementNodeRepository nodeRepository,
-        InMemoryDimensionIntervalBindingRepository bindingRepository)
+        InMemoryDimensionIntervalBindingRepository bindingRepository,
+        InMemoryFloorPlanCurationRepository? curationRepository = null,
+        IFloorPlanCurationDataCloneService? cloneService = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
-        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IFloorPlanCurationRepository>(curationRepository ?? new InMemoryFloorPlanCurationRepository());
         services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
         services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 15, 18, 30, 0, DateTimeKind.Utc)));
         services.AddSingleton(sessionReader);
+        services.AddSingleton(cloneService ?? new FakeFloorPlanCurationDataCloneService());
         services.AddSingleton<IMeasurementCorridorRepository>(corridorRepository);
         services.AddSingleton<IMeasurementNodeRepository>(nodeRepository);
         services.AddSingleton<IDimensionIntervalBindingRepository>(bindingRepository);
@@ -907,12 +1453,15 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
         services.AddSingleton<IFloorPlanDimensionBindingOverrideRepository>(new NoOpDimensionBindingOverrideRepository());
         services.AddSingleton<ExportAdjustedDxfHandler>(new FakeExportAdjustedDxfHandler());
         services.AddTransient<AddMeasurementCorridorHandler>();
+        services.AddTransient<ChangeMeasurementCorridorAxisHandler>();
         services.AddTransient<AddMeasurementNodeHandler>();
         services.AddTransient<SaveDimensionIntervalBindingHandler>();
         services.AddTransient<RestoreDimensionIntervalBindingHandler>();
         services.AddTransient<RemoveMeasurementCorridorHandler>();
+        services.AddTransient<RemoveMeasurementNodeHandler>();
         services.AddTransient<StartOrResumeCurationHandler>();
         services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<EditPublishedFloorPlanCurationHandler>();
         services.AddTransient<GetFloorPlanReviewSessionHandler>();
         return services;
     }
@@ -924,15 +1473,17 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
         IReadOnlyList<MeasurementCorridorDto>? measurementCorridors = null,
         IReadOnlyList<MeasurementNodeDto>? measurementNodes = null,
         IReadOnlyList<DimensionIntervalBindingDto>? dimensionIntervalBindings = null,
-        IReadOnlyList<ArticulationBandDto>? articulationBands = null)
+        IReadOnlyList<ArticulationBandDto>? articulationBands = null,
+        string status = "Curated Draft",
+        Guid? activePublishedCurationId = null)
     {
         return new FloorPlanReviewSessionDto(
             templateId,
             "seminole2000",
             "SEMINOLE2000",
-            "Curated Draft",
+            status,
             1,
-            null,
+            activePublishedCurationId,
             [
                 new GeometryPathDto(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), false, [new GeometrySegmentDto(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), 1, 100m, 100m, 100m, 140m)])
             ],
@@ -1001,6 +1552,7 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
     private sealed class SequencedFloorPlanReviewSessionReader : IFloorPlanReviewSessionReader
     {
         private readonly Queue<FloorPlanReviewSessionDto> sessions;
+        private bool pendingNonPublishedOpenProbe;
 
         public SequencedFloorPlanReviewSessionReader(params FloorPlanReviewSessionDto[] sessions)
         {
@@ -1009,12 +1561,61 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
 
         public Task<FloorPlanReviewSessionDto?> GetByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
         {
-            var session = sessions.Count > 1 ? sessions.Dequeue() : sessions.Peek();
+            var session = ReadNextSession();
             return Task.FromResult<FloorPlanReviewSessionDto?>(session);
         }
 
         public Task<FloorPlanReviewSessionDto?> GetByVersionAsync(Guid templateId, Guid floorPlanVersionId, CancellationToken cancellationToken)
             => GetByTemplateAsync(templateId, cancellationToken);
+
+        public Task<FloorPlanReviewSessionDto?> GetByCurationAsync(
+            Guid templateId,
+            Guid curationId,
+            CancellationToken cancellationToken)
+        {
+            var session = ConsumeNextSession();
+            return Task.FromResult<FloorPlanReviewSessionDto?>(session);
+        }
+
+        public Task<FloorPlanReviewSessionDto?> GetByCurationAsync(
+            Guid templateId,
+            Guid floorPlanVersionId,
+            Guid curationId,
+            CancellationToken cancellationToken)
+        {
+            var session = ConsumeNextSession();
+            return Task.FromResult<FloorPlanReviewSessionDto?>(session);
+        }
+
+        private FloorPlanReviewSessionDto ReadNextSession()
+        {
+            var session = sessions.Peek();
+            if (session.ActivePublishedCurationId is null && !pendingNonPublishedOpenProbe)
+            {
+                pendingNonPublishedOpenProbe = true;
+                return session;
+            }
+
+            pendingNonPublishedOpenProbe = false;
+            return ConsumeNextSession();
+        }
+
+        private FloorPlanReviewSessionDto ConsumeNextSession()
+        {
+            pendingNonPublishedOpenProbe = false;
+            return sessions.Count > 1 ? sessions.Dequeue() : sessions.Peek();
+        }
+    }
+
+    private sealed class FakeFloorPlanCurationDataCloneService : IFloorPlanCurationDataCloneService
+    {
+        public (Guid SourceCurationId, Guid DestinationCurationId)? LastClone { get; private set; }
+
+        public Task EnsureClonedAsync(Guid sourceCurationId, Guid destinationCurationId, CancellationToken cancellationToken)
+        {
+            LastClone = (sourceCurationId, destinationCurationId);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class InMemoryFloorPlanTemplateRepository : IFloorPlanTemplateRepository
@@ -1030,10 +1631,16 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
     private sealed class InMemoryFloorPlanCurationRepository : IFloorPlanCurationRepository
     {
         private readonly List<FloorPlanCuration> items = [];
+
+        public InMemoryFloorPlanCurationRepository(params FloorPlanCuration[] items)
+        {
+            this.items.AddRange(items);
+        }
+
         public Task<FloorPlanCuration?> GetByIdAsync(Guid curationId, CancellationToken cancellationToken) => Task.FromResult(items.SingleOrDefault(item => item.Id == curationId));
         public Task<FloorPlanCuration?> GetDraftAsync(Guid floorPlanVersionId, CancellationToken cancellationToken) => Task.FromResult(items.SingleOrDefault(item => item.FloorPlanVersionId == floorPlanVersionId && item.Status == FloorPlanCurationStatus.Draft));
-        public Task<FloorPlanCuration?> GetPublishedAsync(Guid floorPlanVersionId, CancellationToken cancellationToken) => Task.FromResult<FloorPlanCuration?>(null);
-        public Task<int> GetNextCurationVersionAsync(Guid floorPlanVersionId, CancellationToken cancellationToken) => Task.FromResult(1);
+        public Task<FloorPlanCuration?> GetPublishedAsync(Guid floorPlanVersionId, CancellationToken cancellationToken) => Task.FromResult(items.SingleOrDefault(item => item.FloorPlanVersionId == floorPlanVersionId && item.Status == FloorPlanCurationStatus.Published));
+        public Task<int> GetNextCurationVersionAsync(Guid floorPlanVersionId, CancellationToken cancellationToken) => Task.FromResult(items.Where(item => item.FloorPlanVersionId == floorPlanVersionId).Select(item => item.CurationVersion).DefaultIfEmpty(0).Max() + 1);
         public Task AddAsync(FloorPlanCuration curation, CancellationToken cancellationToken) { items.Add(curation); return Task.CompletedTask; }
         public Task UpdateAsync(FloorPlanCuration curation, CancellationToken cancellationToken) => Task.CompletedTask;
     }
@@ -1050,6 +1657,7 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
         public Task DeleteAsync(Guid corridorId, CancellationToken cancellationToken) { Items.RemoveAll(item => item.Id == corridorId); return Task.CompletedTask; }
         public Task<MeasurementCorridor?> GetByIdAsync(Guid corridorId, CancellationToken cancellationToken) => Task.FromResult(Items.SingleOrDefault(item => item.Id == corridorId));
         public Task<IReadOnlyList<MeasurementCorridor>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<MeasurementCorridor>>(Items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
+        public Task UpdateAsync(MeasurementCorridor corridor, CancellationToken cancellationToken) { Items.RemoveAll(item => item.Id == corridor.Id); Items.Add(corridor); return Task.CompletedTask; }
     }
 
     private sealed class InMemoryMeasurementNodeRepository : IMeasurementNodeRepository
@@ -1064,7 +1672,9 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
         public Task<MeasurementNode?> GetByIdAsync(Guid nodeId, CancellationToken cancellationToken) => Task.FromResult(Items.SingleOrDefault(item => item.Id == nodeId));
         public Task<IReadOnlyList<MeasurementNode>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<MeasurementNode>>(Items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
         public Task<IReadOnlyList<MeasurementNode>> ListByCorridorAsync(Guid corridorId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<MeasurementNode>>(Items.Where(item => item.CorridorId == corridorId).ToArray());
+        public Task DeleteAsync(Guid nodeId, CancellationToken cancellationToken) { Items.RemoveAll(item => item.Id == nodeId); return Task.CompletedTask; }
         public Task DeleteByCorridorAsync(Guid corridorId, CancellationToken cancellationToken) { Items.RemoveAll(item => item.CorridorId == corridorId); return Task.CompletedTask; }
+        public Task UpdateAsync(MeasurementNode node, CancellationToken cancellationToken) { Items.RemoveAll(item => item.Id == node.Id); Items.Add(node); return Task.CompletedTask; }
     }
 
     private sealed class InMemoryDimensionIntervalBindingRepository : IDimensionIntervalBindingRepository
@@ -1079,6 +1689,13 @@ public sealed class MeasurementBindingFloorPlanReviewViewModelTests
         public Task UpsertAsync(DimensionIntervalBinding binding, CancellationToken cancellationToken) { Items.RemoveAll(item => item.FloorPlanCurationId == binding.FloorPlanCurationId && item.DimensionId == binding.DimensionId); Items.Add(binding); return Task.CompletedTask; }
         public Task DeleteAsync(Guid floorPlanCurationId, Guid dimensionId, CancellationToken cancellationToken) { Items.RemoveAll(item => item.FloorPlanCurationId == floorPlanCurationId && item.DimensionId == dimensionId); return Task.CompletedTask; }
         public Task DeleteByCorridorAsync(Guid floorPlanCurationId, Guid corridorId, CancellationToken cancellationToken) { Items.RemoveAll(item => item.FloorPlanCurationId == floorPlanCurationId && item.CorridorId == corridorId); return Task.CompletedTask; }
+        public Task DeleteByNodeAsync(Guid floorPlanCurationId, Guid nodeId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item =>
+                item.FloorPlanCurationId == floorPlanCurationId &&
+                (item.StartNodeId == nodeId || item.EndNodeId == nodeId));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class NoOpDimensionOverrideRepository : IFloorPlanDimensionOverrideRepository

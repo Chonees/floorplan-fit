@@ -73,6 +73,9 @@ public sealed class RejectWallCandidateHandlerTests
         public Task RemoveAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public Task RemoveByGroupAsync(Guid curationId, Guid pinchGroupId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task RemoveBySourceCandidateAsync(Guid curationId, Guid sourceCandidateId, CancellationToken cancellationToken)
         {
             Items.RemoveAll(item => item.FloorPlanCurationId == curationId && item.SourceCandidateId == sourceCandidateId);

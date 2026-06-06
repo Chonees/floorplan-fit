@@ -32,6 +32,16 @@ public partial class ReviewFloorPlanWindow : Window
         await viewModel.PublishAsync(CancellationToken.None);
     }
 
+    private async void EditPublishedButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.StartEditingPublishedCurationAsync(CancellationToken.None);
+    }
+
     private void AddPinchButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is not FloorPlanReviewViewModel viewModel)
@@ -52,6 +62,16 @@ public partial class ReviewFloorPlanWindow : Window
         await viewModel.AddPinchGroupAsync(CancellationToken.None);
     }
 
+    private async void RemovePinchGroupButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RemoveSelectedPinchGroupAsync(CancellationToken.None);
+    }
+
     private async void AddMeasurementCorridorButton_OnClick(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not FloorPlanReviewViewModel viewModel)
@@ -70,6 +90,26 @@ public partial class ReviewFloorPlanWindow : Window
         }
 
         await viewModel.RemoveSelectedMeasurementCorridorAsync(CancellationToken.None);
+    }
+
+    private async void RemoveMeasurementNodeButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RemoveSelectedMeasurementNodeAsync(CancellationToken.None);
+    }
+
+    private async void ChangeMeasurementCorridorAxisButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.ChangeSelectedMeasurementCorridorAxisAsync(CancellationToken.None);
     }
 
     private void AddMeasurementNodeButton_OnClick(object? sender, RoutedEventArgs e)

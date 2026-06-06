@@ -126,6 +126,37 @@ public sealed class SqliteMeasurementCorridorRepository : IMeasurementCorridorRe
         return Task.FromResult<IReadOnlyList<MeasurementCorridor>>(items);
     }
 
+    public Task UpdateAsync(MeasurementCorridor corridor, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            UPDATE measurement_corridors
+            SET
+                floorplan_curation_id = $floorplan_curation_id,
+                name = $name,
+                axis_tag = $axis_tag,
+                guide_geometry_path_id = $guide_geometry_path_id,
+                band_min_coordinate = $band_min_coordinate,
+                band_max_coordinate = $band_max_coordinate,
+                status = $status,
+                sort_order = $sort_order
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", corridor.Id.ToString());
+        command.Parameters.AddWithValue("$floorplan_curation_id", corridor.FloorPlanCurationId.ToString());
+        command.Parameters.AddWithValue("$name", corridor.Name);
+        command.Parameters.AddWithValue("$axis_tag", (int)corridor.AxisTag);
+        command.Parameters.AddWithValue("$guide_geometry_path_id", corridor.GuideGeometryPathId.ToString());
+        command.Parameters.AddWithValue("$band_min_coordinate", corridor.BandMinCoordinate.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$band_max_coordinate", corridor.BandMaxCoordinate.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$status", corridor.Status);
+        command.Parameters.AddWithValue("$sort_order", corridor.SortOrder);
+        command.ExecuteNonQuery();
+        return Task.CompletedTask;
+    }
+
     private static MeasurementCorridor Map(SqliteDataReader reader)
     {
         return new MeasurementCorridor(

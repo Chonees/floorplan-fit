@@ -90,6 +90,9 @@ public sealed class AddPinchMarkerHandlerTests
 
         public Task<IReadOnlyList<PinchGroup>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<PinchGroup>>(Items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
+
+        public Task RemoveAsync(Guid pinchGroupId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class InMemoryPinchMarkerRepository : IPinchMarkerRepository
@@ -118,6 +121,9 @@ public sealed class AddPinchMarkerHandlerTests
             Items.RemoveAll(item => item.Id == pinchMarkerId);
             return Task.CompletedTask;
         }
+
+        public Task RemoveByGroupAsync(Guid curationId, Guid pinchGroupId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
 
         public Task RemoveBySourceCandidateAsync(Guid curationId, Guid sourceCandidateId, CancellationToken cancellationToken)
         {

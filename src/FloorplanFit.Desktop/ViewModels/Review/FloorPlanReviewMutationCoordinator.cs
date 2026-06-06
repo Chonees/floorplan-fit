@@ -67,6 +67,16 @@ internal sealed class FloorPlanReviewMutationCoordinator
         return await handler.HandleAsync(draftCurationId, groupName, axisTag, cancellationToken);
     }
 
+    public async Task RemovePinchGroupAsync(
+        Guid draftCurationId,
+        Guid pinchGroupId,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<RemovePinchGroupHandler>();
+        await handler.HandleAsync(draftCurationId, pinchGroupId, cancellationToken);
+    }
+
     public async Task<Guid> AddMeasurementCorridorAsync(
         Guid draftCurationId,
         string name,
@@ -96,6 +106,35 @@ internal sealed class FloorPlanReviewMutationCoordinator
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<RemoveMeasurementCorridorHandler>();
         await handler.HandleAsync(draftCurationId, corridorId, cancellationToken);
+    }
+
+    public async Task RemoveMeasurementNodeAsync(
+        Guid draftCurationId,
+        Guid nodeId,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<RemoveMeasurementNodeHandler>();
+        await handler.HandleAsync(draftCurationId, nodeId, cancellationToken);
+    }
+
+    public async Task ChangeMeasurementCorridorAxisAsync(
+        Guid draftCurationId,
+        Guid corridorId,
+        PinchAxisTag axisTag,
+        decimal bandMinCoordinate,
+        decimal bandMaxCoordinate,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<ChangeMeasurementCorridorAxisHandler>();
+        await handler.HandleAsync(
+            draftCurationId,
+            corridorId,
+            axisTag,
+            bandMinCoordinate,
+            bandMaxCoordinate,
+            cancellationToken);
     }
 
     public async Task<Guid> AddMeasurementNodeAsync(

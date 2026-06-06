@@ -129,6 +129,23 @@ public sealed class SqlitePinchMarkerRepository : IPinchMarkerRepository
         return Task.CompletedTask;
     }
 
+    public Task RemoveByGroupAsync(Guid curationId, Guid pinchGroupId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            DELETE FROM pinch_markers
+            WHERE floorplan_curation_id = $floorplan_curation_id
+              AND pinch_group_id = $pinch_group_id
+            """);
+        command.Parameters.AddWithValue("$floorplan_curation_id", curationId.ToString());
+        command.Parameters.AddWithValue("$pinch_group_id", pinchGroupId.ToString());
+        command.ExecuteNonQuery();
+
+        return Task.CompletedTask;
+    }
+
     public Task RemoveBySourceCandidateAsync(Guid curationId, Guid sourceCandidateId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

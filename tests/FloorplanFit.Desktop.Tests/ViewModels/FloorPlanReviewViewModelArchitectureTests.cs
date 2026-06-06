@@ -140,4 +140,22 @@ public sealed class FloorPlanReviewViewModelArchitectureTests
         Assert.DoesNotContain("private void NotifyReviewQueueStateChanged(", source, StringComparison.Ordinal);
         Assert.DoesNotContain("private void NotifyUxStateChanged(", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void FloorPlanReviewViewModel_does_not_need_a_second_inspector_visibility_flag_for_fit_tools()
+    {
+        var viewModelPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "FloorplanFit.Desktop", "ViewModels", "FloorPlanReviewViewModel.cs");
+        var notificationPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "FloorplanFit.Desktop", "ViewModels", "Review", "FloorPlanReviewNotificationCoordinator.cs");
+        var viewModelSource = File.ReadAllText(viewModelPath);
+        var notificationSource = File.ReadAllText(notificationPath);
+
+        Assert.DoesNotContain("IsGeneralInspectorSelected", viewModelSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsGeneralInspectorSelected", notificationSource, StringComparison.Ordinal);
+    }
 }

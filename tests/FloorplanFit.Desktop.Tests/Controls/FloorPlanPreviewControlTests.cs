@@ -1109,7 +1109,7 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
-    public void CadViewportContext_create_reports_world_units_per_pixel_and_1_2_5_grid_spacing()
+    public void CadViewportContext_create_reports_world_units_per_pixel_and_denser_1_2_5_grid_spacing()
     {
         var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
             new Rect(0, 0, 800, 600),
@@ -1122,8 +1122,8 @@ public sealed class FloorPlanPreviewControlTests
         var context = CadViewportContext.Create(viewport);
 
         Assert.Equal(0.5d, context.WorldUnitsPerPixel);
-        Assert.Equal(20d, context.MinorGridSpacingWorld);
-        Assert.Equal(100d, context.MajorGridSpacingWorld);
+        Assert.Equal(10d, context.MinorGridSpacingWorld);
+        Assert.Equal(50d, context.MajorGridSpacingWorld);
         Assert.Equal(4d, context.SnappingToleranceWorld);
     }
 
@@ -1138,21 +1138,47 @@ public sealed class FloorPlanPreviewControlTests
     [Fact]
     public void CompressionHandlePreviewLayerRenderer_hides_handles_when_pinch_placement_is_armed()
     {
+        var selectedGroupId = Guid.NewGuid();
+        var marker = CreatePinchMarker(selectedGroupId, "Height");
+
         var handles = CompressionHandlePreviewLayerRenderer.GetVisibleHandles(
             new Rect(0, 0, 1000, 700),
             Domain.FloorPlans.PinchAxisTag.Height,
-            isPinchPlacementArmed: true);
+            isPinchPlacementArmed: true,
+            [marker],
+            selectedGroupId);
 
         Assert.Empty(handles);
     }
 
     [Fact]
-    public void CompressionHandlePreviewLayerRenderer_returns_height_handles_when_drag_preview_is_available()
+    public void CompressionHandlePreviewLayerRenderer_hides_handles_when_no_selected_group_markers_can_drive_preview()
     {
+        var selectedGroupId = Guid.NewGuid();
+        var otherGroupMarker = CreatePinchMarker(Guid.NewGuid(), "Height");
+
         var handles = CompressionHandlePreviewLayerRenderer.GetVisibleHandles(
             new Rect(0, 0, 1000, 700),
             Domain.FloorPlans.PinchAxisTag.Height,
-            isPinchPlacementArmed: false);
+            isPinchPlacementArmed: false,
+            [otherGroupMarker],
+            selectedGroupId);
+
+        Assert.Empty(handles);
+    }
+
+    [Fact]
+    public void CompressionHandlePreviewLayerRenderer_returns_height_handles_when_selected_group_has_axis_markers()
+    {
+        var selectedGroupId = Guid.NewGuid();
+        var marker = CreatePinchMarker(selectedGroupId, "Height");
+
+        var handles = CompressionHandlePreviewLayerRenderer.GetVisibleHandles(
+            new Rect(0, 0, 1000, 700),
+            Domain.FloorPlans.PinchAxisTag.Height,
+            isPinchPlacementArmed: false,
+            [marker],
+            selectedGroupId);
 
         Assert.Equal(2, handles.Count);
         Assert.Contains(handles, item => item.Edge == FloorPlanPreviewGeometry.PreviewCompressionEdge.Top);
@@ -1172,6 +1198,18 @@ public sealed class FloorPlanPreviewControlTests
             selectedGroupId);
 
         Assert.Equal([selectedMarker.PinchMarkerId], filtered!.Select(item => item.PinchMarkerId).ToArray());
+    }
+
+    [Fact]
+    public void PinchMarkerPreviewLayerRenderer_returns_no_preview_markers_without_selected_group()
+    {
+        var marker = CreatePinchMarker(Guid.NewGuid(), "Height");
+
+        var filtered = PinchMarkerPreviewLayerRenderer.FilterForPreviewGroup(
+            [marker],
+            previewPinchGroupId: null);
+
+        Assert.Empty(filtered!);
     }
 
     [Fact]

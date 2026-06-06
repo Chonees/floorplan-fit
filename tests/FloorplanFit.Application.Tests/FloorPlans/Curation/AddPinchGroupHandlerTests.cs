@@ -45,6 +45,9 @@ public sealed class AddPinchGroupHandlerTests
 
         public Task<IReadOnlyList<PinchGroup>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<PinchGroup>>(Items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
+
+        public Task RemoveAsync(Guid pinchGroupId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

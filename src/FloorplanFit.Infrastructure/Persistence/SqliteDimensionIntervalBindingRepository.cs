@@ -124,6 +124,21 @@ public sealed class SqliteDimensionIntervalBindingRepository : IDimensionInterva
         return Task.CompletedTask;
     }
 
+    public Task DeleteByNodeAsync(Guid floorPlanCurationId, Guid nodeId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var command = CreateCommand(
+            """
+            DELETE FROM floorplan_dimension_interval_bindings
+            WHERE floorplan_curation_id = $floorplan_curation_id
+              AND (start_node_id = $node_id OR end_node_id = $node_id)
+            """);
+        command.Parameters.AddWithValue("$floorplan_curation_id", floorPlanCurationId.ToString());
+        command.Parameters.AddWithValue("$node_id", nodeId.ToString());
+        command.ExecuteNonQuery();
+        return Task.CompletedTask;
+    }
+
     private static DimensionIntervalBinding Map(SqliteDataReader reader)
     {
         return new DimensionIntervalBinding(

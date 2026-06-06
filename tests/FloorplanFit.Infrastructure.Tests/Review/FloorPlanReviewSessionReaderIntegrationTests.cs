@@ -113,6 +113,46 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task GetByTemplateAsync_returns_latest_published_fit_data_when_an_empty_post_publish_draft_exists()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-published-review-reader-{Guid.NewGuid():N}");
+        var now = new DateTime(2026, 6, 3, 14, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            var seed = await SeedPublishedCurationWithEmptyDraftAsync(workspace, now);
+
+            await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+            var reader = new SqliteFloorPlanReviewSessionReader(session);
+
+            var reviewSession = await reader.GetByTemplateAsync(seed.TemplateId, CancellationToken.None);
+
+            Assert.NotNull(reviewSession);
+            Assert.Equal("Published", reviewSession.Status);
+            Assert.Equal(seed.PublishedCurationId, reviewSession.ActivePublishedCurationId);
+            Assert.Equal(seed.PublishedPinchGroupId, Assert.Single(reviewSession.PinchGroups).PinchGroupId);
+            Assert.Equal(seed.PublishedPinchMarkerId, Assert.Single(reviewSession.PinchMarkers).PinchMarkerId);
+            Assert.Equal(seed.PublishedCorridorId, Assert.Single(reviewSession.MeasurementCorridors).CorridorId);
+            Assert.Equal(2, reviewSession.MeasurementNodes.Count);
+            Assert.Equal(seed.PublishedDimensionId, Assert.Single(reviewSession.DimensionIntervalBindings).DimensionId);
+            Assert.Contains(reviewSession.GeometryPaths, item => item.Id == seed.GeometryPathId);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static async Task<ImportFloorPlanResponse> ExecuteImportAsync(
         AppWorkspace workspace,
         string sourcePath,
@@ -133,6 +173,291 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
             new ImportFloorPlanResultFactory());
 
         return await handler.HandleAsync(new ImportFloorPlanRequest(sourcePath), CancellationToken.None);
+    }
+
+    private static async Task<PublishedDraftSeed> SeedPublishedCurationWithEmptyDraftAsync(AppWorkspace workspace, DateTime now)
+    {
+        await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
+        var measurementContextId = Guid.NewGuid();
+        var publishedCurationId = Guid.NewGuid();
+        var emptyDraftCurationId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var sourceCandidateId = Guid.NewGuid();
+        var pinchGroupId = Guid.NewGuid();
+        var pinchMarkerId = Guid.NewGuid();
+        var corridorId = Guid.NewGuid();
+        var startNodeId = Guid.NewGuid();
+        var endNodeId = Guid.NewGuid();
+        var dimensionId = Guid.NewGuid();
+
+        using var command = session.Connection.CreateCommand();
+        command.Transaction = session.Transaction;
+        command.CommandText = $"""
+            INSERT INTO measurement_contexts (
+                id,
+                source_unit,
+                to_millimeters_factor,
+                linear_tolerance_mm,
+                angular_tolerance_deg,
+                created_at_utc)
+            VALUES (
+                '{measurementContextId}',
+                1,
+                '25.4',
+                '1',
+                '0.5',
+                '{now:O}');
+
+            INSERT INTO imported_documents (
+                id,
+                document_type,
+                original_file_name,
+                storage_path,
+                sha256,
+                dxf_version,
+                measurement_context_id,
+                imported_at_utc)
+            VALUES (
+                '{documentId}',
+                1,
+                'SEMINOLE2000.dxf',
+                'library/raw-dxf/SEMINOLE2000.dxf',
+                'hash',
+                'AC1027',
+                '{measurementContextId}',
+                '{now:O}');
+
+            INSERT INTO floorplan_templates (
+                id,
+                code,
+                name,
+                current_version_id,
+                active_published_curation_id,
+                is_active)
+            VALUES (
+                '{templateId}',
+                'seminole2000',
+                'SEMINOLE2000',
+                '{versionId}',
+                '{publishedCurationId}',
+                1);
+
+            INSERT INTO floorplan_versions (
+                id,
+                floorplan_template_id,
+                imported_document_id,
+                geometry_fingerprint,
+                version_number,
+                created_at_utc)
+            VALUES (
+                '{versionId}',
+                '{templateId}',
+                '{documentId}',
+                'fingerprint',
+                1,
+                '{now:O}');
+
+            INSERT INTO geometry_paths (
+                id,
+                is_closed)
+            VALUES (
+                '{geometryPathId}',
+                0);
+
+            INSERT INTO geometry_segments (
+                id,
+                geometry_path_id,
+                sort_order,
+                start_x,
+                start_y,
+                end_x,
+                end_y)
+            VALUES (
+                '{Guid.NewGuid()}',
+                '{geometryPathId}',
+                1,
+                '0',
+                '0',
+                '120',
+                '0');
+
+            INSERT INTO floorplan_curations (
+                id,
+                floorplan_version_id,
+                curation_version,
+                status,
+                based_on_curation_id,
+                notes,
+                created_at_utc,
+                published_at_utc)
+            VALUES (
+                '{publishedCurationId}',
+                '{versionId}',
+                1,
+                {(int)FloorPlanCurationStatus.Published},
+                NULL,
+                'published',
+                '{now.AddMinutes(1):O}',
+                '{now.AddMinutes(2):O}');
+
+            INSERT INTO floorplan_curations (
+                id,
+                floorplan_version_id,
+                curation_version,
+                status,
+                based_on_curation_id,
+                notes,
+                created_at_utc,
+                published_at_utc)
+            VALUES (
+                '{emptyDraftCurationId}',
+                '{versionId}',
+                2,
+                {(int)FloorPlanCurationStatus.Draft},
+                '{publishedCurationId}',
+                'empty post-publish draft',
+                '{now.AddMinutes(3):O}',
+                NULL);
+
+            INSERT INTO pinch_groups (
+                id,
+                floorplan_curation_id,
+                name,
+                axis_tag,
+                sort_order)
+            VALUES (
+                '{pinchGroupId}',
+                '{publishedCurationId}',
+                'Published Width Group',
+                {(int)PinchAxisTag.Width},
+                1);
+
+            INSERT INTO pinch_markers (
+                id,
+                floorplan_curation_id,
+                pinch_group_id,
+                source_candidate_id,
+                geometry_path_id,
+                position_ratio,
+                max_trim_mm,
+                sort_order)
+            VALUES (
+                '{pinchMarkerId}',
+                '{publishedCurationId}',
+                '{pinchGroupId}',
+                '{sourceCandidateId}',
+                '{geometryPathId}',
+                '0.5',
+                '120',
+                1);
+
+            INSERT INTO measurement_corridors (
+                id,
+                floorplan_curation_id,
+                name,
+                axis_tag,
+                guide_geometry_path_id,
+                band_min_coordinate,
+                band_max_coordinate,
+                status,
+                sort_order)
+            VALUES (
+                '{corridorId}',
+                '{publishedCurationId}',
+                'Published Franja',
+                {(int)PinchAxisTag.Width},
+                '{geometryPathId}',
+                '0',
+                '120',
+                'Verified',
+                1);
+
+            INSERT INTO measurement_nodes (
+                id,
+                floorplan_curation_id,
+                corridor_id,
+                sort_order,
+                reference_kind,
+                source_artifact_kind,
+                source_artifact_id,
+                geometry_path_id,
+                snap_kind,
+                anchor_x,
+                anchor_y,
+                axis_coordinate,
+                offset_along_axis,
+                offset_normal,
+                position_ratio)
+            VALUES
+                (
+                    '{startNodeId}',
+                    '{publishedCurationId}',
+                    '{corridorId}',
+                    1,
+                    'ProjectedGeometry',
+                    '{FloorPlanArtifactSourceKinds.WallCandidate}',
+                    '{sourceCandidateId}',
+                    '{geometryPathId}',
+                    'Projected',
+                    '0',
+                    '0',
+                    '0',
+                    '0',
+                    '0',
+                    '0'),
+                (
+                    '{endNodeId}',
+                    '{publishedCurationId}',
+                    '{corridorId}',
+                    2,
+                    'ProjectedGeometry',
+                    '{FloorPlanArtifactSourceKinds.WallCandidate}',
+                    '{sourceCandidateId}',
+                    '{geometryPathId}',
+                    'Projected',
+                    '120',
+                    '0',
+                    '120',
+                    '0',
+                    '0',
+                    '1');
+
+            INSERT INTO floorplan_dimension_interval_bindings (
+                floorplan_curation_id,
+                dimension_id,
+                corridor_id,
+                start_node_id,
+                end_node_id,
+                binding_status,
+                interval_start_coordinate,
+                interval_end_coordinate,
+                updated_at_utc)
+            VALUES (
+                '{publishedCurationId}',
+                '{dimensionId}',
+                '{corridorId}',
+                '{startNodeId}',
+                '{endNodeId}',
+                'ManualVerified',
+                '0',
+                '120',
+                '{now.AddMinutes(4):O}');
+            """;
+        command.ExecuteNonQuery();
+        await session.CommitAsync(CancellationToken.None);
+
+        return new PublishedDraftSeed(
+            templateId,
+            publishedCurationId,
+            pinchGroupId,
+            pinchMarkerId,
+            corridorId,
+            dimensionId,
+            geometryPathId);
     }
 
     private static async Task<Guid> SeedExtractionAndDraftAsync(AppWorkspace workspace, DateTime now)
@@ -432,4 +757,13 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
 
         public DateTime UtcNow { get; }
     }
+
+    private sealed record PublishedDraftSeed(
+        Guid TemplateId,
+        Guid PublishedCurationId,
+        Guid PublishedPinchGroupId,
+        Guid PublishedPinchMarkerId,
+        Guid PublishedCorridorId,
+        Guid PublishedDimensionId,
+        Guid GeometryPathId);
 }

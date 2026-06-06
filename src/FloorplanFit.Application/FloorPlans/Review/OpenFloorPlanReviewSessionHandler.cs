@@ -25,7 +25,7 @@ public sealed class OpenFloorPlanReviewSessionHandler
 
     public OpenFloorPlanReviewSessionHandler(
         IFloorPlanTemplateRepository floorPlanTemplateRepository,
-        IFloorPlanVersionRepository floorPlanVersionRepository,
+        IFloorPlanVersionRepository? floorPlanVersionRepository,
         IFloorPlanReviewSessionReader reviewSessionReader,
         StartOrResumeCurationHandler startOrResumeCurationHandler)
     {
@@ -43,6 +43,12 @@ public sealed class OpenFloorPlanReviewSessionHandler
         if (template.CurrentVersionId is null)
         {
             throw new InvalidOperationException("Floor plan template does not have an active version.");
+        }
+
+        var publishedSession = await reviewSessionReader.GetByTemplateAsync(templateId, cancellationToken);
+        if (publishedSession?.ActivePublishedCurationId is not null)
+        {
+            return new OpenFloorPlanReviewSessionResponse(Guid.Empty, publishedSession);
         }
 
         var draft = await startOrResumeCurationHandler.HandleAsync(template.CurrentVersionId.Value, cancellationToken);
@@ -70,6 +76,12 @@ public sealed class OpenFloorPlanReviewSessionHandler
         if (version.FloorPlanTemplateId != template.Id)
         {
             throw new InvalidOperationException("Floor plan version does not belong to the selected template.");
+        }
+
+        var publishedSession = await reviewSessionReader.GetByVersionAsync(templateId, floorPlanVersionId, cancellationToken);
+        if (publishedSession?.ActivePublishedCurationId is not null)
+        {
+            return new OpenFloorPlanReviewSessionResponse(Guid.Empty, publishedSession);
         }
 
         var draft = await startOrResumeCurationHandler.HandleAsync(floorPlanVersionId, cancellationToken);

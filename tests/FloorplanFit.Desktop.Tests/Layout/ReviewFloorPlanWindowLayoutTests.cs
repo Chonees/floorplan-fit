@@ -29,11 +29,8 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("VisibleDimensions", xaml, StringComparison.Ordinal);
         Assert.Contains("Preview", xaml, StringComparison.Ordinal);
         Assert.Contains("Inspector", xaml, StringComparison.Ordinal);
-        Assert.Contains("Reglas de ajuste", xaml, StringComparison.Ordinal);
         Assert.Contains("InspectorToolBar", xaml, StringComparison.Ordinal);
         Assert.Contains("Classes.tool-active", xaml, StringComparison.Ordinal);
-        Assert.Contains("Grupos de ajuste", xaml, StringComparison.Ordinal);
-        Assert.Contains("Crear grupo", xaml, StringComparison.Ordinal);
         Assert.Contains("Eje", xaml, StringComparison.Ordinal);
         Assert.Contains("Agregar ajuste", xaml, StringComparison.Ordinal);
         Assert.Contains("Quitar ajuste", xaml, StringComparison.Ordinal);
@@ -128,6 +125,115 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("ArePreviewDimensionsVisible", xaml, StringComparison.Ordinal);
         Assert.Contains("OnContent=\"Visibles\"", xaml, StringComparison.Ordinal);
         Assert.Contains("OffContent=\"Ocultas\"", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Published_review_header_exposes_explicit_edit_action_before_publish_action()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
+        var codeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml.cs");
+        var xaml = File.ReadAllText(xamlPath);
+        var codeBehind = File.ReadAllText(codeBehindPath);
+
+        Assert.Contains("Content=\"Editar\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanEditPublishedCuration}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"EditPublishedButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanPublishCuration}\"", xaml, StringComparison.Ordinal);
+        Assert.True(
+            xaml.IndexOf("Content=\"Editar\"", StringComparison.Ordinal) <
+            xaml.IndexOf("Content=\"Publish Curation\"", StringComparison.Ordinal));
+        Assert.Contains("StartEditingPublishedCurationAsync", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Fit_tool_uses_a_canvas_first_icon_palette_instead_of_a_workbench_column()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
+        var xaml = File.ReadAllText(xamlPath);
+
+        Assert.Contains("x:Name=\"FitToolPalette\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"FitToolbarCommands\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"FitExistingPanel\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisible=\"{Binding IsFitToolSelected}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ToolTip.Tip=\"Marcar pinch\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ToolTip.Tip=\"Crear franja\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"AddMeasurementCorridorButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ToolTip.Tip=\"Elegir nodo\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ToolTip.Tip=\"Quitar pinch\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Classes.tool-active=\"{Binding IsPinchPlacementArmed}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Classes.tool-active=\"{Binding IsMeasurementNodePlacementArmed}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedMeasurementCorridorId=\"{Binding SelectedMeasurementCorridorId}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedMeasurementNodeId=\"{Binding SelectedMeasurementNodeId}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedMeasurementStartNodeId=\"{Binding SelectedMeasurementStartNodeId}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedMeasurementEndNodeId=\"{Binding SelectedMeasurementEndNodeId}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"mm\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Herramientas Fit\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Existente\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Grupos de pinches\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding PinchGroups}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedItem=\"{Binding SelectedPinchGroup}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:DataType=\"contracts:PinchGroupDto\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Crear grupo de pinches\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"AddPinchGroupButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Eliminar grupo de pinches\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanRemoveSelectedPinchGroup}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"RemovePinchGroupButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Pinches de este grupo\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding SelectedPinchGroupMarkers}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedItem=\"{Binding SelectedPinchMarker}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanRemoveSelectedPinch}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Grupos de A y B\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding MeasurementNodeGroupOptions}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedItem=\"{Binding SelectedMeasurementNodeGroupOption}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:DataType=\"viewModels:MeasurementNodeGroupOptionViewModel\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding Name}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding Details}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Eliminar franja\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanRemoveSelectedMeasurementCorridor}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"RemoveMeasurementCorridorButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Tipo de franja\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedItem=\"{Binding SelectedMeasurementCorridorAxis}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Cambiar tipo\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanChangeSelectedMeasurementCorridorAxis}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"ChangeMeasurementCorridorAxisButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Nodos de esta franja\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<ListBox ItemsSource=\"{Binding SelectedMeasurementGroupNodeOptions}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding SelectedMeasurementGroupNodeOptions}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedItem=\"{Binding SelectedMeasurementGroupNodeOption}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Eliminar nodo\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanRemoveSelectedMeasurementNode}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"RemoveMeasurementNodeButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:DataType=\"viewModels:MeasurementNodeGroupNodeOptionViewModel\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Elegí qué mide la cota\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"A\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedItem=\"{Binding SelectedMeasurementStartNodeOption}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"B\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedItem=\"{Binding SelectedMeasurementEndNodeOption}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Cota vinculada\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding SelectedDimensionIntervalBindingSummary}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Guardar qué mide\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanSaveSelectedDimensionIntervalBinding}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"SaveDimensionIntervalBindingButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Volver a medida fija\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"RestoreDimensionIntervalBindingButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Las acciones principales viven arriba del plano: eleg?s contexto, toc?s ?cono, clic en canvas.\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToolTip.Tip=\"Vincular cota\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Pinche existente\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ComboBox ItemsSource=\"{Binding PinchMarkers}\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Grupos de ajuste\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Crear grupo\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Franjas existentes\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Nodos existentes\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Nodo existente\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Grupo A/B\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Nodo del grupo\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Nombre de franja\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("NewMeasurementCorridorName", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ItemsSource=\"{Binding SelectedMeasurementCorridorNodeOptions}\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"FitWorkbench\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("<StackPanel IsVisible=\"{Binding IsFitToolSelected}\"", xaml, StringComparison.Ordinal);
     }
 
     private static string FindSolutionRoot()

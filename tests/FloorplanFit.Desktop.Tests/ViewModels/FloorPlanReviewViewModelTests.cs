@@ -142,6 +142,8 @@ public sealed class FloorPlanReviewViewModelTests
         Assert.Equal(0, viewModel.WindowOpeningCount);
         Assert.Single(viewModel.PinchGroups);
         Assert.Single(viewModel.PinchMarkers);
+        Assert.Single(viewModel.SelectedPinchGroupMarkers);
+        Assert.Equal(viewModel.PinchMarkers.Single().PinchMarkerId, viewModel.SelectedPinchGroupMarkers.Single().PinchMarkerId);
         Assert.Equal("Patio", viewModel.SelectedPinchGroup?.Name);
         Assert.Contains(nameof(PinchAxisTag.Width), viewModel.PinchAxisOptions);
         Assert.Contains(nameof(PinchAxisTag.Height), viewModel.PinchAxisOptions);
@@ -979,6 +981,207 @@ public sealed class FloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task PublishAsync_without_pinch_markers_keeps_button_enabled_and_shows_validation_message()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "santa-barbara", "SANTA-BARBARA", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var markerRepository = new InMemoryPinchMarkerRepository([]);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IPinchMarkerRepository>(markerRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 6, 4, 22, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "santa-barbara",
+                "SANTA-BARBARA",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 120m, 0m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<PublishFloorPlanCurationHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        var exception = await Record.ExceptionAsync(() => viewModel.PublishAsync(CancellationToken.None));
+
+        Assert.Null(exception);
+        Assert.True(viewModel.CanPublishCuration);
+        Assert.Equal("Agregá al menos un pinche antes de publicar.", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task PublishAsync_uses_persisted_pinch_markers_even_when_the_session_projection_is_stale()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "santa-barbara", "SANTA-BARBARA", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var markerRepository = new InMemoryPinchMarkerRepository([]);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IPinchMarkerRepository>(markerRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 6, 4, 22, 10, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "santa-barbara",
+                "SANTA-BARBARA",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 120m, 0m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<PublishFloorPlanCurationHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        markerRepository.Items.Add(new PinchMarker(
+            Guid.NewGuid(),
+            viewModel.DraftCurationId,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            geometryPathId,
+            0.5m,
+            120m,
+            1));
+
+        var exception = await Record.ExceptionAsync(() => viewModel.PublishAsync(CancellationToken.None));
+
+        Assert.Null(exception);
+        Assert.Empty(viewModel.PinchMarkers);
+        Assert.True(viewModel.CanPublishCuration);
+        Assert.Equal(viewModel.DraftCurationId, template.ActivePublishedCurationId);
+    }
+
+    [Fact]
+    public async Task RemoveSelectedPinchGroupAsync_removes_selected_group_and_all_its_markers()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var candidateId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var groupId = Guid.NewGuid();
+        var otherGroupId = Guid.NewGuid();
+        var markerId = Guid.NewGuid();
+        var secondMarkerId = Guid.NewGuid();
+        var otherMarkerId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "santa-barbara", "SANTA-BARBARA", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var initialSession = new FloorPlanReviewSessionDto(
+            templateId,
+            "santa-barbara",
+            "SANTA-BARBARA",
+            "Curated Draft",
+            1,
+            null,
+            [
+                new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 120m, 0m)])
+            ],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [
+                new WallCandidateDto(candidateId, "LINE:68", "WALLS", "Accepted", 0.95m, 101.6m, null, geometryPathId, 1)
+            ],
+            [
+                new PinchGroupDto(groupId, "Patio", nameof(PinchAxisTag.Width), 1),
+                new PinchGroupDto(otherGroupId, "Hall", nameof(PinchAxisTag.Width), 2)
+            ],
+            [
+                new PinchMarkerDto(markerId, groupId, "Patio", candidateId, geometryPathId, nameof(PinchAxisTag.Width), 0.55m, 120m, 1),
+                new PinchMarkerDto(secondMarkerId, groupId, "Patio", candidateId, geometryPathId, nameof(PinchAxisTag.Width), 0.65m, 90m, 2),
+                new PinchMarkerDto(otherMarkerId, otherGroupId, "Hall", candidateId, geometryPathId, nameof(PinchAxisTag.Width), 0.25m, 80m, 3)
+            ]);
+        var refreshedSession = initialSession with
+        {
+            PinchGroups = [new PinchGroupDto(otherGroupId, "Hall", nameof(PinchAxisTag.Width), 2)],
+            PinchMarkers = [new PinchMarkerDto(otherMarkerId, otherGroupId, "Hall", candidateId, geometryPathId, nameof(PinchAxisTag.Width), 0.25m, 80m, 3)]
+        };
+        var curationRepository = new InMemoryFloorPlanCurationRepository();
+        var groupRepository = new InMemoryPinchGroupRepository([]);
+        var markerRepository = new InMemoryPinchMarkerRepository([]);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(curationRepository);
+        services.AddSingleton<IPinchGroupRepository>(groupRepository);
+        services.AddSingleton<IPinchMarkerRepository>(markerRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 10, 19, 10, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new SequencedFloorPlanReviewSessionReader(initialSession, refreshedSession));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<RemovePinchGroupHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        groupRepository.Items.Add(new PinchGroup(groupId, viewModel.DraftCurationId, "Patio", PinchAxisTag.Width, 1));
+        groupRepository.Items.Add(new PinchGroup(otherGroupId, viewModel.DraftCurationId, "Hall", PinchAxisTag.Width, 2));
+        markerRepository.Items.Add(new PinchMarker(markerId, viewModel.DraftCurationId, groupId, candidateId, geometryPathId, 0.55m, 120m, 1));
+        markerRepository.Items.Add(new PinchMarker(secondMarkerId, viewModel.DraftCurationId, groupId, candidateId, geometryPathId, 0.65m, 90m, 2));
+        markerRepository.Items.Add(new PinchMarker(otherMarkerId, viewModel.DraftCurationId, otherGroupId, candidateId, geometryPathId, 0.25m, 80m, 3));
+        viewModel.SelectedPinchGroup = viewModel.PinchGroups.Single(item => item.PinchGroupId == groupId);
+
+        await viewModel.RemoveSelectedPinchGroupAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(groupRepository.Items, item => item.Id == groupId);
+        Assert.Contains(groupRepository.Items, item => item.Id == otherGroupId);
+        Assert.DoesNotContain(markerRepository.Items, item => item.PinchGroupId == groupId);
+        Assert.Contains(markerRepository.Items, item => item.Id == otherMarkerId);
+        Assert.Null(viewModel.SelectedPinchGroup);
+        Assert.Null(viewModel.SelectedPinchMarker);
+        Assert.Equal([otherGroupId], viewModel.PinchGroups.Select(item => item.PinchGroupId).ToArray());
+        Assert.Equal([otherMarkerId], viewModel.PinchMarkers.Select(item => item.PinchMarkerId).ToArray());
+        Assert.False(viewModel.CanRemoveSelectedPinchGroup);
+    }
+
+    [Fact]
     public async Task ExcludeSelectedArtifactAsync_rejects_selected_wall_candidate()
     {
         var templateId = Guid.NewGuid();
@@ -1101,6 +1304,191 @@ public sealed class FloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task Height_group_without_height_pinches_guides_user_to_place_a_pinch_instead_of_promising_handles()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var candidateId = Guid.NewGuid();
+        var pinchGroupId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 5, 15, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "seminole2000",
+                "SEMINOLE2000",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 0m, 120m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new WallCandidateDto(candidateId, "LINE:68", "WALLS", "Accepted", 0.95m, null, null, geometryPathId, 1)
+                ],
+                [
+                    new PinchGroupDto(pinchGroupId, "Ajuste 3", nameof(PinchAxisTag.Height), 1)
+                ],
+                [])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(nameof(PinchAxisTag.Height), viewModel.SelectedPinchAxis);
+        Assert.Empty(viewModel.SelectedPinchGroupMarkers);
+        Assert.Contains("marc", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("drag the green top or bottom handle", viewModel.InteractionHint, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Changing_pinch_axis_to_height_selects_height_group_so_preview_handles_have_a_driver()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var candidateId = Guid.NewGuid();
+        var widthGroupId = Guid.NewGuid();
+        var heightGroupId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 5, 15, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "seminole2000",
+                "SEMINOLE2000",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 0m, 120m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new WallCandidateDto(candidateId, "LINE:68", "WALLS", "Accepted", 0.95m, null, null, geometryPathId, 1)
+                ],
+                [
+                    new PinchGroupDto(widthGroupId, "Ajuste Width", nameof(PinchAxisTag.Width), 1),
+                    new PinchGroupDto(heightGroupId, "Ajuste Height", nameof(PinchAxisTag.Height), 2)
+                ],
+                [
+                    new PinchMarkerDto(Guid.NewGuid(), widthGroupId, "Ajuste Width", candidateId, geometryPathId, nameof(PinchAxisTag.Width), 0.25m, 80m, 1),
+                    new PinchMarkerDto(Guid.NewGuid(), heightGroupId, "Ajuste Height", candidateId, geometryPathId, nameof(PinchAxisTag.Height), 0.62m, 120m, 2)
+                ])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        Assert.Equal(widthGroupId, viewModel.SelectedPinchGroupId);
+
+        viewModel.SelectedPinchAxis = nameof(PinchAxisTag.Height);
+
+        Assert.Equal(heightGroupId, viewModel.SelectedPinchGroupId);
+        Assert.All(viewModel.SelectedPinchGroupMarkers, marker => Assert.Equal(nameof(PinchAxisTag.Height), marker.AxisTag));
+    }
+
+    [Fact]
+    public async Task Changing_measurement_corridor_axis_to_height_updates_the_preview_axis_and_height_group()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var candidateId = Guid.NewGuid();
+        var corridorId = Guid.NewGuid();
+        var widthGroupId = Guid.NewGuid();
+        var heightGroupId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 5, 15, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "seminole2000",
+                "SEMINOLE2000",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 0m, 120m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new WallCandidateDto(candidateId, "LINE:68", "WALLS", "Accepted", 0.95m, null, null, geometryPathId, 1)
+                ],
+                [
+                    new PinchGroupDto(widthGroupId, "Ajuste Width", nameof(PinchAxisTag.Width), 1),
+                    new PinchGroupDto(heightGroupId, "Ajuste Height", nameof(PinchAxisTag.Height), 2)
+                ],
+                [
+                    new PinchMarkerDto(Guid.NewGuid(), widthGroupId, "Ajuste Width", candidateId, geometryPathId, nameof(PinchAxisTag.Width), 0.25m, 80m, 1),
+                    new PinchMarkerDto(Guid.NewGuid(), heightGroupId, "Ajuste Height", candidateId, geometryPathId, nameof(PinchAxisTag.Height), 0.62m, 120m, 2)
+                ])
+            {
+                MeasurementCorridors =
+                [
+                    new MeasurementCorridorDto(corridorId, "Franja 1", nameof(PinchAxisTag.Width), geometryPathId, 0m, 120m, "Verified", 1)
+                ]
+            }));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedMeasurementCorridor = Assert.Single(viewModel.MeasurementCorridors);
+
+        Assert.Equal(nameof(PinchAxisTag.Width), viewModel.SelectedPinchAxis);
+        Assert.Equal(widthGroupId, viewModel.SelectedPinchGroupId);
+
+        viewModel.SelectedMeasurementCorridorAxis = nameof(PinchAxisTag.Height);
+
+        Assert.Equal(nameof(PinchAxisTag.Height), viewModel.SelectedPinchAxis);
+        Assert.Equal(heightGroupId, viewModel.SelectedPinchGroupId);
+        Assert.All(viewModel.SelectedPinchGroupMarkers, marker => Assert.Equal(nameof(PinchAxisTag.Height), marker.AxisTag));
+    }
+
+    [Fact]
     public async Task RejectSelectedCandidateAsync_rejects_selected_accepted_candidate()
     {
         var templateId = Guid.NewGuid();
@@ -1187,6 +1575,68 @@ public sealed class FloorPlanReviewViewModelTests
             CancellationToken cancellationToken)
         {
             return Task.FromResult<FloorPlanReviewSessionDto?>(session);
+        }
+    }
+
+    private sealed class SequencedFloorPlanReviewSessionReader : IFloorPlanReviewSessionReader
+    {
+        private readonly Queue<FloorPlanReviewSessionDto> sessions;
+        private bool pendingNonPublishedOpenProbe;
+
+        public SequencedFloorPlanReviewSessionReader(params FloorPlanReviewSessionDto[] sessions)
+        {
+            this.sessions = new Queue<FloorPlanReviewSessionDto>(sessions);
+        }
+
+        public Task<FloorPlanReviewSessionDto?> GetByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
+        {
+            var session = ReadNextSession();
+            return Task.FromResult<FloorPlanReviewSessionDto?>(session);
+        }
+
+        public Task<FloorPlanReviewSessionDto?> GetByVersionAsync(
+            Guid templateId,
+            Guid floorPlanVersionId,
+            CancellationToken cancellationToken)
+        {
+            return GetByTemplateAsync(templateId, cancellationToken);
+        }
+
+        public Task<FloorPlanReviewSessionDto?> GetByCurationAsync(
+            Guid templateId,
+            Guid curationId,
+            CancellationToken cancellationToken)
+        {
+            var session = ConsumeNextSession();
+            return Task.FromResult<FloorPlanReviewSessionDto?>(session);
+        }
+
+        public Task<FloorPlanReviewSessionDto?> GetByCurationAsync(
+            Guid templateId,
+            Guid floorPlanVersionId,
+            Guid curationId,
+            CancellationToken cancellationToken)
+        {
+            return GetByCurationAsync(templateId, curationId, cancellationToken);
+        }
+
+        private FloorPlanReviewSessionDto ReadNextSession()
+        {
+            var session = sessions.Peek();
+            if (session.ActivePublishedCurationId is null && !pendingNonPublishedOpenProbe)
+            {
+                pendingNonPublishedOpenProbe = true;
+                return session;
+            }
+
+            pendingNonPublishedOpenProbe = false;
+            return ConsumeNextSession();
+        }
+
+        private FloorPlanReviewSessionDto ConsumeNextSession()
+        {
+            pendingNonPublishedOpenProbe = false;
+            return sessions.Count > 1 ? sessions.Dequeue() : sessions.Peek();
         }
     }
 
@@ -1302,6 +1752,34 @@ public sealed class FloorPlanReviewViewModelTests
         }
     }
 
+    private sealed class InMemoryPinchGroupRepository : IPinchGroupRepository
+    {
+        public InMemoryPinchGroupRepository(IReadOnlyList<PinchGroup> seed)
+        {
+            Items = [.. seed];
+        }
+
+        public List<PinchGroup> Items { get; }
+
+        public Task AddAsync(PinchGroup group, CancellationToken cancellationToken)
+        {
+            Items.Add(group);
+            return Task.CompletedTask;
+        }
+
+        public Task<PinchGroup?> GetByIdAsync(Guid pinchGroupId, CancellationToken cancellationToken)
+            => Task.FromResult(Items.SingleOrDefault(item => item.Id == pinchGroupId));
+
+        public Task<IReadOnlyList<PinchGroup>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<PinchGroup>>(Items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
+
+        public Task RemoveAsync(Guid pinchGroupId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == pinchGroupId);
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class InMemoryPinchMarkerRepository : IPinchMarkerRepository
     {
         public InMemoryPinchMarkerRepository(IReadOnlyList<PinchMarker> seed)
@@ -1330,6 +1808,12 @@ public sealed class FloorPlanReviewViewModelTests
         public Task RemoveAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
         {
             Items.RemoveAll(item => item.Id == pinchMarkerId);
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveByGroupAsync(Guid curationId, Guid pinchGroupId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.FloorPlanCurationId == curationId && item.PinchGroupId == pinchGroupId);
             return Task.CompletedTask;
         }
 
