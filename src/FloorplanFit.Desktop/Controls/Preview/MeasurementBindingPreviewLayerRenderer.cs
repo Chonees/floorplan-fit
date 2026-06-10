@@ -6,11 +6,15 @@ namespace FloorplanFit.Desktop.Controls.Preview;
 
 internal static class MeasurementBindingPreviewLayerRenderer
 {
-    public static void Render(DrawingContext context, FloorPlanPreviewGeometry.PreviewViewport viewport, PreviewRenderScene scene)
+    public static void Render(
+        DrawingContext context,
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Rect clipBounds,
+        PreviewRenderScene scene)
     {
         var overlay = ResolveOverlay(scene);
-        RenderCorridorGuide(context, viewport, scene.PreviewGeometry, overlay.ActiveCorridor);
-        RenderInterval(context, viewport, overlay.ActiveInterval);
+        RenderCorridorGuide(context, viewport, clipBounds, scene.PreviewGeometry, overlay.ActiveCorridor);
+        RenderInterval(context, viewport, clipBounds, overlay.ActiveInterval);
         RenderNodes(context, viewport, overlay.CorridorNodes);
     }
 
@@ -135,6 +139,7 @@ internal static class MeasurementBindingPreviewLayerRenderer
     private static void RenderCorridorGuide(
         DrawingContext context,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Rect clipBounds,
         IReadOnlyList<GeometryPathDto> previewGeometry,
         MeasurementCorridorDto? activeCorridor)
     {
@@ -156,7 +161,9 @@ internal static class MeasurementBindingPreviewLayerRenderer
 
         foreach (var segment in path.Segments)
         {
-            context.DrawLine(
+            PreviewLineClipper.DrawLine(
+                context,
+                clipBounds,
                 pen,
                 viewport.Project(segment.StartX, segment.StartY),
                 viewport.Project(segment.EndX, segment.EndY));
@@ -166,6 +173,7 @@ internal static class MeasurementBindingPreviewLayerRenderer
     private static void RenderInterval(
         DrawingContext context,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Rect clipBounds,
         MeasurementIntervalOverlay? activeInterval)
     {
         if (activeInterval is null)
@@ -173,7 +181,9 @@ internal static class MeasurementBindingPreviewLayerRenderer
             return;
         }
 
-        context.DrawLine(
+        PreviewLineClipper.DrawLine(
+            context,
+            clipBounds,
             new Pen(new SolidColorBrush(PreviewSemanticPalette.MeasurementInterval), 3d),
             viewport.Project((decimal)activeInterval.StartPoint.X, (decimal)activeInterval.StartPoint.Y),
             viewport.Project((decimal)activeInterval.EndPoint.X, (decimal)activeInterval.EndPoint.Y));

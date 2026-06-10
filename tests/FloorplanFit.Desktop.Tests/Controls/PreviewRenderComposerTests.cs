@@ -107,6 +107,52 @@ public sealed class PreviewRenderComposerTests
     }
 
     [Fact]
+    public void Render_clips_cad_content_to_preview_bounds_to_prevent_off_canvas_rays()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var sourcePath = Path.Combine(
+            solutionRoot,
+            "src",
+            "FloorplanFit.Desktop",
+            "Controls",
+            "Preview",
+            "PreviewRenderComposer.cs");
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains("context.PushClip(scene.Bounds)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ClipLineToBounds_trims_zoomed_segment_to_preview_edges()
+    {
+        var bounds = new Rect(10, 20, 100, 80);
+        var start = new Point(-500, -300);
+        var end = new Point(250, 180);
+
+        var clipped = PreviewLineClipper.TryClipToBounds(bounds, start, end, out var clippedStart, out var clippedEnd);
+
+        Assert.True(clipped);
+        Assert.True(bounds.Contains(clippedStart));
+        Assert.True(bounds.Contains(clippedEnd));
+        Assert.Equal(10, clippedStart.X, precision: 6);
+        Assert.Equal(26.4, clippedStart.Y, precision: 6);
+        Assert.Equal(110, clippedEnd.X, precision: 6);
+        Assert.Equal(90.4, clippedEnd.Y, precision: 6);
+    }
+
+    [Fact]
+    public void ClipLineToBounds_rejects_zoomed_segment_that_never_enters_preview()
+    {
+        var bounds = new Rect(10, 20, 100, 80);
+        var start = new Point(-500, -300);
+        var end = new Point(-50, 120);
+
+        var clipped = PreviewLineClipper.TryClipToBounds(bounds, start, end, out _, out _);
+
+        Assert.False(clipped);
+    }
+
+    [Fact]
     public void ResolveNodeBoundDimensionIds_returns_dimensions_that_have_interval_bindings()
     {
         var boundDimensionId = Guid.NewGuid();
@@ -209,6 +255,7 @@ public sealed class PreviewRenderComposerTests
             RoomLabels: [],
             OpeningLabels: [],
             Dimensions: dimensions ?? [],
+            ChangedNumberDimensionIds: [],
             AreDimensionsVisible: areDimensionsVisible,
             ArtifactIndex: PreviewArtifactGeometryIndex.Create(openingCandidates: null, fixedPlanComponents: null),
             OpeningCandidates: [],
@@ -231,5 +278,22 @@ public sealed class PreviewRenderComposerTests
             PreviewPinchGroupId: null,
             PreviewAxisTag: null,
             ActiveDimensionHandleKind: null);
+    }
+
+    private static string FindSolutionRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "FloorplanFit.sln")))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        throw new InvalidOperationException("Could not locate FloorplanFit.sln from test base directory.");
     }
 }

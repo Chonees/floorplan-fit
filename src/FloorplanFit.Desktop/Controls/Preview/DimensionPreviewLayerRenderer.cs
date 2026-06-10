@@ -13,9 +13,11 @@ internal static class DimensionPreviewLayerRenderer
     public static void Render(
         DrawingContext context,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Rect clipBounds,
         IReadOnlyList<DimensionDto>? dimensions,
         Guid? highlightedDimensionId = null,
-        IReadOnlySet<Guid>? nodeBoundDimensionIds = null)
+        IReadOnlySet<Guid>? nodeBoundDimensionIds = null,
+        IReadOnlySet<Guid>? changedNumberDimensionIds = null)
     {
         if (dimensions is not { Count: > 0 })
         {
@@ -26,12 +28,13 @@ internal static class DimensionPreviewLayerRenderer
         {
             var isHighlighted = dimension.DimensionId == highlightedDimensionId;
             var isNodeBound = nodeBoundDimensionIds?.Contains(dimension.DimensionId) == true;
-            var pen = CreatePen(isHighlighted, isNodeBound);
-            var brush = PreviewSemanticPalette.Brush(ResolveDimensionStrokeColor(isHighlighted, isNodeBound));
+            var hasChangedNumber = changedNumberDimensionIds?.Contains(dimension.DimensionId) == true;
+            var pen = CreatePen(isHighlighted, isNodeBound, hasChangedNumber);
+            var brush = PreviewSemanticPalette.Brush(ResolveDimensionStrokeColor(isHighlighted, isNodeBound, hasChangedNumber));
 
             foreach (var segment in CreateProjectedSegments(dimension, viewport))
             {
-                context.DrawLine(pen, segment.Start, segment.End);
+                PreviewLineClipper.DrawLine(context, clipBounds, pen, segment.Start, segment.End);
             }
 
             RenderCircles(context, viewport, dimension, pen);
@@ -173,18 +176,23 @@ internal static class DimensionPreviewLayerRenderer
         }
     }
 
-    private static Pen CreatePen(bool isHighlighted, bool isNodeBound)
+    private static Pen CreatePen(bool isHighlighted, bool isNodeBound, bool hasChangedNumber)
     {
         return new Pen(
-            PreviewSemanticPalette.Brush(ResolveDimensionStrokeColor(isHighlighted, isNodeBound)),
+            PreviewSemanticPalette.Brush(ResolveDimensionStrokeColor(isHighlighted, isNodeBound, hasChangedNumber)),
             isHighlighted ? 1.6d : 1.1d);
     }
 
-    internal static Color ResolveDimensionStrokeColor(bool isHighlighted, bool isNodeBound)
+    internal static Color ResolveDimensionStrokeColor(bool isHighlighted, bool isNodeBound, bool hasChangedNumber = false)
     {
         if (isHighlighted)
         {
             return PreviewSemanticPalette.SelectionHighlight;
+        }
+
+        if (hasChangedNumber)
+        {
+            return PreviewSemanticPalette.DimensionChangedMeasurement;
         }
 
         return isNodeBound

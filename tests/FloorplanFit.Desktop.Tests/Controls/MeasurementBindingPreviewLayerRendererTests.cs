@@ -190,6 +190,7 @@ public sealed class MeasurementBindingPreviewLayerRendererTests
             RoomLabels: [],
             OpeningLabels: [],
             Dimensions: dimensions ?? [],
+            ChangedNumberDimensionIds: [],
             AreDimensionsVisible: true,
             ArtifactIndex: PreviewArtifactGeometryIndex.Create(openingCandidates: null, fixedPlanComponents: null),
             OpeningCandidates: [],

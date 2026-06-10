@@ -60,10 +60,11 @@ public sealed class FloorPlanPreviewControlTests
     [Fact]
     public void Preview_control_exposes_dimensions_for_canvas_overlay()
     {
+        var changedDimensionId = Guid.NewGuid();
         DimensionDto[] dimensions =
         [
             new(
-                Guid.NewGuid(),
+                changedDimensionId,
                 "DIMENSION:1",
                 "DIMS",
                 "DIMENSION",
@@ -90,13 +91,118 @@ public sealed class FloorPlanPreviewControlTests
                 null,
                 1)
         ];
+        Guid[] changedNumberDimensionIds = [changedDimensionId];
 
         var control = new FloorPlanPreviewControl
         {
-            Dimensions = dimensions
+            Dimensions = dimensions,
+            ChangedNumberDimensionIds = changedNumberDimensionIds
         };
 
         Assert.Same(dimensions, control.Dimensions);
+        Assert.Same(changedNumberDimensionIds, control.ChangedNumberDimensionIds);
+    }
+
+    [Fact]
+    public void Preview_control_exposes_site_plan_underlay_geometry()
+    {
+        var pathId = Guid.NewGuid();
+        GeometryPathDto[] sitePlanPaths =
+        [
+            new(
+                pathId,
+                IsClosed: true,
+                [
+                    new GeometrySegmentDto(pathId, 1, 0m, 0m, 100m, 0m),
+                    new GeometrySegmentDto(pathId, 2, 100m, 0m, 100m, 100m),
+                    new GeometrySegmentDto(pathId, 3, 100m, 100m, 0m, 100m),
+                    new GeometrySegmentDto(pathId, 4, 0m, 100m, 0m, 0m)
+                ])
+        ];
+
+        var control = new FloorPlanPreviewControl
+        {
+            SitePlanGeometryPaths = sitePlanPaths
+        };
+
+        Assert.Same(sitePlanPaths, control.SitePlanGeometryPaths);
+    }
+
+    [Fact]
+    public void Preview_control_exposes_colored_site_plan_paths_and_texts_for_full_site_plan_preview()
+    {
+        var pathId = Guid.NewGuid();
+        SitePlanRenderPathDto[] sitePlanPaths =
+        [
+            new(
+                pathId,
+                "SETBACK",
+                "LWPOLYLINE",
+                IsClosed: true,
+                [
+                    new GeometrySegmentDto(pathId, 1, 0m, 0m, 100m, 0m),
+                    new GeometrySegmentDto(pathId, 2, 100m, 0m, 100m, 100m)
+                ],
+                "#FFFFB000",
+                IsSetback: true)
+        ];
+        SitePlanTextDto[] sitePlanTexts =
+        [
+            new(Guid.NewGuid(), "NOTES", "TEXT", "SITE PLAN", 10m, 20m, 2.5m, 0m, "#FF00FFFF", IsSetback: false)
+        ];
+
+        var control = new FloorPlanPreviewControl
+        {
+            SitePlanRenderPaths = sitePlanPaths,
+            SitePlanTexts = sitePlanTexts
+        };
+
+        Assert.Same(sitePlanPaths, control.SitePlanRenderPaths);
+        Assert.Same(sitePlanTexts, control.SitePlanTexts);
+    }
+
+    [Fact]
+    public void SitePlanPreviewLayerRenderer_colors_only_setbacks_and_keeps_the_rest_gray()
+    {
+        var nonSetback = SitePlanPreviewLayerRenderer.ResolveColor("#FF00FFFF", isSetback: false);
+        var setback = SitePlanPreviewLayerRenderer.ResolveColor("#FF00FFFF", isSetback: true);
+
+        Assert.Equal(Color.FromArgb(210, 148, 163, 184), nonSetback);
+        Assert.Equal(Color.Parse("#FFFFB000"), setback);
+    }
+
+    [Fact]
+    public void Dimension_renderers_use_red_for_dimensions_whose_visible_number_changed()
+    {
+        Assert.Equal(
+            PreviewSemanticPalette.DimensionChangedMeasurement,
+            DimensionPreviewLayerRenderer.ResolveDimensionStrokeColor(
+                isHighlighted: false,
+                isNodeBound: true,
+                hasChangedNumber: true));
+        Assert.Equal(
+            PreviewSemanticPalette.DimensionChangedMeasurementArgb,
+            CadTextPreviewLayerRenderer.ResolveDimensionTextColorArgb(
+                isSelected: false,
+                isNodeBound: true,
+                hasChangedNumber: true));
+    }
+
+    [Fact]
+    public void Dimension_renderer_keeps_selection_priority_over_changed_number_red()
+    {
+        Assert.Equal(
+            PreviewSemanticPalette.SelectionHighlight,
+            DimensionPreviewLayerRenderer.ResolveDimensionStrokeColor(
+                isHighlighted: true,
+                isNodeBound: true,
+                hasChangedNumber: true));
+        Assert.Equal(
+            PreviewSemanticPalette.SelectionHighlightArgb,
+            CadTextPreviewLayerRenderer.ResolveDimensionTextColorArgb(
+                isSelected: true,
+                isNodeBound: true,
+                hasChangedNumber: true));
     }
 
     [Fact]
@@ -111,6 +217,31 @@ public sealed class FloorPlanPreviewControlTests
         Assert.False(FloorPlanPreviewControl.CanResolveDimensionInteractions(areDimensionsVisible: false, isPinchPlacementArmed: false));
         Assert.False(FloorPlanPreviewControl.CanResolveDimensionInteractions(areDimensionsVisible: true, isPinchPlacementArmed: true));
         Assert.True(FloorPlanPreviewControl.CanResolveDimensionInteractions(areDimensionsVisible: true, isPinchPlacementArmed: false));
+    }
+
+    [Fact]
+    public void Preview_control_exposes_floor_plan_move_tool_state_and_delta_conversion()
+    {
+        var control = new FloorPlanPreviewControl
+        {
+            IsFloorPlanMoveToolActive = true
+        };
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0d, 0d, 200d, 200d),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 10d,
+            OffsetX: 0d,
+            OffsetY: 0d);
+
+        var delta = FloorPlanPreviewControl.CalculateFloorPlanMoveDelta(
+            viewport,
+            previousPointerPosition: new Point(20d, 120d),
+            currentPointerPosition: new Point(50d, 80d));
+
+        Assert.True(control.IsFloorPlanMoveToolActive);
+        Assert.Equal(3m, delta.DeltaX);
+        Assert.Equal(4m, delta.DeltaY);
     }
 
     [Fact]
@@ -187,6 +318,19 @@ public sealed class FloorPlanPreviewControlTests
         Assert.Contains("PreviewRenderComposer.Render(context, scene);", source, StringComparison.Ordinal);
         Assert.DoesNotContain("context.DrawLine(", source, StringComparison.Ordinal);
         Assert.DoesNotContain("CuratedArtifactPreviewLayerRenderer.Render(", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FloorPlanPreviewControl_clips_entire_render_to_local_bounds()
+    {
+        var controlPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "FloorplanFit.Desktop", "Controls", "FloorPlanPreviewControl.cs");
+        var source = File.ReadAllText(controlPath);
+
+        Assert.Contains("context.PushClip(bounds)", source, StringComparison.Ordinal);
+        Assert.Contains("PreviewRenderComposer.Render(context, scene);", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1096,6 +1240,76 @@ public sealed class FloorPlanPreviewControlTests
 
         Assert.Equal(currentPointer.X - startPointer.X, projectedAfterPan.X - projectedBeforePan.X);
         Assert.Equal(currentPointer.Y - startPointer.Y, projectedAfterPan.Y - projectedBeforePan.Y);
+    }
+
+    [Fact]
+    public void PreserveZoomStateForBaseViewportChange_keeps_the_anchor_world_point_on_screen()
+    {
+        var oldBaseViewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0, 0, 1200, 700),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 2d,
+            OffsetX: 120d,
+            OffsetY: 90d);
+        var newBaseViewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0, 0, 1200, 700),
+            MinX: 1d,
+            MinY: 0d,
+            Scale: 2.1d,
+            OffsetX: 118d,
+            OffsetY: 90d);
+        var anchorScreenPoint = new Point(600d, 350d);
+        var currentState = new FloorPlanPreviewControl.PreviewZoomState(
+            ZoomFactor: 1.35d,
+            PanOffset: new Vector(24d, -16d));
+        var worldAtAnchorBefore = oldBaseViewport
+            .WithUserTransform(currentState.ZoomFactor, currentState.PanOffset)
+            .Unproject(anchorScreenPoint);
+
+        var nextState = FloorPlanPreviewControl.PreserveZoomStateForBaseViewportChange(
+            oldBaseViewport,
+            newBaseViewport,
+            currentState,
+            anchorScreenPoint);
+        var projectedAfter = newBaseViewport
+            .WithUserTransform(nextState.ZoomFactor, nextState.PanOffset)
+            .Project(worldAtAnchorBefore.X, worldAtAnchorBefore.Y);
+
+        Assert.Equal(currentState.ZoomFactor, nextState.ZoomFactor);
+        Assert.InRange(Math.Abs(anchorScreenPoint.X - projectedAfter.X), 0d, 0.001d);
+        Assert.InRange(Math.Abs(anchorScreenPoint.Y - projectedAfter.Y), 0d, 0.001d);
+    }
+
+    [Fact]
+    public void CalculateChangePreviewGhostOpacity_fades_old_geometry_out()
+    {
+        var duration = TimeSpan.FromMilliseconds(260);
+
+        Assert.Equal(1d, FloorPlanPreviewControl.CalculateChangePreviewGhostOpacity(TimeSpan.Zero, duration));
+        Assert.Equal(0.5d, FloorPlanPreviewControl.CalculateChangePreviewGhostOpacity(TimeSpan.FromMilliseconds(130), duration));
+        Assert.Equal(0d, FloorPlanPreviewControl.CalculateChangePreviewGhostOpacity(TimeSpan.FromMilliseconds(300), duration));
+    }
+
+    [Fact]
+    public void ShouldStartChangePreviewAnimation_suppresses_manual_floor_plan_move_geometry_changes()
+    {
+        var shouldAnimate = FloorPlanPreviewControl.ShouldStartChangePreviewAnimation(
+            PreviewCollectionObserverHub.PreviewObservedCollectionSlot.GeometryPaths,
+            hasActiveFloorPlanMove: true);
+
+        Assert.False(shouldAnimate);
+    }
+
+    [Fact]
+    public void ShouldStartChangePreviewAnimation_keeps_auto_fit_geometry_changes_animated()
+    {
+        Assert.True(FloorPlanPreviewControl.ShouldStartChangePreviewAnimation(
+            PreviewCollectionObserverHub.PreviewObservedCollectionSlot.GeometryPaths,
+            hasActiveFloorPlanMove: false));
+        Assert.False(FloorPlanPreviewControl.ShouldStartChangePreviewAnimation(
+            PreviewCollectionObserverHub.PreviewObservedCollectionSlot.Dimensions,
+            hasActiveFloorPlanMove: false));
     }
 
     [Fact]

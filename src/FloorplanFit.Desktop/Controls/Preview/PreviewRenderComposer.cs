@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Media;
 using FloorplanFit.Contracts.FloorPlans;
 
@@ -27,7 +28,21 @@ internal static class PreviewRenderComposer
                 scene.PreviewPinchGroupId);
         }
 
-        if (!scene.HasGeometry || scene.Viewport is not { } viewport)
+        if (scene.Viewport is not { } viewport)
+        {
+            return;
+        }
+
+        using var previewContentClip = context.PushClip(scene.Bounds);
+
+        SitePlanPreviewLayerRenderer.Render(
+            context,
+            viewport,
+            scene.Bounds,
+            scene.SitePlanRenderPaths,
+            scene.SitePlanTexts);
+
+        if (!scene.HasGeometry)
         {
             return;
         }
@@ -39,18 +54,23 @@ internal static class PreviewRenderComposer
 
             foreach (var segment in path.Segments)
             {
-                context.DrawLine(
+                PreviewLineClipper.DrawLine(
+                    context,
+                    scene.Bounds,
                     pen,
                     viewport.Project(segment.StartX, segment.StartY),
                     viewport.Project(segment.EndX, segment.EndY));
             }
         }
 
+        RenderChangePreviewGhost(context, viewport, scene.Bounds, scene.ChangePreviewGhostGeometry, scene.ChangePreviewGhostOpacity);
+
         if (ResolveArtifactLayerMode(scene) == PreviewArtifactLayerMode.Curated)
         {
             CuratedArtifactPreviewLayerRenderer.Render(
                 context,
                 viewport,
+                scene.Bounds,
                 scene.PreviewGeometry,
                 scene.CuratedPlanArtifacts,
                 scene.HighlightGeometryPathId);
@@ -60,6 +80,7 @@ internal static class PreviewRenderComposer
             OpeningPreviewLayerRenderer.Render(
                 context,
                 viewport,
+                scene.Bounds,
                 scene.PreviewGeometry,
                 scene.OpeningCandidates,
                 scene.ArtifactIndex.OpeningGeometryPathIds,
@@ -67,6 +88,7 @@ internal static class PreviewRenderComposer
             FixedPlanComponentPreviewLayerRenderer.Render(
                 context,
                 viewport,
+                scene.Bounds,
                 scene.PreviewGeometry,
                 scene.FixedPlanComponents,
                 scene.ArtifactIndex.FixedPlanComponentGeometryPathIds,
@@ -74,22 +96,26 @@ internal static class PreviewRenderComposer
             ProtectedDetailPreviewLayerRenderer.Render(
                 context,
                 viewport,
+                scene.Bounds,
                 scene.PreviewGeometry,
                 scene.ProtectedDetailAssemblies,
                 scene.ArtifactIndex.ProtectedDetailGeometryPathIds,
                 scene.HighlightGeometryPathId);
         }
 
-        MeasurementBindingPreviewLayerRenderer.Render(context, viewport, scene);
+        MeasurementBindingPreviewLayerRenderer.Render(context, viewport, scene.Bounds, scene);
         var nodeBoundDimensionIds = ResolveNodeBoundDimensionIds(scene.DimensionIntervalBindings);
+        var changedNumberDimensionIds = ResolveChangedNumberDimensionIds(scene.ChangedNumberDimensionIds);
         if (ShouldRenderDimensions(scene))
         {
             DimensionPreviewLayerRenderer.Render(
                 context,
                 viewport,
+                scene.Bounds,
                 scene.Dimensions,
                 scene.HighlightDimensionId,
-                nodeBoundDimensionIds);
+                nodeBoundDimensionIds,
+                changedNumberDimensionIds);
         }
         CadTextPreviewLayerRenderer.RenderRoomLabels(context, viewport, scene.RoomLabels, scene.HighlightRoomLabelId);
         CadTextPreviewLayerRenderer.RenderOpeningLabels(context, viewport, scene.OpeningLabels, scene.HighlightOpeningLabelId);
@@ -100,7 +126,8 @@ internal static class PreviewRenderComposer
                 viewport,
                 scene.Dimensions,
                 scene.HighlightDimensionId,
-                nodeBoundDimensionIds);
+                nodeBoundDimensionIds,
+                changedNumberDimensionIds);
         }
         PinchMarkerPreviewLayerRenderer.Render(
             context,
@@ -123,6 +150,34 @@ internal static class PreviewRenderComposer
     internal static bool ShouldRenderDimensions(PreviewRenderScene scene)
         => scene.AreDimensionsVisible && scene.Dimensions.Count > 0;
 
+    internal static void RenderChangePreviewGhost(
+        DrawingContext context,
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Rect clipBounds,
+        IReadOnlyList<GeometryPathDto>? ghostGeometry,
+        double opacity)
+    {
+        if (ghostGeometry is not { Count: > 0 } || opacity <= 0d)
+        {
+            return;
+        }
+
+        var alpha = (byte)Math.Clamp(opacity * 180d, 0d, 180d);
+        var pen = new Pen(new SolidColorBrush(Color.FromArgb(alpha, 255, 176, 0)), 3d);
+        foreach (var path in ghostGeometry)
+        {
+            foreach (var segment in path.Segments)
+            {
+                PreviewLineClipper.DrawLine(
+                    context,
+                    clipBounds,
+                    pen,
+                    viewport.Project(segment.StartX, segment.StartY),
+                    viewport.Project(segment.EndX, segment.EndY));
+            }
+        }
+    }
+
     internal static IReadOnlySet<Guid> ResolveNodeBoundDimensionIds(
         IReadOnlyList<DimensionIntervalBindingDto>? dimensionIntervalBindings)
     {
@@ -135,6 +190,12 @@ internal static class PreviewRenderComposer
             .Select(binding => binding.DimensionId)
             .ToHashSet();
     }
+
+    internal static IReadOnlySet<Guid> ResolveChangedNumberDimensionIds(
+        IReadOnlyList<Guid>? changedNumberDimensionIds)
+        => changedNumberDimensionIds is { Count: > 0 }
+            ? changedNumberDimensionIds.ToHashSet()
+            : new HashSet<Guid>();
 
     internal static IReadOnlyList<GeometryPathDto> ResolveOrderedBasePaths(
         IReadOnlyList<GeometryPathDto> previewGeometry,

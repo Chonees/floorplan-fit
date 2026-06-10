@@ -43,6 +43,8 @@ internal static class PreviewSemanticPalette
 
     public static readonly Color DimensionNodeBound = Color.FromRgb(14, 165, 233);
     public const string DimensionNodeBoundArgb = "#FF0EA5E9";
+    public static readonly Color DimensionChangedMeasurement = Color.FromRgb(239, 68, 68);
+    public const string DimensionChangedMeasurementArgb = "#FFEF4444";
 
     public static SolidColorBrush Brush(Color color) => new(color);
 }

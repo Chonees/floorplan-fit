@@ -119,6 +119,62 @@ public partial class MainWindow : Window
         await viewModel.LoadAsync(CancellationToken.None);
     }
 
+    private async void AdjustVersionToSitePlanButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: FloorPlanLibraryVersionDto version })
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        var item = viewModel.Items.FirstOrDefault(libraryItem =>
+            libraryItem.Versions.Any(candidate => candidate.VersionId == version.VersionId));
+        if (item is null)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select site plan DXF",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("DXF files")
+                {
+                    Patterns = ["*.dxf"]
+                }
+            ]
+        });
+
+        var file = files.FirstOrDefault();
+        if (file is null)
+        {
+            return;
+        }
+
+        var adjustmentViewModel = await viewModel.OpenVersionSitePlanAdjustmentAsync(
+            item,
+            version,
+            file.Path.LocalPath,
+            CancellationToken.None);
+        if (adjustmentViewModel is null)
+        {
+            return;
+        }
+
+        var adjustmentWindow = new SitePlanAdjustmentWindow
+        {
+            DataContext = adjustmentViewModel
+        };
+
+        await adjustmentWindow.ShowDialog(this);
+    }
+
     private void SelectVersionButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (sender is not Button { DataContext: FloorPlanLibraryVersionDto version })

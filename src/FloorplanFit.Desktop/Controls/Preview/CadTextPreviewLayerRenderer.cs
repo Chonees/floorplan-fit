@@ -60,7 +60,8 @@ internal static class CadTextPreviewLayerRenderer
         FloorPlanPreviewGeometry.PreviewViewport viewport,
         IReadOnlyList<DimensionDto>? dimensions,
         Guid? highlightedDimensionId = null,
-        IReadOnlySet<Guid>? nodeBoundDimensionIds = null)
+        IReadOnlySet<Guid>? nodeBoundDimensionIds = null,
+        IReadOnlySet<Guid>? changedNumberDimensionIds = null)
     {
         if (dimensions is not { Count: > 0 })
         {
@@ -78,7 +79,8 @@ internal static class CadTextPreviewLayerRenderer
                 dimension,
                 viewport,
                 dimension.DimensionId == highlightedDimensionId,
-                nodeBoundDimensionIds?.Contains(dimension.DimensionId) == true);
+                nodeBoundDimensionIds?.Contains(dimension.DimensionId) == true,
+                changedNumberDimensionIds?.Contains(dimension.DimensionId) == true);
             RenderText(context, plan, dimension.RenderTextStyleName);
         }
     }
@@ -154,7 +156,8 @@ internal static class CadTextPreviewLayerRenderer
         DimensionDto dimension,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
         bool isSelected = false,
-        bool isNodeBound = false)
+        bool isNodeBound = false,
+        bool hasChangedNumber = false)
     {
         var anchor = ResolveDimensionTextAnchor(dimension);
         var fontSize = dimension.RenderTextHeight is > 0m
@@ -168,14 +171,19 @@ internal static class CadTextPreviewLayerRenderer
             HorizontalAlignment: dimension.RenderTextHorizontalAlignment ?? "Center",
             VerticalAlignment: dimension.RenderTextVerticalAlignment ?? "Middle",
             AttachmentPoint: dimension.RenderTextAttachmentPoint,
-            ResolveDimensionTextColorArgb(isSelected, isNodeBound));
+            ResolveDimensionTextColorArgb(isSelected, isNodeBound, hasChangedNumber));
     }
 
-    internal static string ResolveDimensionTextColorArgb(bool isSelected, bool isNodeBound)
+    internal static string ResolveDimensionTextColorArgb(bool isSelected, bool isNodeBound, bool hasChangedNumber = false)
     {
         if (isSelected)
         {
             return PreviewSemanticPalette.SelectionHighlightArgb;
+        }
+
+        if (hasChangedNumber)
+        {
+            return PreviewSemanticPalette.DimensionChangedMeasurementArgb;
         }
 
         return isNodeBound

@@ -7,11 +7,12 @@ namespace FloorplanFit.Desktop.Controls.Preview;
 
 internal sealed class PreviewCollectionObserverHub
 {
-    private readonly Action invalidateVisual;
+    private readonly Action<PreviewObservedCollectionSlot> collectionChanged;
     private readonly Dictionary<PreviewObservedCollectionSlot, INotifyCollectionChanged> observed = [];
 
     internal enum PreviewObservedCollectionSlot
     {
+        SitePlanGeometryPaths,
         GeometryPaths,
         PinchMarkers,
         RoomLabels,
@@ -27,7 +28,9 @@ internal sealed class PreviewCollectionObserverHub
         ArticulationBands,
         FixedPlanComponents,
         ProtectedDetailAssemblies,
-        CuratedPlanArtifacts
+        CuratedPlanArtifacts,
+        SitePlanRenderPaths,
+        SitePlanTexts
     }
 
     internal readonly record struct PreviewObservedCollections(
@@ -46,15 +49,24 @@ internal sealed class PreviewCollectionObserverHub
         IEnumerable? ArticulationBands,
         IEnumerable? FixedPlanComponents,
         IEnumerable? ProtectedDetailAssemblies,
-        IEnumerable? CuratedPlanArtifacts);
+        IEnumerable? CuratedPlanArtifacts,
+        IEnumerable? SitePlanGeometryPaths = null,
+        IEnumerable? SitePlanRenderPaths = null,
+        IEnumerable? SitePlanTexts = null);
 
     public PreviewCollectionObserverHub(Action invalidateVisual)
+        : this(_ => invalidateVisual())
     {
-        this.invalidateVisual = invalidateVisual;
+    }
+
+    public PreviewCollectionObserverHub(Action<PreviewObservedCollectionSlot> collectionChanged)
+    {
+        this.collectionChanged = collectionChanged;
     }
 
     public void AttachAll(PreviewObservedCollections collections)
     {
+        Replace(PreviewObservedCollectionSlot.SitePlanGeometryPaths, collections.SitePlanGeometryPaths);
         Replace(PreviewObservedCollectionSlot.GeometryPaths, collections.GeometryPaths);
         Replace(PreviewObservedCollectionSlot.PinchMarkers, collections.PinchMarkers);
         Replace(PreviewObservedCollectionSlot.RoomLabels, collections.RoomLabels);
@@ -71,6 +83,8 @@ internal sealed class PreviewCollectionObserverHub
         Replace(PreviewObservedCollectionSlot.FixedPlanComponents, collections.FixedPlanComponents);
         Replace(PreviewObservedCollectionSlot.ProtectedDetailAssemblies, collections.ProtectedDetailAssemblies);
         Replace(PreviewObservedCollectionSlot.CuratedPlanArtifacts, collections.CuratedPlanArtifacts);
+        Replace(PreviewObservedCollectionSlot.SitePlanRenderPaths, collections.SitePlanRenderPaths);
+        Replace(PreviewObservedCollectionSlot.SitePlanTexts, collections.SitePlanTexts);
     }
 
     public void Replace(PreviewObservedCollectionSlot slot, IEnumerable? value)
@@ -111,6 +125,13 @@ internal sealed class PreviewCollectionObserverHub
 
     private void OnObservedCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        invalidateVisual();
+        foreach (var item in observed)
+        {
+            if (ReferenceEquals(item.Value, sender))
+            {
+                collectionChanged(item.Key);
+                return;
+            }
+        }
     }
 }

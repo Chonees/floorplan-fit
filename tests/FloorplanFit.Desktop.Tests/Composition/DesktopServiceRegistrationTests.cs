@@ -1,3 +1,4 @@
+using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Library;
@@ -5,6 +6,7 @@ using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Desktop.Composition;
 using FloorplanFit.Desktop.ViewModels;
 using FloorplanFit.Infrastructure.Dxf;
+using FloorplanFit.Infrastructure.OpenAi;
 using FloorplanFit.Infrastructure.Persistence;
 using FloorplanFit.Infrastructure.Runtime;
 using Microsoft.Data.Sqlite;
@@ -47,6 +49,7 @@ public sealed class DesktopServiceRegistrationTests
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RejectWallCandidateHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<PublishFloorPlanCurationHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<ExtractWallCandidatesHandler>());
+            Assert.IsType<OpenAiAutoFitPlanSuggester>(scope.ServiceProvider.GetRequiredService<IAutoFitPlanSuggester>());
             Assert.Same(DxfExtractionProfile.PointeHomes, scope.ServiceProvider.GetRequiredService<DxfExtractionProfile>());
         }
         finally

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Contracts.FloorPlans;
@@ -15,6 +16,7 @@ public sealed class FloorPlanPreviewControl : Control
     private const double PreviewPadding = 48d;
     private const double HitTestTolerance = 8d;
     private const double UserZoomStep = 1.12d;
+    private static readonly TimeSpan ChangePreviewAnimationDuration = TimeSpan.FromMilliseconds(260);
     internal const decimal MovementPersistenceEpsilon = 0.001m;
     private const double DimensionHandleHitTolerance = 10d;
     internal const double MinimumUserZoomFactor = 0.35d;
@@ -28,12 +30,23 @@ public sealed class FloorPlanPreviewControl : Control
     private bool isPanningPreview;
     private Point panStartPoint;
     private PreviewZoomState panStartZoomState;
+    private FloorPlanPreviewGeometry.PreviewViewport? lastBaseViewport;
+    private PinchAxisTag? lastBaseViewportAxisTag;
+    private IReadOnlyList<GeometryPathDto> lastRenderedPreviewGeometry = [];
+    private IReadOnlyList<GeometryPathDto> changePreviewGhostGeometry = [];
+    private DateTimeOffset? changePreviewAnimationStartedAt;
+    private readonly DispatcherTimer changePreviewAnimationTimer;
+    private bool preserveViewportOnNextRender;
+    private FloorPlanMoveDragState? activeFloorPlanMove;
     private PreviewDimensionEditState? activeDimensionEdit;
     private PreviewPendingDimensionEditState? pendingDimensionEdit;
 
     static FloorPlanPreviewControl()
     {
         AffectsRender<FloorPlanPreviewControl>(
+            SitePlanGeometryPathsProperty,
+            SitePlanRenderPathsProperty,
+            SitePlanTextsProperty,
             GeometryPathsProperty,
             HighlightGeometryPathIdProperty,
             PinchMarkersProperty,
@@ -44,6 +57,7 @@ public sealed class FloorPlanPreviewControl : Control
             OpeningLabelsProperty,
             HighlightOpeningLabelIdProperty,
             DimensionsProperty,
+            ChangedNumberDimensionIdsProperty,
             MeasurementContextProperty,
             DimensionBindingsProperty,
             DimensionAssociationsProperty,
@@ -59,6 +73,18 @@ public sealed class FloorPlanPreviewControl : Control
             PreviewAxisTagProperty,
             IsPinchPlacementArmedProperty,
             AreDimensionsVisibleProperty);
+        SitePlanGeometryPathsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
+            control.OnSitePlanGeometryPathsChanged(
+                args.GetOldValue<IReadOnlyList<GeometryPathDto>?>(),
+                args.GetNewValue<IReadOnlyList<GeometryPathDto>?>()));
+        SitePlanRenderPathsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
+            control.OnSitePlanRenderPathsChanged(
+                args.GetOldValue<IReadOnlyList<SitePlanRenderPathDto>?>(),
+                args.GetNewValue<IReadOnlyList<SitePlanRenderPathDto>?>()));
+        SitePlanTextsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
+            control.OnSitePlanTextsChanged(
+                args.GetOldValue<IReadOnlyList<SitePlanTextDto>?>(),
+                args.GetNewValue<IReadOnlyList<SitePlanTextDto>?>()));
         GeometryPathsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
             control.OnGeometryPathsChanged(
                 args.GetOldValue<IReadOnlyList<GeometryPathDto>?>(),
@@ -131,8 +157,22 @@ public sealed class FloorPlanPreviewControl : Control
 
     public FloorPlanPreviewControl()
     {
-        collectionObserverHub = new PreviewCollectionObserverHub(InvalidateVisual);
+        collectionObserverHub = new PreviewCollectionObserverHub(OnObservedCollectionChanged);
+        changePreviewAnimationTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        changePreviewAnimationTimer.Tick += (_, _) => TickChangePreviewAnimation();
     }
+
+    public static readonly StyledProperty<IReadOnlyList<GeometryPathDto>?> SitePlanGeometryPathsProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<GeometryPathDto>?>(nameof(SitePlanGeometryPaths));
+
+    public static readonly StyledProperty<IReadOnlyList<SitePlanRenderPathDto>?> SitePlanRenderPathsProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<SitePlanRenderPathDto>?>(nameof(SitePlanRenderPaths));
+
+    public static readonly StyledProperty<IReadOnlyList<SitePlanTextDto>?> SitePlanTextsProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<SitePlanTextDto>?>(nameof(SitePlanTexts));
 
     public static readonly StyledProperty<IReadOnlyList<GeometryPathDto>?> GeometryPathsProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<GeometryPathDto>?>(nameof(GeometryPaths));
@@ -163,6 +203,9 @@ public sealed class FloorPlanPreviewControl : Control
 
     public static readonly StyledProperty<IReadOnlyList<DimensionDto>?> DimensionsProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<DimensionDto>?>(nameof(Dimensions));
+
+    public static readonly StyledProperty<IReadOnlyList<Guid>?> ChangedNumberDimensionIdsProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, IReadOnlyList<Guid>?>(nameof(ChangedNumberDimensionIds));
 
     public static readonly StyledProperty<MeasurementContextDto?> MeasurementContextProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, MeasurementContextDto?>(nameof(MeasurementContext));
@@ -220,6 +263,27 @@ public sealed class FloorPlanPreviewControl : Control
 
     public static readonly StyledProperty<bool> IsPinchPlacementArmedProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, bool>(nameof(IsPinchPlacementArmed));
+
+    public static readonly StyledProperty<bool> IsFloorPlanMoveToolActiveProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, bool>(nameof(IsFloorPlanMoveToolActive));
+
+    public IReadOnlyList<GeometryPathDto>? SitePlanGeometryPaths
+    {
+        get => GetValue(SitePlanGeometryPathsProperty);
+        set => SetValue(SitePlanGeometryPathsProperty, value);
+    }
+
+    public IReadOnlyList<SitePlanRenderPathDto>? SitePlanRenderPaths
+    {
+        get => GetValue(SitePlanRenderPathsProperty);
+        set => SetValue(SitePlanRenderPathsProperty, value);
+    }
+
+    public IReadOnlyList<SitePlanTextDto>? SitePlanTexts
+    {
+        get => GetValue(SitePlanTextsProperty);
+        set => SetValue(SitePlanTextsProperty, value);
+    }
 
     public IReadOnlyList<GeometryPathDto>? GeometryPaths
     {
@@ -279,6 +343,12 @@ public sealed class FloorPlanPreviewControl : Control
     {
         get => GetValue(DimensionsProperty);
         set => SetValue(DimensionsProperty, value);
+    }
+
+    public IReadOnlyList<Guid>? ChangedNumberDimensionIds
+    {
+        get => GetValue(ChangedNumberDimensionIdsProperty);
+        set => SetValue(ChangedNumberDimensionIdsProperty, value);
     }
 
     public MeasurementContextDto? MeasurementContext
@@ -395,12 +465,19 @@ public sealed class FloorPlanPreviewControl : Control
         set => SetValue(IsPinchPlacementArmedProperty, value);
     }
 
+    public bool IsFloorPlanMoveToolActive
+    {
+        get => GetValue(IsFloorPlanMoveToolActiveProperty);
+        set => SetValue(IsFloorPlanMoveToolActiveProperty, value);
+    }
+
     public event EventHandler<GeometryPathClickedEventArgs>? GeometryPathClicked;
     public event EventHandler<RoomLabelClickedEventArgs>? RoomLabelClicked;
     public event EventHandler<OpeningLabelClickedEventArgs>? OpeningLabelClicked;
     public event EventHandler<MovableArtifactMovedEventArgs>? MovableArtifactMoved;
     public event EventHandler<DimensionClickedEventArgs>? DimensionClicked;
     public event EventHandler<DimensionEditedEventArgs>? DimensionEdited;
+    public event EventHandler<FloorPlanMoveDeltaEventArgs>? FloorPlanMoveDeltaRequested;
 
     internal static Rect GetLocalRenderBounds(Rect layoutBounds)
     {
@@ -415,6 +492,22 @@ public sealed class FloorPlanPreviewControl : Control
     internal static (decimal Dx, decimal Dy) ApplyTranslationDelta(decimal baseDx, decimal baseDy, decimal deltaX, decimal deltaY)
     {
         return (RoundModelValue(baseDx + deltaX), RoundModelValue(baseDy + deltaY));
+    }
+
+    internal static FloorPlanMoveDelta CalculateFloorPlanMoveDelta(
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Point previousPointerPosition,
+        Point currentPointerPosition)
+    {
+        if (viewport.Scale <= double.Epsilon)
+        {
+            return new FloorPlanMoveDelta(0m, 0m);
+        }
+
+        var deltaX = (decimal)((currentPointerPosition.X - previousPointerPosition.X) / viewport.Scale);
+        var deltaY = (decimal)((previousPointerPosition.Y - currentPointerPosition.Y) / viewport.Scale);
+
+        return new FloorPlanMoveDelta(RoundModelValue(deltaX), RoundModelValue(deltaY));
     }
 
     internal static DimensionDto ApplyDimensionHandleDelta(
@@ -530,6 +623,20 @@ public sealed class FloorPlanPreviewControl : Control
         {
             return;
         }
+
+        if (IsFloorPlanMoveToolActive)
+        {
+            activeFloorPlanMove = new FloorPlanMoveDragState(viewport.Value, pointerPosition);
+            activeDragEdge = null;
+            activeArtifactMove = null;
+            activePreviewTrimSourceUnits = 0m;
+            activeDimensionEdit = null;
+            pendingDimensionEdit = null;
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            return;
+        }
+
         var pressOutcome = PreviewInteractionCoordinator.HandleLeftButtonPressed(
             new PreviewInteractionCoordinator.LeftButtonPressRequest(
                 pointerPosition,
@@ -645,6 +752,24 @@ public sealed class FloorPlanPreviewControl : Control
         var axisTag = ParseAxisTag();
         var viewport = GetPreviewViewport(axisTag);
         var pointerPosition = e.GetPosition(this);
+
+        if (activeFloorPlanMove is { } floorPlanMove)
+        {
+            var delta = CalculateFloorPlanMoveDelta(
+                floorPlanMove.Viewport,
+                floorPlanMove.PreviousPointerPosition,
+                pointerPosition);
+
+            activeFloorPlanMove = floorPlanMove with { PreviousPointerPosition = pointerPosition };
+            if (delta.DeltaX != 0m || delta.DeltaY != 0m)
+            {
+                FloorPlanMoveDeltaRequested?.Invoke(this, new FloorPlanMoveDeltaEventArgs(delta.DeltaX, delta.DeltaY));
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         Func<PreviewDimensionEditState, Point, Point>? resolveSnappedDimensionWorldPoint = null;
         if (viewport is { } activeViewport)
         {
@@ -675,13 +800,15 @@ public sealed class FloorPlanPreviewControl : Control
     {
         base.OnPointerWheelChanged(e);
 
-        if (GeometryPaths is not { Count: > 0 })
+        var viewportGeometry = BuildViewportGeometry(axisTag: null);
+        if (viewportGeometry.Count == 0)
         {
             return;
         }
 
         var axisTag = ParseAxisTag();
-        var baseViewport = FloorPlanPreviewGeometry.CalculateViewport(GeometryPaths, GetGeometryViewportBounds(axisTag), PreviewPadding);
+        viewportGeometry = BuildViewportGeometry(axisTag);
+        var baseViewport = FloorPlanPreviewGeometry.CalculateViewport(viewportGeometry, GetGeometryViewportBounds(axisTag), PreviewPadding);
         if (baseViewport is null)
         {
             return;
@@ -699,6 +826,15 @@ public sealed class FloorPlanPreviewControl : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+
+        if (activeFloorPlanMove is not null)
+        {
+            activeFloorPlanMove = null;
+            e.Pointer.Capture(null);
+            e.Handled = true;
+            return;
+        }
+
         var releaseOutcome = PreviewInteractionCoordinator.HandlePointerReleased(
             new PreviewInteractionCoordinator.PointerReleasedRequest(
                 CurrentState: CaptureInteractionState(),
@@ -742,6 +878,7 @@ public sealed class FloorPlanPreviewControl : Control
         var viewport = GetPreviewViewport(axisTag);
         var scene = BuildRenderScene(bounds, axisTag, viewport);
 
+        using var previewClip = context.PushClip(bounds);
         PreviewRenderComposer.Render(context, scene);
     }
 
@@ -761,20 +898,83 @@ public sealed class FloorPlanPreviewControl : Control
         Point currentPointerPosition)
         => PreviewInteractionCoordinator.ResolvePanStateForDrag(startState, startPointerPosition, currentPointerPosition);
 
+    internal static PreviewZoomState PreserveZoomStateForBaseViewportChange(
+        FloorPlanPreviewGeometry.PreviewViewport oldBaseViewport,
+        FloorPlanPreviewGeometry.PreviewViewport newBaseViewport,
+        PreviewZoomState currentState,
+        Point anchorScreenPoint)
+    {
+        var safeZoom = Math.Clamp(
+            double.IsFinite(currentState.ZoomFactor) ? currentState.ZoomFactor : 1d,
+            MinimumUserZoomFactor,
+            MaximumUserZoomFactor);
+        var oldViewport = oldBaseViewport.WithUserTransform(safeZoom, currentState.PanOffset);
+        var anchorWorldPoint = oldViewport.Unproject(anchorScreenPoint);
+        var newViewportWithoutPan = newBaseViewport.WithUserTransform(safeZoom, default);
+        var projectedWithoutPan = newViewportWithoutPan.Project(anchorWorldPoint.X, anchorWorldPoint.Y);
+
+        return new PreviewZoomState(
+            safeZoom,
+            new Vector(
+                anchorScreenPoint.X - projectedWithoutPan.X,
+                anchorScreenPoint.Y - projectedWithoutPan.Y));
+    }
+
+    internal static double CalculateChangePreviewGhostOpacity(TimeSpan elapsed, TimeSpan duration)
+    {
+        if (duration <= TimeSpan.Zero)
+        {
+            return 0d;
+        }
+
+        var progress = Math.Clamp(elapsed.TotalMilliseconds / duration.TotalMilliseconds, 0d, 1d);
+        return Math.Round(1d - progress, 6, MidpointRounding.AwayFromZero);
+    }
+
+    internal static bool ShouldStartChangePreviewAnimation(
+        PreviewCollectionObserverHub.PreviewObservedCollectionSlot slot,
+        bool hasActiveFloorPlanMove)
+        => slot == PreviewCollectionObserverHub.PreviewObservedCollectionSlot.GeometryPaths &&
+           !hasActiveFloorPlanMove;
+
     private IReadOnlyList<GeometryPathDto> BuildPreviewGeometry(PinchAxisTag? axisTag)
+    {
+        return BuildPreviewGeometry(axisTag, GeometryPaths);
+    }
+
+    private IReadOnlyList<GeometryPathDto> BuildPreviewGeometry(
+        PinchAxisTag? axisTag,
+        IReadOnlyList<GeometryPathDto>? geometryPaths)
     {
         if (axisTag is null || activeDragEdge is null)
         {
-            return GeometryPaths ?? [];
+            return geometryPaths ?? [];
         }
 
         return FloorPlanPreviewGeometry.CreatePreviewGeometry(
-            GeometryPaths,
+            geometryPaths,
             axisTag.Value,
             PinchMarkerPreviewLayerRenderer.FilterForPreviewGroup(PinchMarkers, PreviewPinchGroupId),
             activePreviewTrimSourceUnits,
             activeDragEdge.Value,
             MeasurementContext?.ToMillimetersFactor ?? 1m);
+    }
+
+    private IReadOnlyList<GeometryPathDto> BuildViewportGeometry(
+        PinchAxisTag? axisTag,
+        IReadOnlyList<GeometryPathDto>? geometryPaths = null)
+    {
+        var previewGeometry = geometryPaths is null
+            ? BuildPreviewGeometry(axisTag)
+            : BuildPreviewGeometry(axisTag, geometryPaths);
+        if (SitePlanGeometryPaths is not { Count: > 0 })
+        {
+            return previewGeometry;
+        }
+
+        return SitePlanGeometryPaths
+            .Concat(previewGeometry)
+            .ToArray();
     }
 
     private FloorPlanPreviewGeometry.PreviewCompressionEdge? ResolveEdgeDrag(Point pointerPosition, PinchAxisTag axisTag)
@@ -951,16 +1151,22 @@ public sealed class FloorPlanPreviewControl : Control
         var artifactIndex = CuratedPlanArtifacts is { Count: > 0 }
             ? PreviewArtifactGeometryIndex.Create(CuratedPlanArtifacts)
             : PreviewArtifactGeometryIndex.Create(OpeningCandidates, FixedPlanComponents, ProtectedDetailAssemblies);
+        var ghostOpacity = ResolveChangePreviewGhostOpacity(DateTimeOffset.UtcNow);
+        lastRenderedPreviewGeometry = previewGeometry.ToArray();
 
         return new PreviewRenderScene(
             Bounds: bounds,
             AxisTag: axisTag,
             IsPinchPlacementArmed: IsPinchPlacementArmed,
             Viewport: viewport,
+            SitePlanGeometry: SitePlanGeometryPaths ?? [],
+            SitePlanRenderPaths: SitePlanRenderPaths ?? [],
+            SitePlanTexts: SitePlanTexts ?? [],
             PreviewGeometry: previewGeometry,
             RoomLabels: roomLabels,
             OpeningLabels: openingLabels,
             Dimensions: dimensions,
+            ChangedNumberDimensionIds: ChangedNumberDimensionIds ?? [],
             AreDimensionsVisible: AreDimensionsVisible,
             ArtifactIndex: artifactIndex,
             OpeningCandidates: OpeningCandidates,
@@ -982,7 +1188,9 @@ public sealed class FloorPlanPreviewControl : Control
             HighlightDimensionId: HighlightDimensionId,
             PreviewPinchGroupId: PreviewPinchGroupId,
             PreviewAxisTag: PreviewAxisTag,
-            ActiveDimensionHandleKind: activeDimensionEdit?.HandleKind);
+            ActiveDimensionHandleKind: activeDimensionEdit?.HandleKind,
+            ChangePreviewGhostGeometry: changePreviewGhostGeometry,
+            ChangePreviewGhostOpacity: ghostOpacity);
     }
 
     private DimensionDto? BuildEditedDimensionPreview(PreviewDimensionEditState edit, DimensionDto baseDimension)
@@ -1157,8 +1365,28 @@ public sealed class FloorPlanPreviewControl : Control
 
     private FloorPlanPreviewGeometry.PreviewViewport? GetPreviewViewport(PinchAxisTag? axisTag)
     {
-        var baseViewport = FloorPlanPreviewGeometry.CalculateViewport(GeometryPaths, GetGeometryViewportBounds(axisTag), PreviewPadding);
-        return baseViewport?.WithUserTransform(previewZoomState.ZoomFactor, previewZoomState.PanOffset);
+        var baseViewport = FloorPlanPreviewGeometry.CalculateViewport(BuildViewportGeometry(axisTag), GetGeometryViewportBounds(axisTag), PreviewPadding);
+        if (baseViewport is null)
+        {
+            return null;
+        }
+
+        if (preserveViewportOnNextRender &&
+            lastBaseViewport is { } previousBaseViewport &&
+            Nullable.Equals(lastBaseViewportAxisTag, axisTag))
+        {
+            previewZoomState = PreserveZoomStateForBaseViewportChange(
+                previousBaseViewport,
+                baseViewport.Value,
+                previewZoomState,
+                GetGeometryViewportBounds(axisTag).Center);
+        }
+
+        preserveViewportOnNextRender = false;
+        lastBaseViewport = baseViewport.Value;
+        lastBaseViewportAxisTag = axisTag;
+
+        return baseViewport.Value.WithUserTransform(previewZoomState.ZoomFactor, previewZoomState.PanOffset);
     }
 
     private PinchAxisTag? ParseAxisTag()
@@ -1301,8 +1529,23 @@ public sealed class FloorPlanPreviewControl : Control
         return decimal.Round(value, 3, MidpointRounding.AwayFromZero);
     }
 
+    private void OnSitePlanGeometryPathsChanged(IReadOnlyList<GeometryPathDto>? oldValue, IReadOnlyList<GeometryPathDto>? newValue)
+    {
+        preserveViewportOnNextRender = true;
+        ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.SitePlanGeometryPaths, oldValue, newValue);
+    }
+
+    private void OnSitePlanRenderPathsChanged(IReadOnlyList<SitePlanRenderPathDto>? oldValue, IReadOnlyList<SitePlanRenderPathDto>? newValue)
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.SitePlanRenderPaths, oldValue, newValue);
+
+    private void OnSitePlanTextsChanged(IReadOnlyList<SitePlanTextDto>? oldValue, IReadOnlyList<SitePlanTextDto>? newValue)
+        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.SitePlanTexts, oldValue, newValue);
+
     private void OnGeometryPathsChanged(IReadOnlyList<GeometryPathDto>? oldValue, IReadOnlyList<GeometryPathDto>? newValue)
-        => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.GeometryPaths, oldValue, newValue);
+    {
+        preserveViewportOnNextRender = true;
+        ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.GeometryPaths, oldValue, newValue);
+    }
 
     private void OnPinchMarkersChanged(IReadOnlyList<PinchMarkerDto>? oldValue, IReadOnlyList<PinchMarkerDto>? newValue)
         => ReplaceObservedCollection(PreviewCollectionObserverHub.PreviewObservedCollectionSlot.PinchMarkers, oldValue, newValue);
@@ -1382,7 +1625,10 @@ public sealed class FloorPlanPreviewControl : Control
             ArticulationBands,
             FixedPlanComponents,
             ProtectedDetailAssemblies,
-            CuratedPlanArtifacts);
+            CuratedPlanArtifacts,
+            SitePlanGeometryPaths,
+            SitePlanRenderPaths,
+            SitePlanTexts);
 
     private void ReplaceObservedCollection<T>(
         PreviewCollectionObserverHub.PreviewObservedCollectionSlot slot,
@@ -1392,6 +1638,59 @@ public sealed class FloorPlanPreviewControl : Control
         if (!ReferenceEquals(oldValue, newValue))
         {
             collectionObserverHub.Replace(slot, newValue);
+        }
+
+        InvalidateVisual();
+    }
+
+    private void OnObservedCollectionChanged(PreviewCollectionObserverHub.PreviewObservedCollectionSlot slot)
+    {
+        if (slot is PreviewCollectionObserverHub.PreviewObservedCollectionSlot.GeometryPaths or
+            PreviewCollectionObserverHub.PreviewObservedCollectionSlot.SitePlanGeometryPaths)
+        {
+            preserveViewportOnNextRender = true;
+        }
+
+        if (ShouldStartChangePreviewAnimation(slot, activeFloorPlanMove is not null))
+        {
+            StartChangePreviewAnimation();
+        }
+
+        InvalidateVisual();
+    }
+
+    private double ResolveChangePreviewGhostOpacity(DateTimeOffset now)
+    {
+        if (changePreviewAnimationStartedAt is not { } startedAt || changePreviewGhostGeometry.Count == 0)
+        {
+            return 0d;
+        }
+
+        return CalculateChangePreviewGhostOpacity(now - startedAt, ChangePreviewAnimationDuration);
+    }
+
+    private void StartChangePreviewAnimation()
+    {
+        if (lastRenderedPreviewGeometry.Count == 0)
+        {
+            return;
+        }
+
+        changePreviewGhostGeometry = lastRenderedPreviewGeometry.ToArray();
+        changePreviewAnimationStartedAt = DateTimeOffset.UtcNow;
+        if (!changePreviewAnimationTimer.IsEnabled)
+        {
+            changePreviewAnimationTimer.Start();
+        }
+    }
+
+    private void TickChangePreviewAnimation()
+    {
+        if (ResolveChangePreviewGhostOpacity(DateTimeOffset.UtcNow) <= 0d)
+        {
+            changePreviewAnimationTimer.Stop();
+            changePreviewAnimationStartedAt = null;
+            changePreviewGhostGeometry = [];
         }
 
         InvalidateVisual();
@@ -1463,6 +1762,19 @@ public sealed class FloorPlanPreviewControl : Control
         public DimensionHandleKind HandleKind { get; }
     }
 
+    public sealed class FloorPlanMoveDeltaEventArgs : EventArgs
+    {
+        public FloorPlanMoveDeltaEventArgs(decimal deltaX, decimal deltaY)
+        {
+            DeltaX = deltaX;
+            DeltaY = deltaY;
+        }
+
+        public decimal DeltaX { get; }
+
+        public decimal DeltaY { get; }
+    }
+
     public sealed class MovableArtifactMovedEventArgs : EventArgs
     {
         public MovableArtifactMovedEventArgs(
@@ -1502,6 +1814,12 @@ public sealed class FloorPlanPreviewControl : Control
     {
         public static PreviewZoomState Default { get; } = new(1d, default);
     }
+
+    internal readonly record struct FloorPlanMoveDelta(decimal DeltaX, decimal DeltaY);
+
+    private readonly record struct FloorPlanMoveDragState(
+        FloorPlanPreviewGeometry.PreviewViewport Viewport,
+        Point PreviousPointerPosition);
 
     public enum DimensionHandleKind
     {

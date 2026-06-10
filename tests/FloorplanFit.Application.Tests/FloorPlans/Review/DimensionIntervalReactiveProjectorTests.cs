@@ -173,6 +173,52 @@ public sealed class DimensionIntervalReactiveProjectorTests
     }
 
     [Fact]
+    public void Project_does_not_recalculate_same_axis_dimension_when_interval_does_not_overlap_selected_band()
+    {
+        var verticalWallPathId = Guid.NewGuid();
+        var pinchGroupId = Guid.NewGuid();
+        var corridorId = Guid.NewGuid();
+        var startNodeId = Guid.NewGuid();
+        var endNodeId = Guid.NewGuid();
+        var dimension = CreateVerticalDimension(100m, 208m);
+        IReadOnlyList<GeometryPathDto> previewGeometry =
+        [
+            new(verticalWallPathId, false, [new GeometrySegmentDto(verticalWallPathId, 1, 100m, 100m, 100m, 208.5m)])
+        ];
+        IReadOnlyList<MeasurementCorridorDto> corridors =
+        [
+            new(corridorId, "Sink-Height", "Height", verticalWallPathId, 95m, 215m, "Verified", 1)
+        ];
+        IReadOnlyList<MeasurementNodeDto> nodes =
+        [
+            new(startNodeId, corridorId, 1, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), verticalWallPathId, "Projected", 100m, 100m, 100m, 0m, 0m, 0m),
+            new(endNodeId, corridorId, 2, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), verticalWallPathId, "Projected", 100m, 208m, 100m, 0m, 0m, 1m)
+        ];
+        IReadOnlyList<DimensionIntervalBindingDto> bindings =
+        [
+            new(dimension.DimensionId, corridorId, startNodeId, endNodeId, "ManualVerified", 100m, 208m)
+        ];
+        IReadOnlyList<ArticulationBandDto> articulationBands =
+        [
+            new(pinchGroupId, "Patio", "Height", 300m, 340m, 120m, "Verified")
+        ];
+
+        var rendered = DimensionIntervalReactiveProjector.Project(
+            [dimension],
+            previewGeometry,
+            corridors,
+            nodes,
+            bindings,
+            articulationBands,
+            pinchGroupId);
+
+        var updated = Assert.Single(rendered);
+        Assert.Equal(108m, updated.MeasurementSourceUnits);
+        Assert.Equal("9'-0\"", updated.DisplayText);
+        Assert.Equal("9'-0\"", updated.TextPrimitives[0].Text);
+    }
+
+    [Fact]
     public void Project_preserves_horizontal_dimension_appearance_for_width_bindings_when_nodes_are_vertically_misaligned_without_axis_delta()
     {
         var leftWallPathId = Guid.NewGuid();
@@ -769,6 +815,65 @@ public sealed class DimensionIntervalReactiveProjectorTests
     }
 
     [Fact]
+    public void Project_uses_source_geometry_as_authored_anchor_space_when_measurement_nodes_are_unprojected()
+    {
+        var leftWallPathId = Guid.NewGuid();
+        var rightWallPathId = Guid.NewGuid();
+        var pinchGroupId = Guid.NewGuid();
+        var corridorId = Guid.NewGuid();
+        var startNodeId = Guid.NewGuid();
+        var endNodeId = Guid.NewGuid();
+        var dimension = CreateHorizontalDimension(1000m, 1124m);
+        IReadOnlyList<GeometryPathDto> sourceGeometry =
+        [
+            new(leftWallPathId, false, [new GeometrySegmentDto(leftWallPathId, 1, 1000m, 100m, 1000m, 140m)]),
+            new(rightWallPathId, false, [new GeometrySegmentDto(rightWallPathId, 1, 1124m, 100m, 1124m, 140m)])
+        ];
+        IReadOnlyList<GeometryPathDto> previewGeometry =
+        [
+            new(leftWallPathId, false, [new GeometrySegmentDto(leftWallPathId, 1, 1000m, 100m, 1000m, 140m)]),
+            new(rightWallPathId, false, [new GeometrySegmentDto(rightWallPathId, 1, 1122m, 100m, 1122m, 140m)])
+        ];
+        IReadOnlyList<MeasurementCorridorDto> corridors =
+        [
+            new(corridorId, "Projected facade width", "Width", leftWallPathId, 95m, 145m, "Verified", 1)
+        ];
+        IReadOnlyList<MeasurementNodeDto> nodes =
+        [
+            new(startNodeId, corridorId, 1, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), leftWallPathId, "Projected", 100m, 120m, 100m, 0m, 0m, 0.5m),
+            new(endNodeId, corridorId, 2, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), rightWallPathId, "Projected", 224m, 120m, 224m, 0m, 0m, 0.5m)
+        ];
+        IReadOnlyList<DimensionIntervalBindingDto> bindings =
+        [
+            new(dimension.DimensionId, corridorId, startNodeId, endNodeId, "ManualVerified", 100m, 224m)
+        ];
+        IReadOnlyList<ArticulationBandDto> articulationBands =
+        [
+            new(pinchGroupId, "Projected facade", "Width", 1050m, 1140m, 120m, "Verified")
+        ];
+
+        var rendered = DimensionIntervalReactiveProjector.Project(
+            dimensions: [dimension],
+            sourceGeometry: sourceGeometry,
+            previewGeometry: previewGeometry,
+            measurementCorridors: corridors,
+            measurementNodes: nodes,
+            dimensionIntervalBindings: bindings,
+            articulationBands: articulationBands,
+            previewPinchGroupId: pinchGroupId);
+
+        var updated = Assert.Single(rendered);
+        Assert.Equal(1000m, updated.DefPointX);
+        Assert.Equal(1122m, updated.DefPoint2X);
+        Assert.Equal(122m, updated.MeasurementSourceUnits);
+        Assert.Equal("10'-2\"", updated.DisplayText);
+        Assert.Equal(1000m, updated.InsertPrimitives[0].X);
+        Assert.Equal(1122m, updated.InsertPrimitives[1].X);
+        Assert.Equal(1000m, updated.LinePrimitives[0].StartX);
+        Assert.Equal(1122m, updated.LinePrimitives[1].StartX);
+    }
+
+    [Fact]
     public void Project_translates_height_dimensions_with_width_preview_delta_without_recalculating_the_height()
     {
         var verticalWallPathId = Guid.NewGuid();
@@ -967,6 +1072,42 @@ public sealed class DimensionIntervalReactiveProjectorTests
             [
                 new DimensionInsertPrimitiveDto("INSERT-1", 1, "_Dot", 140m, 100m, 0m),
                 new DimensionInsertPrimitiveDto("INSERT-2", 2, "_Dot", 140m, 224m, 0m)
+            ]
+        };
+    }
+
+    private static DimensionDto CreateVerticalDimension(decimal startY, decimal endY)
+    {
+        var span = decimal.Abs(endY - startY);
+        var midY = startY + ((endY - startY) / 2m);
+        var displayText = DimensionDisplayTextFormatter.Resolve(
+            CreateVerticalLinearDimension(),
+            span,
+            "TestMeasurement").DisplayText;
+
+        return CreateVerticalLinearDimension() with
+        {
+            DefPointY = startY,
+            DefPoint2Y = endY,
+            DefPoint3Y = startY,
+            MeasurementSourceUnits = span,
+            MeasurementMillimeters = span * 25.4m,
+            DisplayText = displayText,
+            RenderTextY = midY,
+            LinePrimitives =
+            [
+                new DimensionLinePrimitiveDto("LINE-1", 1, 140m, startY, 100m, startY),
+                new DimensionLinePrimitiveDto("LINE-2", 2, 140m, endY, 100m, endY),
+                new DimensionLinePrimitiveDto("LINE-3", 3, 140m, startY, 140m, endY)
+            ],
+            TextPrimitives =
+            [
+                new DimensionTextPrimitiveDto("TEXT-1", 1, displayText, 148m, midY, 3.5m, 90m)
+            ],
+            InsertPrimitives =
+            [
+                new DimensionInsertPrimitiveDto("INSERT-1", 1, "_Dot", 140m, startY, 0m),
+                new DimensionInsertPrimitiveDto("INSERT-2", 2, "_Dot", 140m, endY, 0m)
             ]
         };
     }

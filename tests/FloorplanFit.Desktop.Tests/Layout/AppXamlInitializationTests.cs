@@ -1,4 +1,6 @@
+using Avalonia;
 using FloorplanFit.Desktop;
+using FloorplanFit.Desktop.ViewModels;
 using Xunit;
 
 namespace FloorplanFit.Desktop.Tests.Layout;
@@ -41,14 +43,124 @@ public sealed class AppXamlInitializationTests
         var solutionRoot = FindSolutionRoot();
         var reviewXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
         var mainXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml");
+        var sitePlanAdjustmentXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml");
 
         var reviewXaml = File.ReadAllText(reviewXamlPath);
         var mainXaml = File.ReadAllText(mainXamlPath);
+        var sitePlanAdjustmentXaml = File.ReadAllText(sitePlanAdjustmentXamlPath);
 
         Assert.DoesNotContain("Background=\"{DynamicResource AppBackgroundBrush}\"", reviewXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Background=\"{DynamicResource AppBackgroundBrush}\"", mainXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Background=\"{DynamicResource AppBackgroundBrush}\"", sitePlanAdjustmentXaml, StringComparison.Ordinal);
         Assert.Contains("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", reviewXaml, StringComparison.Ordinal);
         Assert.Contains("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", sitePlanAdjustmentXaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Library_version_actions_expose_edit_and_published_only_adjust_to_site_plan()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var mainXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml");
+        var mainCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml.cs");
+        var xaml = File.ReadAllText(mainXamlPath);
+        var codeBehind = File.ReadAllText(mainCodeBehindPath);
+
+        Assert.Contains("Content=\"Edit Selected Review\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Edit\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Adjust to Site Plan\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanAdjustToSitePlan}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"AdjustVersionToSitePlanButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AdjustVersionToSitePlanButton_OnClick", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Title = \"Select site plan DXF\"", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Open\"", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Site_plan_adjustment_window_reuses_preview_ux_without_fit_tools()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var sitePlanAdjustmentXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml");
+        var sitePlanAdjustmentCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml.cs");
+        var xaml = File.ReadAllText(sitePlanAdjustmentXamlPath);
+        var codeBehind = File.ReadAllText(sitePlanAdjustmentCodeBehindPath);
+
+        Assert.Contains("x:DataType=\"viewModels:SitePlanAdjustmentViewModel\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Classes=\"preview-switch\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsChecked=\"{Binding ArePreviewDimensionsVisible}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SitePlanGeometryPaths=\"{Binding SitePlanGeometryPaths}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SitePlanRenderPaths=\"{Binding SitePlanRenderPaths}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SitePlanTexts=\"{Binding SitePlanTexts}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("GeometryPaths=\"{Binding FloorPlanGeometryPaths}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Dimensions=\"{Binding Dimensions}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ChangedNumberDimensionIds=\"{Binding ChangedNumberDimensionIds}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AreDimensionsVisible=\"{Binding ArePreviewDimensionsVisible}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Move Floor Plan\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Classes.tool-active=\"{Binding IsFloorPlanMoveToolActive}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Command=\"{Binding ToggleFloorPlanMoveToolCommand}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsFloorPlanMoveToolActive=\"{Binding IsFloorPlanMoveToolActive}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding AutoFitSuggestionOptions}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"ApplyAutoFitOptionButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ApplyAutoFitOptionButton_OnClick", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("DataContext.ApplyAutoFitPlanCommand", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("FitToolPalette", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Inspector", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Site_plan_adjustment_window_keeps_fit_options_in_a_bounded_horizontal_strip()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var sitePlanAdjustmentXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml");
+        var xaml = File.ReadAllText(sitePlanAdjustmentXamlPath);
+
+        Assert.Contains("x:Name=\"AutoFitOptionsScroller\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MaxHeight=\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("HorizontalScrollBarVisibility=\"Auto\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<StackPanel Orientation=\"Horizontal\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Classes.fit-option-applied=\"{Binding IsApplied}\"", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Site_plan_adjustment_window_reserves_suggestion_panel_height_so_options_do_not_push_the_preview()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var sitePlanAdjustmentXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml");
+        var xaml = File.ReadAllText(sitePlanAdjustmentXamlPath).Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains(
+            "Classes=\"section-card\"\n                Height=\"280\"\n                MaxHeight=\"280\"",
+            xaml,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Site_plan_adjustment_window_initializes_xaml_without_throwing()
+    {
+        AppBuilder.Configure<App>()
+            .UsePlatformDetect()
+            .SetupWithoutStarting();
+
+        var exception = Record.Exception(() =>
+        {
+            _ = new SitePlanAdjustmentWindow
+            {
+                DataContext = new SitePlanAdjustmentViewModel(
+                    "Adjust",
+                    "Subtitle",
+                    "Preview",
+                    "Status",
+                    sitePlanGeometryPaths: [],
+                    sitePlanRenderPaths: [],
+                    sitePlanTexts: [],
+                    floorPlanGeometryPaths: [],
+                    roomLabels: [],
+                    openingLabels: [],
+                    dimensions: [])
+            };
+        });
+
+        Assert.Null(exception);
     }
 
     [Fact]

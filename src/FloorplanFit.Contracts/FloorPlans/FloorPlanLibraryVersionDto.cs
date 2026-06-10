@@ -12,4 +12,6 @@ public sealed record FloorPlanLibraryVersionDto(
     public string DisplayName => $"v{VersionNumber}";
 
     public string CurrentLabel => IsCurrent ? "Current" : string.Empty;
+
+    public bool CanAdjustToSitePlan => ActivePublishedCurationId.HasValue;
 }

@@ -13,7 +13,11 @@ namespace FloorplanFit.Desktop.Tests.ViewModels;
 
 public sealed class LibraryViewModelTests
 {
-    private static FloorPlanLibraryItemDto CreateLibraryItem(Guid templateId, Guid versionId, string status)
+    private static FloorPlanLibraryItemDto CreateLibraryItem(
+        Guid templateId,
+        Guid versionId,
+        string status,
+        Guid? activePublishedCurationId = null)
     {
         return new FloorPlanLibraryItemDto(
             templateId,
@@ -30,8 +34,32 @@ public sealed class LibraryViewModelTests
                     status,
                     new DateTime(2026, 4, 30, 18, 0, 0, DateTimeKind.Utc),
                     "inch",
-                    IsCurrent: true)
+                    IsCurrent: true,
+                    activePublishedCurationId)
             ]);
+    }
+
+    [Fact]
+    public void FloorPlanLibraryVersionDto_enables_site_plan_adjustment_only_for_active_published_versions()
+    {
+        var published = new FloorPlanLibraryVersionDto(
+            Guid.NewGuid(),
+            VersionNumber: 3,
+            Status: "Published",
+            new DateTime(2026, 6, 7, 12, 0, 0, DateTimeKind.Utc),
+            "inch",
+            IsCurrent: true,
+            ActivePublishedCurationId: Guid.NewGuid());
+        var draft = new FloorPlanLibraryVersionDto(
+            Guid.NewGuid(),
+            VersionNumber: 4,
+            Status: "Curated Draft",
+            new DateTime(2026, 6, 7, 13, 0, 0, DateTimeKind.Utc),
+            "inch",
+            IsCurrent: true);
+
+        Assert.True(published.CanAdjustToSitePlan);
+        Assert.False(draft.CanAdjustToSitePlan);
     }
 
     [Fact]

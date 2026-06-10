@@ -112,6 +112,34 @@ public sealed partial class LibraryViewModel : ObservableObject
         return await OpenSelectedReviewAsync(cancellationToken);
     }
 
+    public async Task<SitePlanAdjustmentViewModel?> OpenVersionSitePlanAdjustmentAsync(
+        FloorPlanLibraryItemDto item,
+        FloorPlanLibraryVersionDto version,
+        string sitePlanFilePath,
+        CancellationToken cancellationToken)
+    {
+        SelectVersion(item, version);
+        if (!version.CanAdjustToSitePlan)
+        {
+            StatusMessage = "Publish this floor plan before adjusting it to a site plan.";
+            return null;
+        }
+
+        StatusMessage = $"Loading site plan for {item.Code} v{version.VersionNumber}...";
+        using var scope = scopeFactory.CreateScope();
+        var sitePlanReader = scope.ServiceProvider.GetRequiredService<ISitePlanPreviewReader>();
+        var sitePlan = await sitePlanReader.ReadAsync(sitePlanFilePath, cancellationToken);
+        var reviewViewModel = await OpenSelectedReviewAsync(cancellationToken);
+        if (reviewViewModel is null)
+        {
+            return null;
+        }
+
+        var autoFitPlanSuggester = scope.ServiceProvider.GetRequiredService<IAutoFitPlanSuggester>();
+        StatusMessage = $"Previewing {item.Code} v{version.VersionNumber} over {sitePlan.FileName}";
+        return SitePlanAdjustmentPreviewProjector.Build(item, version, reviewViewModel, sitePlan, autoFitPlanSuggester);
+    }
+
     public void SelectVersion(FloorPlanLibraryItemDto item, FloorPlanLibraryVersionDto version)
     {
         SelectedItem = item;

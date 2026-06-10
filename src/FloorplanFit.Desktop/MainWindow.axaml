@@ -29,7 +29,7 @@
               Click="ExtractButton_OnClick" />
       <Button Name="ReviewButton"
               Grid.Column="2"
-              Content="Open Selected Review"
+              Content="Edit Selected Review"
               Click="ReviewButton_OnClick" />
       <Button Name="DeleteSelectedVersionButton"
               Grid.Column="3"
@@ -77,7 +77,7 @@
                       <Border Classes="section-card"
                               Padding="10"
                               Margin="0,0,0,8">
-                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto">
                           <TextBlock Grid.Column="0"
                                      FontWeight="SemiBold"
                                      Text="{Binding DisplayName}" />
@@ -97,9 +97,14 @@
                                   Click="SelectVersionButton_OnClick" />
                           <Button Grid.Column="5"
                                   Margin="12,0,0,0"
-                                  Content="Open"
+                                  Content="Edit"
                                   Click="OpenVersionButton_OnClick" />
                           <Button Grid.Column="6"
+                                  Margin="12,0,0,0"
+                                  Content="Adjust to Site Plan"
+                                  IsEnabled="{Binding CanAdjustToSitePlan}"
+                                  Click="AdjustVersionToSitePlanButton_OnClick" />
+                          <Button Grid.Column="7"
                                   Margin="12,0,0,0"
                                   Content="Delete"
                                   Click="DeleteVersionButton_OnClick" />

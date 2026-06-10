@@ -34,8 +34,11 @@ public static class DimensionIntervalReactiveProjector
         var corridorLookup = measurementCorridors.ToDictionary(item => item.CorridorId);
         var nodeLookup = measurementNodes.ToDictionary(item => item.NodeId);
         var previewGeometryLookup = previewGeometry.ToDictionary(item => item.Id);
-        var sourceGeometryLookup = sourceGeometry is { Count: > 0 }
-            ? sourceGeometry.ToDictionary(item => item.Id)
+        var sourceGeometryPaths = sourceGeometry is { Count: > 0 }
+            ? sourceGeometry
+            : null;
+        var sourceGeometryLookup = sourceGeometryPaths is not null
+            ? sourceGeometryPaths.ToDictionary(item => item.Id)
             : previewGeometryLookup;
         var bindingLookup = dimensionIntervalBindings
             .Where(item => string.Equals(item.BindingStatus, "ManualVerified", StringComparison.Ordinal))
@@ -67,10 +70,21 @@ public static class DimensionIntervalReactiveProjector
                     return dimension;
                 }
 
-                var authoredStartPoint = ResolveAuthoredPoint(startNode, corridor.AxisTag);
-                var authoredEndPoint = ResolveAuthoredPoint(endNode, corridor.AxisTag);
+                var authoredStartPoint = sourceGeometryPaths is not null
+                    ? TryResolveSourcePoint(startNode, corridor.AxisTag, sourceGeometryLookup) ??
+                      ResolveAuthoredPoint(startNode, corridor.AxisTag)
+                    : ResolveAuthoredPoint(startNode, corridor.AxisTag);
+                var authoredEndPoint = sourceGeometryPaths is not null
+                    ? TryResolveSourcePoint(endNode, corridor.AxisTag, sourceGeometryLookup) ??
+                      ResolveAuthoredPoint(endNode, corridor.AxisTag)
+                    : ResolveAuthoredPoint(endNode, corridor.AxisTag);
 
-                if (!string.Equals(corridor.AxisTag, band.AxisTag, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(corridor.AxisTag, band.AxisTag, StringComparison.OrdinalIgnoreCase) ||
+                    !IntervalsOverlap(
+                        ResolveAxisCoordinate(authoredStartPoint, corridor.AxisTag),
+                        ResolveAxisCoordinate(authoredEndPoint, corridor.AxisTag),
+                        band.BandStartCoordinate,
+                        band.BandEndCoordinate))
                 {
                     return DimensionGeometryProjector.TranslateAssociatedDimensionFromAnchorDeltas(
                         dimension,
@@ -99,18 +113,59 @@ public static class DimensionIntervalReactiveProjector
             .ToArray();
     }
 
+    private static bool IntervalsOverlap(
+        decimal firstStart,
+        decimal firstEnd,
+        decimal secondStart,
+        decimal secondEnd)
+    {
+        var normalizedFirstStart = decimal.Min(firstStart, firstEnd);
+        var normalizedFirstEnd = decimal.Max(firstStart, firstEnd);
+        var normalizedSecondStart = decimal.Min(secondStart, secondEnd);
+        var normalizedSecondEnd = decimal.Max(secondStart, secondEnd);
+
+        return normalizedFirstStart <= normalizedSecondEnd &&
+               normalizedSecondStart <= normalizedFirstEnd;
+    }
+
+    private static decimal ResolveAxisCoordinate(Point2 point, string axisTag)
+    {
+        return string.Equals(axisTag, "Height", StringComparison.OrdinalIgnoreCase)
+            ? point.Y
+            : point.X;
+    }
+
     private static Point2 ResolveAuthoredPoint(MeasurementNodeDto node, string axisTag)
+        => ApplyNodeOffsets(new Point2(node.AnchorX, node.AnchorY), node, axisTag);
+
+    private static Point2? TryResolveSourcePoint(
+        MeasurementNodeDto node,
+        string axisTag,
+        IReadOnlyDictionary<Guid, GeometryPathDto> sourceGeometryLookup)
+    {
+        if (!sourceGeometryLookup.TryGetValue(node.GeometryPathId, out var sourcePath))
+        {
+            return null;
+        }
+
+        var basePoint = GetPointAtRatio(sourcePath, node.PositionRatio);
+        return basePoint is null
+            ? null
+            : ApplyNodeOffsets(basePoint.Value, node, axisTag);
+    }
+
+    private static Point2 ApplyNodeOffsets(Point2 basePoint, MeasurementNodeDto node, string axisTag)
     {
         if (string.Equals(axisTag, "Height", StringComparison.OrdinalIgnoreCase))
         {
             return new Point2(
-                node.AnchorX + node.OffsetNormal,
-                node.AnchorY + node.OffsetAlongAxis);
+                basePoint.X + node.OffsetNormal,
+                basePoint.Y + node.OffsetAlongAxis);
         }
 
         return new Point2(
-            node.AnchorX + node.OffsetAlongAxis,
-            node.AnchorY + node.OffsetNormal);
+            basePoint.X + node.OffsetAlongAxis,
+            basePoint.Y + node.OffsetNormal);
     }
 
     private static Point2? TryResolveLivePoint(
@@ -133,19 +188,7 @@ public static class DimensionIntervalReactiveProjector
             return null;
         }
 
-        var x = basePoint.Value.X;
-        var y = basePoint.Value.Y;
-
-        if (string.Equals(axisTag, "Height", StringComparison.OrdinalIgnoreCase))
-        {
-            return new Point2(
-                x + node.OffsetNormal,
-                y + node.OffsetAlongAxis);
-        }
-
-        return new Point2(
-            x + node.OffsetAlongAxis,
-            y + node.OffsetNormal);
+        return ApplyNodeOffsets(basePoint.Value, node, axisTag);
     }
 
     private static Point2? GetPointAtMatchingSegmentLocation(

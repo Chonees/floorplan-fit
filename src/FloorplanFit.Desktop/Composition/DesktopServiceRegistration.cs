@@ -6,6 +6,7 @@ using FloorplanFit.Application.FloorPlans.Library;
 using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Desktop.ViewModels;
 using FloorplanFit.Infrastructure.Dxf;
+using FloorplanFit.Infrastructure.OpenAi;
 using FloorplanFit.Infrastructure.Persistence;
 using FloorplanFit.Infrastructure.Runtime;
 using FloorplanFit.Infrastructure.Security;
@@ -25,6 +26,10 @@ public static class DesktopServiceRegistration
         services.AddSingleton(new AppWorkspace(workspaceRoot, adjustedDxfExportDirectory));
         services.AddSingleton<IManagedFileStorage, ManagedFileStorage>();
         services.AddSingleton<IDxfGateway, IxMiliaDxfGateway>();
+        services.AddSingleton<ISitePlanPreviewReader, IxMiliaSitePlanPreviewReader>();
+        services.AddSingleton<HttpClient>();
+        services.AddSingleton(OpenAiAutoFitPlanSuggesterOptions.FromEnvironment());
+        services.AddSingleton<IAutoFitPlanSuggester, OpenAiAutoFitPlanSuggester>();
         services.AddSingleton(DxfExtractionProfile.PointeHomes);
         services.AddSingleton<IWallExtractor, IxMiliaWallExtractor>();
         services.AddSingleton<IRoomLabelExtractor, IxMiliaRoomLabelExtractor>();

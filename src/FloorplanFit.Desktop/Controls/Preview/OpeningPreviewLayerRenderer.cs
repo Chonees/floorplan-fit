@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Media;
 using FloorplanFit.Contracts.FloorPlans;
 
@@ -8,6 +9,7 @@ internal static class OpeningPreviewLayerRenderer
     public static void Render(
         DrawingContext context,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Rect clipBounds,
         IReadOnlyList<GeometryPathDto> previewGeometry,
         IReadOnlyList<OpeningCandidateDto>? openingCandidates,
         IReadOnlySet<Guid> openingGeometryPathIds,
@@ -29,7 +31,9 @@ internal static class OpeningPreviewLayerRenderer
             var pen = CreatePen(opening.Kind, pathId == highlightGeometryPathId);
             foreach (var segment in path.Segments)
             {
-                context.DrawLine(
+                PreviewLineClipper.DrawLine(
+                    context,
+                    clipBounds,
                     pen,
                     viewport.Project(segment.StartX, segment.StartY),
                     viewport.Project(segment.EndX, segment.EndY));

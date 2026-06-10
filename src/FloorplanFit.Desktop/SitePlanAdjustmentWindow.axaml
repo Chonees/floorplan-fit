@@ -1,0 +1,178 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:viewModels="using:FloorplanFit.Desktop.ViewModels"
+        xmlns:controls="using:FloorplanFit.Desktop.Controls"
+        x:Class="FloorplanFit.Desktop.SitePlanAdjustmentWindow"
+        x:DataType="viewModels:SitePlanAdjustmentViewModel"
+        RequestedThemeVariant="Dark"
+        TransparencyLevelHint="AcrylicBlur, Mica, Blur"
+        Width="1280"
+        Height="800"
+        WindowState="Maximized"
+        Title="Adjust to Site Plan">
+  <Window.Styles>
+    <Style Selector="Border.fit-option-card">
+      <Setter Property="Background" Value="{DynamicResource SectionBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.20" />
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.20" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.18" />
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <Style Selector="Border.fit-option-card.fit-option-applied">
+      <Setter Property="Background" Value="{DynamicResource ToolActiveCheckedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}" />
+      <Setter Property="RenderTransform" Value="scale(1.012)" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,*"
+        Margin="24">
+    <Grid ColumnDefinitions="*,Auto"
+          ColumnSpacing="16">
+      <StackPanel Spacing="8">
+        <TextBlock FontSize="30"
+                   FontWeight="Bold"
+                   Text="{Binding Title}" />
+        <TextBlock Classes="muted"
+                   Text="{Binding Subtitle}" />
+        <TextBlock Classes="muted"
+                   Text="{Binding StatusMessage}"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+
+      <Border Grid.Column="1"
+              Classes="metric-chip"
+              VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal"
+                    Spacing="10">
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsFloorPlanMoveToolActive}"
+                  Content="Move Floor Plan"
+                  Command="{Binding ToggleFloorPlanMoveToolCommand}"
+                  ToolTip.Tip="ArrastrÃ¡ el floor plan; el site plan queda fijo." />
+          <TextBlock FontWeight="SemiBold"
+                     Text="Cotas"
+                     VerticalAlignment="Center" />
+          <ToggleSwitch Classes="preview-switch"
+                        IsChecked="{Binding ArePreviewDimensionsVisible}"
+                        OnContent="Visibles"
+                        OffContent="Ocultas"
+                        ToolTip.Tip="Mostrá u ocultá visualmente todas las cotas del preview." />
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <Border Grid.Row="1"
+            Classes="panel-card"
+            ClipToBounds="True"
+            Margin="0,20,0,0">
+      <Grid RowDefinitions="Auto,*"
+            RowSpacing="12"
+            ClipToBounds="True">
+        <Border Classes="section-card"
+                Height="280"
+                MaxHeight="280"
+                ClipToBounds="True">
+          <Grid RowDefinitions="Auto,Auto"
+                ColumnDefinitions="*,Auto"
+                ColumnSpacing="16"
+                RowSpacing="10">
+            <StackPanel Spacing="4"
+                        MinWidth="0">
+              <TextBlock FontSize="20"
+                         FontWeight="SemiBold"
+                         Text="Preview" />
+              <TextBlock Classes="muted"
+                         Text="{Binding PreviewSelectionLabel}"
+                         TextWrapping="Wrap" />
+              <TextBlock Classes="muted"
+                         Text="{Binding AutoFitCandidateSummary}"
+                         TextWrapping="Wrap" />
+              <TextBlock FontWeight="SemiBold"
+                         Text="{Binding AutoFitSuggestionStatus}"
+                         TextWrapping="Wrap" />
+              <TextBlock Text="{Binding AutoFitSuggestionSummary}"
+                         TextWrapping="Wrap" />
+              <TextBlock Classes="muted"
+                         Text="{Binding AutoFitSuggestionPlanDetails}"
+                         TextWrapping="Wrap"
+                         MaxHeight="42" />
+            </StackPanel>
+
+            <Button Grid.Column="1"
+                    VerticalAlignment="Top"
+                    Content="Suggest Fit Plan (OpenAI)"
+                    Command="{Binding SuggestAutoFitPlanCommand}"
+                    ToolTip.Tip="OpenAI propone; el validator determin?stico decide si el plan es v?lido." />
+
+            <ScrollViewer x:Name="AutoFitOptionsScroller"
+                          Grid.Row="1"
+                          Grid.ColumnSpan="2"
+                          MaxHeight="136"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding AutoFitSuggestionOptions}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="10" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="viewModels:AutoFitSuggestionOptionViewModel">
+                    <Border Classes="section-card fit-option-card"
+                            Classes.fit-option-applied="{Binding IsApplied}"
+                            Width="560"
+                            MaxHeight="128"
+                            ClipToBounds="True">
+                      <Grid ColumnDefinitions="*,Auto"
+                            ColumnSpacing="12">
+                        <StackPanel Spacing="3"
+                                    MinWidth="0">
+                          <TextBlock FontWeight="SemiBold"
+                                     Text="{Binding Title}"
+                                     TextWrapping="Wrap" />
+                          <TextBlock Classes="muted"
+                                     Text="{Binding Details}"
+                                     TextWrapping="Wrap"
+                                     MaxHeight="58" />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                VerticalAlignment="Top"
+                                Content="{Binding ApplyLabel}"
+                                Click="ApplyAutoFitOptionButton_OnClick" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Grid>
+        </Border>
+
+        <controls:FloorPlanPreviewControl x:Name="PreviewControl"
+                                          Grid.Row="1"
+                                          MinHeight="0"
+                                          HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Stretch"
+                                          ClipToBounds="True"
+                                          IsFloorPlanMoveToolActive="{Binding IsFloorPlanMoveToolActive}"
+                                          SitePlanGeometryPaths="{Binding SitePlanGeometryPaths}"
+                                          SitePlanRenderPaths="{Binding SitePlanRenderPaths}"
+                                          SitePlanTexts="{Binding SitePlanTexts}"
+                                          GeometryPaths="{Binding FloorPlanGeometryPaths}"
+                                          RoomLabels="{Binding RoomLabels}"
+                                          OpeningLabels="{Binding OpeningLabels}"
+                                          Dimensions="{Binding Dimensions}"
+                                          ChangedNumberDimensionIds="{Binding ChangedNumberDimensionIds}"
+                                          AreDimensionsVisible="{Binding ArePreviewDimensionsVisible}" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

@@ -14,6 +14,7 @@ internal sealed record PreviewRenderScene(
     IReadOnlyList<RoomLabelDto> RoomLabels,
     IReadOnlyList<OpeningLabelDto> OpeningLabels,
     IReadOnlyList<DimensionDto> Dimensions,
+    IReadOnlyList<Guid>? ChangedNumberDimensionIds,
     bool AreDimensionsVisible,
     PreviewArtifactGeometryIndex ArtifactIndex,
     IReadOnlyList<OpeningCandidateDto>? OpeningCandidates,
@@ -35,7 +36,12 @@ internal sealed record PreviewRenderScene(
     Guid? HighlightDimensionId,
     Guid? PreviewPinchGroupId,
     string? PreviewAxisTag,
-    FloorPlanPreviewControl.DimensionHandleKind? ActiveDimensionHandleKind)
+    FloorPlanPreviewControl.DimensionHandleKind? ActiveDimensionHandleKind,
+    IReadOnlyList<GeometryPathDto>? SitePlanGeometry = null,
+    IReadOnlyList<SitePlanRenderPathDto>? SitePlanRenderPaths = null,
+    IReadOnlyList<SitePlanTextDto>? SitePlanTexts = null,
+    IReadOnlyList<GeometryPathDto>? ChangePreviewGhostGeometry = null,
+    double ChangePreviewGhostOpacity = 0d)
 {
     public bool HasGeometry => PreviewGeometry.Count > 0;
 

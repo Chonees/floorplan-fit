@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Media;
 using FloorplanFit.Contracts.FloorPlans;
 
@@ -8,6 +9,7 @@ internal static class CuratedArtifactPreviewLayerRenderer
     public static void Render(
         DrawingContext context,
         FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Rect clipBounds,
         IReadOnlyList<GeometryPathDto> previewGeometry,
         IReadOnlyList<CuratedPlanArtifactDto>? curatedPlanArtifacts,
         Guid? highlightGeometryPathId)
@@ -30,7 +32,9 @@ internal static class CuratedArtifactPreviewLayerRenderer
                 var pen = CreatePen(artifact, pathId == highlightGeometryPathId);
                 foreach (var segment in path.Segments)
                 {
-                    context.DrawLine(
+                    PreviewLineClipper.DrawLine(
+                        context,
+                        clipBounds,
                         pen,
                         viewport.Project(segment.StartX, segment.StartY),
                         viewport.Project(segment.EndX, segment.EndY));
