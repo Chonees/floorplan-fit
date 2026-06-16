@@ -1260,6 +1260,98 @@ public sealed class FloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task AddPinchGroupAsync_uses_the_name_entered_by_the_operator()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var groupRepository = new InMemoryPinchGroupRepository([]);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IPinchGroupRepository>(groupRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 6, 10, 22, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new RepositoryBackedFloorPlanReviewSessionReader(
+            templateId,
+            "seminole2000",
+            "SEMINOLE2000",
+            geometryPathId,
+            groupRepository));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<AddPinchGroupHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        viewModel.SelectedPinchAxis = nameof(PinchAxisTag.Height);
+
+        await viewModel.AddPinchGroupAsync("  Patio trasero  ", CancellationToken.None);
+
+        var group = Assert.Single(groupRepository.Items);
+        Assert.Equal("Patio trasero", group.Name);
+        Assert.Equal(PinchAxisTag.Height, group.AxisTag);
+        Assert.Equal(group.Id, viewModel.SelectedPinchGroupId);
+        Assert.Equal("Patio trasero", viewModel.SelectedPinchGroup?.Name);
+    }
+
+    [Fact]
+    public async Task RenameSelectedPinchGroupAsync_updates_only_the_selected_group_name()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var groupId = Guid.NewGuid();
+        var otherGroupId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var groupRepository = new InMemoryPinchGroupRepository(
+        [
+            new PinchGroup(groupId, Guid.Empty, "Ajuste 1", PinchAxisTag.Width, 1),
+            new PinchGroup(otherGroupId, Guid.Empty, "Porche", PinchAxisTag.Height, 2)
+        ]);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IPinchGroupRepository>(groupRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 6, 10, 22, 5, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new RepositoryBackedFloorPlanReviewSessionReader(
+            templateId,
+            "seminole2000",
+            "SEMINOLE2000",
+            geometryPathId,
+            groupRepository));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<RenamePinchGroupHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        groupRepository.Items[0] = new PinchGroup(groupId, viewModel.DraftCurationId, "Ajuste 1", PinchAxisTag.Width, 1);
+        groupRepository.Items[1] = new PinchGroup(otherGroupId, viewModel.DraftCurationId, "Porche", PinchAxisTag.Height, 2);
+        viewModel.SelectedPinchGroup = viewModel.PinchGroups.Single(item => item.PinchGroupId == groupId);
+
+        await viewModel.RenameSelectedPinchGroupAsync("  Patio principal  ", CancellationToken.None);
+
+        Assert.Equal("Patio principal", groupRepository.Items.Single(item => item.Id == groupId).Name);
+        Assert.Equal("Porche", groupRepository.Items.Single(item => item.Id == otherGroupId).Name);
+        Assert.Equal(groupId, viewModel.SelectedPinchGroupId);
+        Assert.Equal("Patio principal", viewModel.SelectedPinchGroup?.Name);
+        Assert.True(viewModel.CanRenameSelectedPinchGroup);
+    }
+
+    [Fact]
     public async Task ExcludeSelectedArtifactAsync_rejects_selected_wall_candidate()
     {
         var templateId = Guid.NewGuid();
@@ -1718,6 +1810,76 @@ public sealed class FloorPlanReviewViewModelTests
         }
     }
 
+    private sealed class RepositoryBackedFloorPlanReviewSessionReader : IFloorPlanReviewSessionReader
+    {
+        private readonly Guid templateId;
+        private readonly string templateCode;
+        private readonly string templateName;
+        private readonly Guid geometryPathId;
+        private readonly InMemoryPinchGroupRepository groupRepository;
+
+        public RepositoryBackedFloorPlanReviewSessionReader(
+            Guid templateId,
+            string templateCode,
+            string templateName,
+            Guid geometryPathId,
+            InMemoryPinchGroupRepository groupRepository)
+        {
+            this.templateId = templateId;
+            this.templateCode = templateCode;
+            this.templateName = templateName;
+            this.geometryPathId = geometryPathId;
+            this.groupRepository = groupRepository;
+        }
+
+        public Task<FloorPlanReviewSessionDto?> GetByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
+            => Task.FromResult<FloorPlanReviewSessionDto?>(CreateSession());
+
+        public Task<FloorPlanReviewSessionDto?> GetByVersionAsync(
+            Guid templateId,
+            Guid floorPlanVersionId,
+            CancellationToken cancellationToken)
+            => Task.FromResult<FloorPlanReviewSessionDto?>(CreateSession());
+
+        public Task<FloorPlanReviewSessionDto?> GetByCurationAsync(
+            Guid templateId,
+            Guid curationId,
+            CancellationToken cancellationToken)
+            => Task.FromResult<FloorPlanReviewSessionDto?>(CreateSession());
+
+        public Task<FloorPlanReviewSessionDto?> GetByCurationAsync(
+            Guid templateId,
+            Guid floorPlanVersionId,
+            Guid curationId,
+            CancellationToken cancellationToken)
+            => Task.FromResult<FloorPlanReviewSessionDto?>(CreateSession());
+
+        private FloorPlanReviewSessionDto CreateSession()
+        {
+            return new FloorPlanReviewSessionDto(
+                templateId,
+                templateCode,
+                templateName,
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 120m, 0m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                groupRepository.Items
+                    .OrderBy(item => item.SortOrder)
+                    .Select(item => new PinchGroupDto(item.Id, item.Name, item.AxisTag.ToString(), item.SortOrder))
+                    .ToArray(),
+                []);
+        }
+    }
+
     private sealed class InMemoryFloorPlanTemplateRepository : IFloorPlanTemplateRepository
     {
         private readonly List<FloorPlanTemplate> items;
@@ -1764,6 +1926,15 @@ public sealed class FloorPlanReviewViewModelTests
             IReadOnlyList<ExtractedWallCandidate> domainCandidates,
             IReadOnlyList<DetectedWallCandidate> detectedCandidates,
             CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task AddAsync(
+            ExtractedWallCandidate domainCandidate,
+            DetectedWallCandidate detectedCandidate,
+            CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<int> GetNextSortOrderAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
         public Task<ExtractedWallCandidate?> GetByIdAsync(Guid candidateId, CancellationToken cancellationToken)
@@ -1854,6 +2025,17 @@ public sealed class FloorPlanReviewViewModelTests
         public Task RemoveAsync(Guid pinchGroupId, CancellationToken cancellationToken)
         {
             Items.RemoveAll(item => item.Id == pinchGroupId);
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateAsync(PinchGroup group, CancellationToken cancellationToken)
+        {
+            var index = Items.FindIndex(item => item.Id == group.Id);
+            if (index >= 0)
+            {
+                Items[index] = group;
+            }
+
             return Task.CompletedTask;
         }
     }

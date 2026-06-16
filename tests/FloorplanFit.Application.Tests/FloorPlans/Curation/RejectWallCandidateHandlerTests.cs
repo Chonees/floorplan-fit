@@ -45,8 +45,14 @@ public sealed class RejectWallCandidateHandlerTests
         public Task AddRangeAsync(IReadOnlyList<ExtractedWallCandidate> domainCandidates, IReadOnlyList<DetectedWallCandidate> detectedCandidates, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public Task AddAsync(ExtractedWallCandidate domainCandidate, DetectedWallCandidate detectedCandidate, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task<ExtractedWallCandidate?> GetByIdAsync(Guid candidateId, CancellationToken cancellationToken)
             => Task.FromResult(candidate.Id == candidateId ? candidate : null);
+
+        public Task<int> GetNextSortOrderAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
 
         public Task UpdateAsync(ExtractedWallCandidate candidate, CancellationToken cancellationToken)
             => Task.CompletedTask;

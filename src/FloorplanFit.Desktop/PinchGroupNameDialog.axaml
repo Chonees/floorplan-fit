@@ -1,0 +1,44 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="FloorplanFit.Desktop.PinchGroupNameDialog"
+        RequestedThemeVariant="Dark"
+        Width="420"
+        Height="220"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Title="Nombre del grupo">
+  <Border Classes="panel-card"
+          Margin="16">
+    <StackPanel Spacing="12">
+      <StackPanel Spacing="4">
+        <TextBlock x:Name="TitleText"
+                   FontSize="20"
+                   FontWeight="SemiBold"
+                   Text="Nombre del grupo de pinches" />
+        <TextBlock x:Name="DescriptionText"
+                   Classes="muted"
+                   Text="Usá un nombre humano: Patio, Porche, Garage, Lateral..."
+                   TextWrapping="Wrap" />
+      </StackPanel>
+
+      <TextBox x:Name="NameTextBox"
+               Watermark="Nombre del grupo" />
+
+      <TextBlock x:Name="ValidationText"
+                 Foreground="#FFFF6B6B"
+                 IsVisible="False"
+                 Text="El nombre del grupo es obligatorio." />
+
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8">
+        <Button Classes="subtle"
+                Content="Cancelar"
+                Click="CancelButton_OnClick" />
+        <Button Classes="primary"
+                Content="Guardar"
+                Click="SaveButton_OnClick" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>

@@ -704,6 +704,11 @@ public sealed class LibraryViewModelTests
             Items.Add(run);
             return Task.CompletedTask;
         }
+
+        public Task<WallExtractionRun?> GetLatestByVersionAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Items.LastOrDefault(item => item.FloorPlanVersionId == floorPlanVersionId));
+        }
     }
 
     private sealed class InMemoryExtractedWallCandidateRepository : IExtractedWallCandidateRepository
@@ -714,6 +719,17 @@ public sealed class LibraryViewModelTests
         {
             Items.AddRange(domainCandidates);
             return Task.CompletedTask;
+        }
+
+        public Task AddAsync(ExtractedWallCandidate domainCandidate, DetectedWallCandidate detectedCandidate, CancellationToken cancellationToken)
+        {
+            Items.Add(domainCandidate);
+            return Task.CompletedTask;
+        }
+
+        public Task<int> GetNextSortOrderAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(Items.Count(item => item.WallExtractionRunId == wallExtractionRunId) + 1);
         }
 
         public Task<ExtractedWallCandidate?> GetByIdAsync(Guid candidateId, CancellationToken cancellationToken)

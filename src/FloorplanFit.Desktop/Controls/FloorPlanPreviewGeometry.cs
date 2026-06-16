@@ -20,13 +20,21 @@ internal static class FloorPlanPreviewGeometry
             return null;
         }
 
-        var segments = geometryPaths
+        var allSegments = geometryPaths
             .SelectMany(path => path.Segments)
             .ToArray();
 
-        if (segments.Length == 0)
+        if (allSegments.Length == 0)
         {
             return null;
+        }
+
+        // Fit to segments with real extent so collapsed leftovers (zero-length artifacts
+        // from degenerate CAD entities) cannot stretch the envelope and shrink the zoom.
+        var segments = allSegments.Where(segment => segment.HasExtent()).ToArray();
+        if (segments.Length == 0)
+        {
+            segments = allSegments;
         }
 
         var minX = segments.Min(segment => Math.Min((double)segment.StartX, (double)segment.EndX));

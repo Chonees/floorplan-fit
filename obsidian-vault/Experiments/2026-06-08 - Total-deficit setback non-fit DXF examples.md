@@ -24,12 +24,14 @@ The corrected semantic model is total centered deficit:
 
 ## Geometry basis
 
-The examples still preserve the real SEMINOLE2000 wall-footprint proportion:
+Updated on 2026-06-11 after visual QA showed the width logic was oscillating between two wrong bases. Width must use the **structural fit footprint** used for setback compliance, not all visible preview geometry and not annotation/pinch/dimension/outlier geometry.
+
+The corrected examples now use the active SEMINOLE2000 accepted-wall fit footprint bbox:
 
 ```txt
-footprint width  = 483.786"
-footprint height = 930.000"
-height / width   = 1.922338
+footprint width  = 483.785586"
+footprint height = 930.000286"
+height / width   = 1.922340
 ```
 
 ## Files
@@ -52,10 +54,10 @@ Current files:
 ## Verified dimensions
 
 ```txt
-Example 01: footprint 483.786 x 930; setback 482.786 x 930; deficit W/H = 1/0; overflow L/R/B/T = 0.5/0.5/0/0
-Example 02: footprint 483.786 x 930; setback 481.786 x 930; deficit W/H = 2/0; overflow L/R/B/T = 1/1/0/0
-Example 03: footprint 483.786 x 930; setback 483.786 x 929; deficit W/H = 0/1; overflow L/R/B/T = 0/0/0.5/0.5
-Example 04: footprint 483.786 x 930; setback 483.786 x 928; deficit W/H = 0/2; overflow L/R/B/T = 0/0/1/1
+Example 01: footprint 483.785586 x 930.000286; setback 482.785586 x 930.000286; deficit W/H = 1/0; overflow L/R/B/T = 0.5/0.5/0/0
+Example 02: footprint 483.785586 x 930.000286; setback 481.785586 x 930.000286; deficit W/H = 2/0; overflow L/R/B/T = 1/1/0/0
+Example 03: footprint 483.785586 x 930.000286; setback 483.785586 x 929.000286; deficit W/H = 0/1; overflow L/R/B/T = 0/0/0.5/0.5
+Example 04: footprint 483.785586 x 930.000286; setback 483.785586 x 928.000286; deficit W/H = 0/2; overflow L/R/B/T = 0/0/1/1
 ```
 
 ## Root cause of prior misunderstanding
@@ -64,4 +66,4 @@ The previous corrected batch fixed the floor-plan aspect ratio but still modeled
 
 ## Design decision
 
-The setback is centered inside the reference footprint to make total dimensional deficit visually unambiguous. If future tests need side-specific failures, create a separate lateral-overflow set instead of mixing semantics.
+The setback is centered inside the reference structural fit footprint to make total dimensional deficit visually unambiguous. If future tests need side-specific failures, create a separate lateral-overflow set instead of mixing semantics.

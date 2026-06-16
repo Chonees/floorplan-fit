@@ -14,6 +14,14 @@ public sealed class SqliteExtractedWallCandidateRepository : IExtractedWallCandi
         this.session = session;
     }
 
+    public Task AddAsync(
+        ExtractedWallCandidate domainCandidate,
+        DetectedWallCandidate detectedCandidate,
+        CancellationToken cancellationToken)
+    {
+        return AddRangeAsync([domainCandidate], [detectedCandidate], cancellationToken);
+    }
+
     public Task AddRangeAsync(
         IReadOnlyList<ExtractedWallCandidate> domainCandidates,
         IReadOnlyList<DetectedWallCandidate> detectedCandidates,
@@ -104,6 +112,22 @@ public sealed class SqliteExtractedWallCandidateRepository : IExtractedWallCandi
         }
 
         return Task.FromResult<ExtractedWallCandidate?>(MapCandidate(reader));
+    }
+
+    public Task<int> GetNextSortOrderAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            SELECT COALESCE(MAX(sort_order), 0) + 1
+            FROM extracted_wall_candidates
+            WHERE wall_extraction_run_id = $wall_extraction_run_id
+            """);
+        command.Parameters.AddWithValue("$wall_extraction_run_id", wallExtractionRunId.ToString());
+
+        var result = command.ExecuteScalar();
+        return Task.FromResult(Convert.ToInt32(result, CultureInfo.InvariantCulture));
     }
 
     public Task UpdateAsync(ExtractedWallCandidate candidate, CancellationToken cancellationToken)

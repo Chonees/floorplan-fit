@@ -200,6 +200,109 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task ExtractedWallCandidateRepository_persists_manual_wall_line_candidates()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            var floorPlanVersionId = Guid.NewGuid();
+            var oldRun = new WallExtractionRun(
+                Guid.NewGuid(),
+                floorPlanVersionId,
+                status: "Completed",
+                startedAtUtc: new DateTime(2026, 4, 30, 20, 0, 0, DateTimeKind.Utc),
+                finishedAtUtc: new DateTime(2026, 4, 30, 20, 0, 0, DateTimeKind.Utc),
+                extractorVersion: "old",
+                errorMessage: null);
+            var latestRun = new WallExtractionRun(
+                Guid.NewGuid(),
+                floorPlanVersionId,
+                status: "Completed",
+                startedAtUtc: new DateTime(2026, 4, 30, 21, 0, 0, DateTimeKind.Utc),
+                finishedAtUtc: new DateTime(2026, 4, 30, 21, 0, 0, DateTimeKind.Utc),
+                extractorVersion: "latest",
+                errorMessage: null);
+            var candidateId = Guid.NewGuid();
+            var geometryPathId = Guid.NewGuid();
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                var runRepository = new SqliteWallExtractionRunRepository(session);
+                var candidateRepository = new SqliteExtractedWallCandidateRepository(session);
+                await runRepository.AddAsync(oldRun, CancellationToken.None);
+                await runRepository.AddAsync(latestRun, CancellationToken.None);
+                await candidateRepository.AddAsync(
+                    new ExtractedWallCandidate(
+                        Guid.NewGuid(),
+                        latestRun.Id,
+                        sourceEntityRef: "LINE:1",
+                        sourceLayer: "A-WALL",
+                        geometryPathId: Guid.NewGuid(),
+                        thicknessMm: null,
+                        confidence: 0.95m,
+                        detectionNotes: null,
+                        status: ExtractedWallCandidateStatus.Accepted,
+                        sortOrder: 1),
+                    new DetectedWallCandidate(
+                        "LINE:1",
+                        "A-WALL",
+                        [new GeometryPoint(0m, 0m), new GeometryPoint(10m, 0m)],
+                        null,
+                        0.95m,
+                        null),
+                    CancellationToken.None);
+
+                Assert.Equal(2, await candidateRepository.GetNextSortOrderAsync(latestRun.Id, CancellationToken.None));
+                Assert.Equal(latestRun.Id, (await runRepository.GetLatestByVersionAsync(floorPlanVersionId, CancellationToken.None))?.Id);
+
+                await candidateRepository.AddAsync(
+                    new ExtractedWallCandidate(
+                        candidateId,
+                        latestRun.Id,
+                        sourceEntityRef: $"MANUAL-WALL:{candidateId:N}",
+                        sourceLayer: "MANUAL-WALLS",
+                        geometryPathId: geometryPathId,
+                        thicknessMm: null,
+                        confidence: 1m,
+                        detectionNotes: "Manual wall line added in review.",
+                        status: ExtractedWallCandidateStatus.Accepted,
+                        sortOrder: 2),
+                    new DetectedWallCandidate(
+                        $"MANUAL-WALL:{candidateId:N}",
+                        "MANUAL-WALLS",
+                        [new GeometryPoint(10m, 20m), new GeometryPoint(110m, 20m)],
+                        null,
+                        1m,
+                        "Manual wall line added in review."),
+                    CancellationToken.None);
+
+                await session.CommitAsync(CancellationToken.None);
+            }
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                var loadedCandidate = await new SqliteExtractedWallCandidateRepository(session).GetByIdAsync(candidateId, CancellationToken.None);
+
+                Assert.NotNull(loadedCandidate);
+                Assert.Equal("MANUAL-WALLS", loadedCandidate.SourceLayer);
+                Assert.Equal(ExtractedWallCandidateStatus.Accepted, loadedCandidate.Status);
+                Assert.Equal(2, loadedCandidate.SortOrder);
+                Assert.Equal(geometryPathId, loadedCandidate.GeometryPathId);
+                Assert.Equal(1, CountRows(session.Connection, session.Transaction, "geometry_segments", "geometry_path_id = $geometry_path_id", ("$geometry_path_id", geometryPathId.ToString())));
+            }
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task ExtractedRoomLabelRepository_round_trips_room_labels_by_extraction_run()
     {
         var tempRoot = CreateTempRoot();
@@ -544,6 +647,46 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
                 Assert.Equal("Patio", loaded.Name);
                 Assert.Equal(PinchAxisTag.Width, loaded.AxisTag);
                 Assert.Single(groups);
+            }
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task PinchGroupRepository_updates_group_name_without_changing_identity_axis_or_sort_order()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            var curationId = Guid.NewGuid();
+            var groupId = Guid.NewGuid();
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                var repository = new SqlitePinchGroupRepository(session);
+                await repository.AddAsync(new PinchGroup(groupId, curationId, "Ajuste 1", PinchAxisTag.Height, 4), CancellationToken.None);
+                await repository.UpdateAsync(new PinchGroup(groupId, curationId, "Patio trasero", PinchAxisTag.Height, 4), CancellationToken.None);
+                await session.CommitAsync(CancellationToken.None);
+            }
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                var loaded = await new SqlitePinchGroupRepository(session).GetByIdAsync(groupId, CancellationToken.None);
+
+                Assert.NotNull(loaded);
+                Assert.Equal(groupId, loaded.Id);
+                Assert.Equal(curationId, loaded.FloorPlanCurationId);
+                Assert.Equal("Patio trasero", loaded.Name);
+                Assert.Equal(PinchAxisTag.Height, loaded.AxisTag);
+                Assert.Equal(4, loaded.SortOrder);
             }
         }
         finally

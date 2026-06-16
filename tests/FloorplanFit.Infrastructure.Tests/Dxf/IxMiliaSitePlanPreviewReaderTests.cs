@@ -56,6 +56,54 @@ public sealed class IxMiliaSitePlanPreviewReaderTests
         Assert.Equal(expected.MaxY, preview.BuildableArea.MaxY);
     }
 
+    [Fact]
+    public async Task ReadAsync_ignores_collapsed_zero_extent_setback_geometry_when_resolving_buildable_area()
+    {
+        var sourcePath = CreateSetbackWithCollapsedOutlierFixture();
+        var reader = new IxMiliaSitePlanPreviewReader();
+
+        try
+        {
+            var preview = await reader.ReadAsync(sourcePath, CancellationToken.None);
+
+            Assert.Equal(10m, preview.BuildableArea.MinX);
+            Assert.Equal(10m, preview.BuildableArea.MinY);
+            Assert.Equal(110m, preview.BuildableArea.MaxX);
+            Assert.Equal(210m, preview.BuildableArea.MaxY);
+            Assert.All(preview.RenderPaths, path =>
+                Assert.Contains(path.Segments, segment =>
+                    segment.StartX != segment.EndX || segment.StartY != segment.EndY));
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+        }
+    }
+
+    private static string CreateSetbackWithCollapsedOutlierFixture()
+    {
+        var dxf = new IxMilia.Dxf.DxfFile();
+        dxf.Layers.Add(new IxMilia.Dxf.DxfLayer("SETBACK", IxMilia.Dxf.DxfColor.FromIndex(30)));
+
+        void AddSetbackLine(double startX, double startY, double endX, double endY)
+            => dxf.Entities.Add(new IxMilia.Dxf.Entities.DxfLine(
+                new IxMilia.Dxf.DxfPoint(startX, startY, 0d),
+                new IxMilia.Dxf.DxfPoint(endX, endY, 0d))
+            {
+                Layer = "SETBACK"
+            });
+
+        AddSetbackLine(10d, 10d, 110d, 10d);
+        AddSetbackLine(110d, 10d, 110d, 210d);
+        AddSetbackLine(110d, 210d, 10d, 210d);
+        AddSetbackLine(10d, 210d, 10d, 10d);
+        AddSetbackLine(500d, 500d, 500d, 500d);
+
+        var sourcePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        dxf.Save(sourcePath, false);
+        return sourcePath;
+    }
+
     private static GeometryBounds BoundsOf(IEnumerable<FloorplanFit.Contracts.FloorPlans.SitePlanRenderPathDto> paths)
     {
         var points = paths

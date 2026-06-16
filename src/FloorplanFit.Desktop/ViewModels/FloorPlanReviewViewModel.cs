@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.Controls;
+using FloorplanFit.Desktop.Controls.Preview;
 using FloorplanFit.Domain.FloorPlans;
 
 namespace FloorplanFit.Desktop.ViewModels;
@@ -223,6 +224,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private bool isPinchPlacementArmed;
 
     [ObservableProperty]
+    private bool isManualWallLinePlacementArmed;
+
+    [ObservableProperty]
+    private ManualWallLineDraft? manualWallLineDraft;
+
+    [ObservableProperty]
     private bool isMeasurementNodePlacementArmed;
 
     [ObservableProperty]
@@ -250,6 +257,10 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         ? "Cancelar ajuste"
         : "Agregar ajuste";
 
+    public string AddManualWallLineButtonLabel => IsManualWallLinePlacementArmed
+        ? "Cancelar pared"
+        : "Agregar pared";
+
     public string AddMeasurementNodeButtonLabel => IsMeasurementNodePlacementArmed
         ? "Cancelar punto"
         : "Elegir punto";
@@ -267,6 +278,10 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     public bool CanRemoveSelectedPinchGroup =>
         DraftCurationId != Guid.Empty &&
         SelectedPinchGroup is not null;
+
+    public bool CanRenameSelectedPinchGroup => CanRemoveSelectedPinchGroup;
+
+    public string SuggestedPinchGroupName => CreateNextPinchGroupName();
 
     public bool CanRemoveSelectedPinch => SelectedPinchMarker is not null;
 
@@ -745,25 +760,60 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         StatusMessage = $"Published curation for {Name}";
     }
 
-    public async Task AddPinchGroupAsync(CancellationToken cancellationToken)
+    public Task AddPinchGroupAsync(CancellationToken cancellationToken)
+        => AddPinchGroupAsync(CreateNextPinchGroupName(), cancellationToken);
+
+    public async Task AddPinchGroupAsync(string groupName, CancellationToken cancellationToken)
     {
         if (DraftCurationId == Guid.Empty)
         {
             return;
         }
 
-        var groupName = CreateNextPinchGroupName();
+        var normalizedGroupName = NormalizePinchGroupName(groupName);
+        if (normalizedGroupName.Length == 0)
+        {
+            StatusMessage = "El nombre del grupo de pinches es obligatorio.";
+            return;
+        }
 
-        StatusMessage = $"Creando grupo de pinches {groupName}...";
+        StatusMessage = $"Creando grupo de pinches {normalizedGroupName}...";
         var groupId = await mutationCoordinator.AddPinchGroupAsync(
             DraftCurationId,
-            groupName,
+            normalizedGroupName,
             Enum.Parse<PinchAxisTag>(SelectedPinchAxis),
             cancellationToken);
 
         NewPinchGroupName = string.Empty;
         await RefreshSessionAsync(SelectedCandidate?.CandidateId, null, groupId, GetSelectedCuratedArtifactSelection(), cancellationToken);
-        StatusMessage = $"Grupo de pinches {groupName} creado.";
+        StatusMessage = $"Grupo de pinches {normalizedGroupName} creado.";
+    }
+
+    public async Task RenameSelectedPinchGroupAsync(string groupName, CancellationToken cancellationToken)
+    {
+        if (!CanRenameSelectedPinchGroup || SelectedPinchGroup is null)
+        {
+            return;
+        }
+
+        var normalizedGroupName = NormalizePinchGroupName(groupName);
+        if (normalizedGroupName.Length == 0)
+        {
+            StatusMessage = "El nombre del grupo de pinches es obligatorio.";
+            return;
+        }
+
+        var groupId = SelectedPinchGroup.PinchGroupId;
+        var previousName = SelectedPinchGroup.Name;
+        StatusMessage = $"Renombrando grupo de pinches {previousName}...";
+        await mutationCoordinator.RenamePinchGroupAsync(
+            DraftCurationId,
+            groupId,
+            normalizedGroupName,
+            cancellationToken);
+
+        await RefreshSessionAsync(SelectedCandidate?.CandidateId, SelectedPinchMarker?.PinchMarkerId, groupId, GetSelectedCuratedArtifactSelection(), cancellationToken);
+        StatusMessage = $"Grupo de pinches {previousName} renombrado a {normalizedGroupName}.";
     }
 
     public async Task AddMeasurementCorridorAsync(CancellationToken cancellationToken)
@@ -813,6 +863,8 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         IsPinchPlacementArmed = false;
+        IsManualWallLinePlacementArmed = false;
+        ManualWallLineDraft = null;
         IsMeasurementNodePlacementArmed = !IsMeasurementNodePlacementArmed;
         StatusMessage = IsMeasurementNodePlacementArmed
             ? "Ahora hac\u00E9 click en una l\u00EDnea o punto v\u00E1lido del preview para marcar un punto de medida en la franja seleccionada."
@@ -834,10 +886,74 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         IsMeasurementNodePlacementArmed = false;
+        IsManualWallLinePlacementArmed = false;
+        ManualWallLineDraft = null;
         IsPinchPlacementArmed = !IsPinchPlacementArmed;
         StatusMessage = IsPinchPlacementArmed
             ? $"Ahora hac\u00E9 click en el preview para marcar un ajuste de {SelectedPinchGroup.Name}."
             : "Selecci\u00F3n de ajuste cancelada.";
+    }
+
+    public void ToggleManualWallLinePlacement()
+    {
+        IsPinchPlacementArmed = false;
+        IsMeasurementNodePlacementArmed = false;
+        ManualWallLineDraft = null;
+        IsManualWallLinePlacementArmed = !IsManualWallLinePlacementArmed;
+        StatusMessage = IsManualWallLinePlacementArmed
+            ? "Ahora hac\u00E9 click en el primer punto de la pared manual."
+            : "Creaci\u00F3n de pared cancelada.";
+    }
+
+    public void UpdateManualWallLinePreviewPoint(decimal x, decimal y)
+    {
+        if (!IsManualWallLinePlacementArmed || ManualWallLineDraft is not { } draft)
+        {
+            return;
+        }
+
+        ManualWallLineDraft = draft with
+        {
+            CurrentX = x,
+            CurrentY = y
+        };
+    }
+
+    public async Task HandleManualWallLinePointAsync(decimal x, decimal y, CancellationToken cancellationToken)
+    {
+        if (!IsManualWallLinePlacementArmed)
+        {
+            return;
+        }
+
+        if (ManualWallLineDraft is null)
+        {
+            ManualWallLineDraft = new ManualWallLineDraft(x, y, x, y);
+            StatusMessage = "Primer punto listo. Mov\u00E9 el cursor y hac\u00E9 click en el segundo punto de la pared.";
+            return;
+        }
+
+        var draft = ManualWallLineDraft;
+        if (draft.StartX == x && draft.StartY == y)
+        {
+            StatusMessage = "La pared manual necesita dos puntos distintos.";
+            return;
+        }
+
+        StatusMessage = "Guardando pared manual...";
+        var candidateId = await mutationCoordinator.AddManualWallCandidateAsync(
+            templateId,
+            floorPlanVersionId,
+            draft.StartX,
+            draft.StartY,
+            x,
+            y,
+            cancellationToken);
+
+        ManualWallLineDraft = null;
+        IsManualWallLinePlacementArmed = false;
+        await RefreshSessionAsync(candidateId, null, SelectedPinchGroup?.PinchGroupId, preferredCuratedArtifact: null, cancellationToken);
+        StatusMessage = "Pared manual agregada al preview.";
     }
 
     public async Task HandlePreviewInteractionAsync(Guid geometryPathId, decimal positionRatio, CancellationToken cancellationToken)
@@ -1705,6 +1821,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedPinchGroupId));
         OnPropertyChanged(nameof(SelectedPinchGroupMarkers));
         OnPropertyChanged(nameof(CanRemoveSelectedPinchGroup));
+        OnPropertyChanged(nameof(CanRenameSelectedPinchGroup));
         OnPropertyChanged(nameof(SelectedPinchGroupImpactSummary));
         RaiseUxNotifications();
     }
@@ -1946,6 +2063,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         RaiseUxNotifications();
     }
 
+    partial void OnIsManualWallLinePlacementArmedChanged(bool value)
+    {
+        RaiseUxNotifications();
+        OnPropertyChanged(nameof(AddManualWallLineButtonLabel));
+    }
+
     partial void OnIsMeasurementNodePlacementArmedChanged(bool value)
     {
         RaiseUxNotifications();
@@ -2027,6 +2150,8 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         RaiseMeasurementNodeGroupOptionNotifications();
         OnPropertyChanged(nameof(CanPublishCuration));
         OnPropertyChanged(nameof(CanRemoveSelectedPinchGroup));
+        OnPropertyChanged(nameof(CanRenameSelectedPinchGroup));
+        OnPropertyChanged(nameof(SuggestedPinchGroupName));
         OnPropertyChanged(nameof(CanRemoveSelectedMeasurementCorridor));
         OnPropertyChanged(nameof(SelectedDimensionIntervalBindingSummary));
         OnPropertyChanged(nameof(SelectedPinchGroupImpactSummary));
@@ -2286,6 +2411,13 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             ? 1
             : PinchGroups.Max(item => item.SortOrder) + 1;
         return $"Ajuste {nextDisplayNumber.ToString(CultureInfo.InvariantCulture)}";
+    }
+
+    private static string NormalizePinchGroupName(string groupName)
+    {
+        return string.IsNullOrWhiteSpace(groupName)
+            ? string.Empty
+            : groupName.Trim();
     }
 
     private MeasurementNodeGroupOptionViewModel? FindMeasurementNodeGroupOption()

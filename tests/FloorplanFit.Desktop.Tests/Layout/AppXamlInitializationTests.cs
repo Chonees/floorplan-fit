@@ -95,8 +95,10 @@ public sealed class AppXamlInitializationTests
         Assert.Contains("Dimensions=\"{Binding Dimensions}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ChangedNumberDimensionIds=\"{Binding ChangedNumberDimensionIds}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AreDimensionsVisible=\"{Binding ArePreviewDimensionsVisible}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Content=\"Move Floor Plan\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Classes.tool-active=\"{Binding IsFloorPlanMoveToolActive}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Mover plano\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Classes=\"sidebar-action\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Classes.sidebar-action-active=\"{Binding IsFloorPlanMoveToolActive}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MinWidth=\"120\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Command=\"{Binding ToggleFloorPlanMoveToolCommand}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsFloorPlanMoveToolActive=\"{Binding IsFloorPlanMoveToolActive}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ItemsSource=\"{Binding AutoFitSuggestionOptions}\"", xaml, StringComparison.Ordinal);
@@ -108,17 +110,50 @@ public sealed class AppXamlInitializationTests
     }
 
     [Fact]
-    public void Site_plan_adjustment_window_keeps_fit_options_in_a_bounded_horizontal_strip()
+    public void Dxf_export_actions_use_simple_exportar_dxf_copy()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var reviewXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
+        var sitePlanAdjustmentXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml");
+        var sitePlanAdjustmentCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml.cs");
+
+        var reviewXaml = File.ReadAllText(reviewXamlPath);
+        var sitePlanAdjustmentXaml = File.ReadAllText(sitePlanAdjustmentXamlPath);
+        var sitePlanAdjustmentCodeBehind = File.ReadAllText(sitePlanAdjustmentCodeBehindPath);
+
+        Assert.Contains("Content=\"Exportar DXF\"", reviewXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Exportar DXF\"", sitePlanAdjustmentXaml, StringComparison.Ordinal);
+        Assert.Contains("Title = \"Exportar DXF\"", sitePlanAdjustmentCodeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("Exportar DXF ajustado", reviewXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Exportar DXF ajustado", sitePlanAdjustmentXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Exportar DXF ajustado", sitePlanAdjustmentCodeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Site_plan_adjustment_window_keeps_fit_options_in_a_bounded_sidebar_list()
     {
         var solutionRoot = FindSolutionRoot();
         var sitePlanAdjustmentXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml");
-        var xaml = File.ReadAllText(sitePlanAdjustmentXamlPath);
+        var xaml = File.ReadAllText(sitePlanAdjustmentXamlPath).Replace("\r\n", "\n", StringComparison.Ordinal);
 
+        Assert.Contains("ColumnDefinitions=\"*,400\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Grid.Column=\"1\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"AutoFitOptionsScroller\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("MaxHeight=\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("HorizontalScrollBarVisibility=\"Auto\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("<StackPanel Orientation=\"Horizontal\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("HorizontalScrollBarVisibility=\"Disabled\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<StackPanel Orientation=\"Vertical\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Classes.fit-option-applied=\"{Binding IsApplied}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("HorizontalAlignment=\"Stretch\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MinHeight=\"144\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("RowDefinitions=\"Auto,Auto,Auto\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Grid.Row=\"2\"\n                            HorizontalAlignment=\"Stretch\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Sugerir ajuste (AI)\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("OpenAI", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Suggest Fit Plan", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ColumnDefinitions=\"*,Auto\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Width=\"420\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Height=\"112\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("MaxHeight=\"132\"", xaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -128,10 +163,16 @@ public sealed class AppXamlInitializationTests
         var sitePlanAdjustmentXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml");
         var xaml = File.ReadAllText(sitePlanAdjustmentXamlPath).Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        Assert.Contains(
-            "Classes=\"section-card\"\n                Height=\"280\"\n                MaxHeight=\"280\"",
-            xaml,
-            StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"PreviewShell\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"AdjustmentSidebar\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Grid.Column=\"0\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Grid.Column=\"1\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("FontSize=\"30\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"{Binding Subtitle}\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"{Binding StatusMessage}\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Preview\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Height=\"220\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("MaxHeight=\"220\"", xaml, StringComparison.Ordinal);
     }
 
     [Fact]

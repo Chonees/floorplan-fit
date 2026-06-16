@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using FloorplanFit.Desktop.Controls;
 using FloorplanFit.Desktop.ViewModels;
 
@@ -32,5 +33,34 @@ public partial class SitePlanAdjustmentWindow : Window
         }
 
         viewModel.ApplyAutoFitPlan(option);
+    }
+
+    private async void ExportAdjustedSitePlanButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SitePlanAdjustmentViewModel viewModel)
+        {
+            return;
+        }
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Exportar DXF",
+            SuggestedFileName = "plano-ajustado-al-sitio.dxf",
+            DefaultExtension = "dxf",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("DXF files")
+                {
+                    Patterns = ["*.dxf"]
+                }
+            ]
+        });
+
+        if (file is null)
+        {
+            return;
+        }
+
+        await viewModel.ExportAdjustedSitePlanAsync(file.Path.LocalPath, CancellationToken.None);
     }
 }

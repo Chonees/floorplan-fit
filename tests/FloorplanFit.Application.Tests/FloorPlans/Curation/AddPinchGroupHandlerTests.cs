@@ -48,6 +48,9 @@ public sealed class AddPinchGroupHandlerTests
 
         public Task RemoveAsync(Guid pinchGroupId, CancellationToken cancellationToken)
             => throw new NotSupportedException();
+
+        public Task UpdateAsync(PinchGroup group, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

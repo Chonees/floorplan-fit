@@ -38,6 +38,7 @@ public static class DesktopServiceRegistration
         services.AddSingleton<IProtectedDetailAssemblyExtractor, IxMiliaProtectedDetailAssemblyExtractor>();
         services.AddSingleton<IDimensionExtractor, IxMiliaDimensionExtractor>();
         services.AddSingleton<IAdjustedDxfExporter, IxMiliaAdjustedDxfExporter>();
+        services.AddSingleton<IAdjustedSitePlanExporter, IxMiliaAdjustedSitePlanExporter>();
         services.AddSingleton<IFileHashService, Sha256FileHashService>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<ImportFloorPlanResultFactory>();
@@ -86,6 +87,7 @@ public static class DesktopServiceRegistration
         services.AddScoped<EditPublishedFloorPlanCurationHandler>();
         services.AddScoped<StartOrResumeCurationHandler>();
         services.AddScoped<AddPinchGroupHandler>();
+        services.AddScoped<AddManualWallCandidateHandler>();
         services.AddScoped<AddPinchMarkerHandler>();
         services.AddScoped<AddMeasurementCorridorHandler>();
         services.AddScoped<ChangeMeasurementCorridorAxisHandler>();
@@ -95,6 +97,7 @@ public static class DesktopServiceRegistration
         services.AddScoped<RemoveMeasurementCorridorHandler>();
         services.AddScoped<RemoveMeasurementNodeHandler>();
         services.AddScoped<RemovePinchGroupHandler>();
+        services.AddScoped<RenamePinchGroupHandler>();
         services.AddScoped<RemovePinchMarkerHandler>();
         services.AddScoped<RemoveRoomLabelHandler>();
         services.AddScoped<RemoveOpeningCandidateHandler>();

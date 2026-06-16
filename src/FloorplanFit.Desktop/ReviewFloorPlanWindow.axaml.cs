@@ -52,6 +52,16 @@ public partial class ReviewFloorPlanWindow : Window
         viewModel.TogglePinchPlacement();
     }
 
+    private void AddManualWallLineButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        viewModel.ToggleManualWallLinePlacement();
+    }
+
     private async void AddPinchGroupButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is not FloorPlanReviewViewModel viewModel)
@@ -59,7 +69,36 @@ public partial class ReviewFloorPlanWindow : Window
             return;
         }
 
-        await viewModel.AddPinchGroupAsync(CancellationToken.None);
+        var groupName = await PromptForPinchGroupNameAsync(
+            "Crear grupo de pinches",
+            "Nombrá la zona que se puede ajustar. Ej: Patio, Porche, Garage, Lateral.",
+            viewModel.SuggestedPinchGroupName);
+        if (groupName is null)
+        {
+            return;
+        }
+
+        await viewModel.AddPinchGroupAsync(groupName, CancellationToken.None);
+    }
+
+    private async void RenamePinchGroupButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel ||
+            viewModel.SelectedPinchGroup is null)
+        {
+            return;
+        }
+
+        var groupName = await PromptForPinchGroupNameAsync(
+            "Renombrar grupo de pinches",
+            "Cambiá solo el nombre humano. Los pinches, eje y capacidad quedan intactos.",
+            viewModel.SelectedPinchGroup.Name);
+        if (groupName is null)
+        {
+            return;
+        }
+
+        await viewModel.RenameSelectedPinchGroupAsync(groupName, CancellationToken.None);
     }
 
     private async void RemovePinchGroupButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -70,6 +109,12 @@ public partial class ReviewFloorPlanWindow : Window
         }
 
         await viewModel.RemoveSelectedPinchGroupAsync(CancellationToken.None);
+    }
+
+    private async Task<string?> PromptForPinchGroupNameAsync(string title, string description, string initialName)
+    {
+        var dialog = new PinchGroupNameDialog(title, description, initialName);
+        return await dialog.ShowDialog<string?>(this);
     }
 
     private async void AddMeasurementCorridorButton_OnClick(object? sender, RoutedEventArgs e)
@@ -180,6 +225,24 @@ public partial class ReviewFloorPlanWindow : Window
         }
 
         await viewModel.HandlePreviewInteractionAsync(e.GeometryPathId, e.PositionRatio, CancellationToken.None);
+    }
+
+    private async void PreviewControl_OnManualWallLinePointClicked(object? sender, FloorPlanPreviewControl.ManualWallLinePointClickedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.HandleManualWallLinePointAsync(e.X, e.Y, CancellationToken.None);
+    }
+
+    private void PreviewControl_OnManualWallLinePreviewPointChanged(object? sender, FloorPlanPreviewControl.ManualWallLinePreviewPointChangedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            viewModel.UpdateManualWallLinePreviewPoint(e.X, e.Y);
+        }
     }
 
     private void PreviewControl_OnRoomLabelClicked(object? sender, FloorPlanPreviewControl.RoomLabelClickedEventArgs e)

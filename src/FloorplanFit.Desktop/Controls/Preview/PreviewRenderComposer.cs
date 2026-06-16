@@ -64,6 +64,7 @@ internal static class PreviewRenderComposer
         }
 
         RenderChangePreviewGhost(context, viewport, scene.Bounds, scene.ChangePreviewGhostGeometry, scene.ChangePreviewGhostOpacity);
+        ManualWallLinePreviewLayerRenderer.Render(context, viewport, scene.Bounds, scene.ManualWallLineDraft);
 
         if (ResolveArtifactLayerMode(scene) == PreviewArtifactLayerMode.Curated)
         {

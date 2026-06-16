@@ -11,4 +11,6 @@ public interface IPinchGroupRepository
     Task<IReadOnlyList<PinchGroup>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken);
 
     Task RemoveAsync(Guid pinchGroupId, CancellationToken cancellationToken);
+
+    Task UpdateAsync(PinchGroup group, CancellationToken cancellationToken);
 }

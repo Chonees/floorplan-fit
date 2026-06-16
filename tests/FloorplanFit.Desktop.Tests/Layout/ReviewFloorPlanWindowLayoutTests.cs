@@ -158,16 +158,24 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("x:Name=\"FitExistingPanel\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsVisible=\"{Binding IsFitToolSelected}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ToolTip.Tip=\"Marcar pinch\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Tag=\"Agregar pared\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ToolTip.Tip=\"Agregar pared\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"AddManualWallLineButton_OnClick\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ToolTip.Tip=\"Crear franja\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"AddMeasurementCorridorButton_OnClick\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ToolTip.Tip=\"Elegir nodo\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ToolTip.Tip=\"Quitar pinch\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Classes.tool-active=\"{Binding IsPinchPlacementArmed}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Classes.tool-active=\"{Binding IsManualWallLinePlacementArmed}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Classes.tool-active=\"{Binding IsMeasurementNodePlacementArmed}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedMeasurementCorridorId=\"{Binding SelectedMeasurementCorridorId}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedMeasurementNodeId=\"{Binding SelectedMeasurementNodeId}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedMeasurementStartNodeId=\"{Binding SelectedMeasurementStartNodeId}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedMeasurementEndNodeId=\"{Binding SelectedMeasurementEndNodeId}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ManualWallLineDraft=\"{Binding ManualWallLineDraft}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsManualWallLinePlacementArmed=\"{Binding IsManualWallLinePlacementArmed}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ManualWallLinePointClicked=\"PreviewControl_OnManualWallLinePointClicked\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ManualWallLinePreviewPointChanged=\"PreviewControl_OnManualWallLinePreviewPointChanged\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"in\"", xaml, StringComparison.Ordinal);
         Assert.Contains("NewPinchMaxTrimInches", xaml, StringComparison.Ordinal);
         Assert.Contains("MaxTrimInches", xaml, StringComparison.Ordinal);
@@ -181,6 +189,9 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("x:DataType=\"contracts:PinchGroupDto\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Content=\"Crear grupo de pinches\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"AddPinchGroupButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Renombrar grupo\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanRenameSelectedPinchGroup}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"RenamePinchGroupButton_OnClick\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Content=\"Eliminar grupo de pinches\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsEnabled=\"{Binding CanRemoveSelectedPinchGroup}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"RemovePinchGroupButton_OnClick\"", xaml, StringComparison.Ordinal);
@@ -238,6 +249,48 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.DoesNotContain("ItemsSource=\"{Binding SelectedMeasurementCorridorNodeOptions}\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("x:Name=\"FitWorkbench\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("<StackPanel IsVisible=\"{Binding IsFitToolSelected}\"", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Pinch_group_actions_open_a_naming_dialog_before_mutating_groups()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var codeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml.cs");
+        var codeBehind = File.ReadAllText(codeBehindPath);
+
+        Assert.Contains("PinchGroupNameDialog", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ShowDialog<string?>(this)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("AddPinchGroupAsync(groupName", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("RenamePinchGroupButton_OnClick", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("RenameSelectedPinchGroupAsync(groupName", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Manual_wall_line_tool_wires_preview_events_to_review_view_model()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var codeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml.cs");
+        var codeBehind = File.ReadAllText(codeBehindPath);
+
+        Assert.Contains("AddManualWallLineButton_OnClick", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ToggleManualWallLinePlacement", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("PreviewControl_OnManualWallLinePointClicked", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("HandleManualWallLinePointAsync", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("PreviewControl_OnManualWallLinePreviewPointChanged", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("UpdateManualWallLinePreviewPoint", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Pinch_group_name_dialog_contains_name_input_and_save_cancel_actions()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var dialogPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "PinchGroupNameDialog.axaml");
+        var dialog = File.ReadAllText(dialogPath);
+
+        Assert.Contains("x:Name=\"NameTextBox\"", dialog, StringComparison.Ordinal);
+        Assert.Contains("Watermark=\"Nombre del grupo\"", dialog, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Cancelar\"", dialog, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Guardar\"", dialog, StringComparison.Ordinal);
     }
 
     private static string FindSolutionRoot()

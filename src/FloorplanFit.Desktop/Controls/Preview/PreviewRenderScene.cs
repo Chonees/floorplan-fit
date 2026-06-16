@@ -40,6 +40,7 @@ internal sealed record PreviewRenderScene(
     IReadOnlyList<GeometryPathDto>? SitePlanGeometry = null,
     IReadOnlyList<SitePlanRenderPathDto>? SitePlanRenderPaths = null,
     IReadOnlyList<SitePlanTextDto>? SitePlanTexts = null,
+    ManualWallLineDraft? ManualWallLineDraft = null,
     IReadOnlyList<GeometryPathDto>? ChangePreviewGhostGeometry = null,
     double ChangePreviewGhostOpacity = 0d)
 {

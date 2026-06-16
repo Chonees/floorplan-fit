@@ -67,6 +67,27 @@ internal sealed class FloorPlanReviewMutationCoordinator
         return await handler.HandleAsync(draftCurationId, groupName, axisTag, cancellationToken);
     }
 
+    public async Task<Guid> AddManualWallCandidateAsync(
+        Guid templateId,
+        Guid? floorPlanVersionId,
+        decimal startX,
+        decimal startY,
+        decimal endX,
+        decimal endY,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<AddManualWallCandidateHandler>();
+        return await handler.HandleAsync(
+            templateId,
+            floorPlanVersionId,
+            startX,
+            startY,
+            endX,
+            endY,
+            cancellationToken);
+    }
+
     public async Task RemovePinchGroupAsync(
         Guid draftCurationId,
         Guid pinchGroupId,
@@ -75,6 +96,17 @@ internal sealed class FloorPlanReviewMutationCoordinator
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<RemovePinchGroupHandler>();
         await handler.HandleAsync(draftCurationId, pinchGroupId, cancellationToken);
+    }
+
+    public async Task RenamePinchGroupAsync(
+        Guid draftCurationId,
+        Guid pinchGroupId,
+        string groupName,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<RenamePinchGroupHandler>();
+        await handler.HandleAsync(draftCurationId, pinchGroupId, groupName, cancellationToken);
     }
 
     public async Task<Guid> AddMeasurementCorridorAsync(

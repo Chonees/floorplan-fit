@@ -30,6 +30,16 @@ public sealed record AutoFitSuggestionFacts(
     }
 }
 
+/// <summary>
+/// Two complementary readings of how the projected floor plan misses the buildable area.
+/// <see cref="WidthInches"/>/<see cref="HeightInches"/> are the minimum trim per axis for the
+/// footprint to fit at all, independent of where it currently sits — a plan that fits but is
+/// shifted needs moving, not trimming, so these stay zero. The per-side values
+/// (<see cref="LeftInches"/>, <see cref="RightInches"/>, <see cref="BottomInches"/>,
+/// <see cref="TopInches"/>) are the actual overflow at the current projected position, so they
+/// match what the preview shows and per-side sums only equal the axis trim when the plan is
+/// centered in the buildable area.
+/// </summary>
 public sealed record AutoFitEnvelopeDeficitDto(
     decimal WidthInches,
     decimal HeightInches,

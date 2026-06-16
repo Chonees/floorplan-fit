@@ -72,6 +72,8 @@ public sealed class FloorPlanPreviewControl : Control
             PreviewPinchGroupIdProperty,
             PreviewAxisTagProperty,
             IsPinchPlacementArmedProperty,
+            IsManualWallLinePlacementArmedProperty,
+            ManualWallLineDraftProperty,
             AreDimensionsVisibleProperty);
         SitePlanGeometryPathsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
             control.OnSitePlanGeometryPathsChanged(
@@ -263,6 +265,12 @@ public sealed class FloorPlanPreviewControl : Control
 
     public static readonly StyledProperty<bool> IsPinchPlacementArmedProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, bool>(nameof(IsPinchPlacementArmed));
+
+    public static readonly StyledProperty<bool> IsManualWallLinePlacementArmedProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, bool>(nameof(IsManualWallLinePlacementArmed));
+
+    public static readonly StyledProperty<ManualWallLineDraft?> ManualWallLineDraftProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, ManualWallLineDraft?>(nameof(ManualWallLineDraft));
 
     public static readonly StyledProperty<bool> IsFloorPlanMoveToolActiveProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, bool>(nameof(IsFloorPlanMoveToolActive));
@@ -465,6 +473,18 @@ public sealed class FloorPlanPreviewControl : Control
         set => SetValue(IsPinchPlacementArmedProperty, value);
     }
 
+    public bool IsManualWallLinePlacementArmed
+    {
+        get => GetValue(IsManualWallLinePlacementArmedProperty);
+        set => SetValue(IsManualWallLinePlacementArmedProperty, value);
+    }
+
+    public ManualWallLineDraft? ManualWallLineDraft
+    {
+        get => GetValue(ManualWallLineDraftProperty);
+        set => SetValue(ManualWallLineDraftProperty, value);
+    }
+
     public bool IsFloorPlanMoveToolActive
     {
         get => GetValue(IsFloorPlanMoveToolActiveProperty);
@@ -478,6 +498,8 @@ public sealed class FloorPlanPreviewControl : Control
     public event EventHandler<DimensionClickedEventArgs>? DimensionClicked;
     public event EventHandler<DimensionEditedEventArgs>? DimensionEdited;
     public event EventHandler<FloorPlanMoveDeltaEventArgs>? FloorPlanMoveDeltaRequested;
+    public event EventHandler<ManualWallLinePointClickedEventArgs>? ManualWallLinePointClicked;
+    public event EventHandler<ManualWallLinePreviewPointChangedEventArgs>? ManualWallLinePreviewPointChanged;
 
     internal static Rect GetLocalRenderBounds(Rect layoutBounds)
     {
@@ -624,6 +646,23 @@ public sealed class FloorPlanPreviewControl : Control
             return;
         }
 
+        if (IsManualWallLinePlacementArmed)
+        {
+            var worldPoint = viewport.Value.Unproject(pointerPosition);
+            activeDragEdge = null;
+            activeArtifactMove = null;
+            activePreviewTrimSourceUnits = 0m;
+            activeDimensionEdit = null;
+            pendingDimensionEdit = null;
+            ManualWallLinePointClicked?.Invoke(
+                this,
+                new ManualWallLinePointClickedEventArgs(
+                    RoundModelValue((decimal)worldPoint.X),
+                    RoundModelValue((decimal)worldPoint.Y)));
+            e.Handled = true;
+            return;
+        }
+
         if (IsFloorPlanMoveToolActive)
         {
             activeFloorPlanMove = new FloorPlanMoveDragState(viewport.Value, pointerPosition);
@@ -752,6 +791,21 @@ public sealed class FloorPlanPreviewControl : Control
         var axisTag = ParseAxisTag();
         var viewport = GetPreviewViewport(axisTag);
         var pointerPosition = e.GetPosition(this);
+
+        if (!isPanningPreview &&
+            IsManualWallLinePlacementArmed &&
+            ManualWallLineDraft is not null &&
+            viewport is { } manualWallViewport)
+        {
+            var worldPoint = manualWallViewport.Unproject(pointerPosition);
+            ManualWallLinePreviewPointChanged?.Invoke(
+                this,
+                new ManualWallLinePreviewPointChangedEventArgs(
+                    RoundModelValue((decimal)worldPoint.X),
+                    RoundModelValue((decimal)worldPoint.Y)));
+            e.Handled = true;
+            return;
+        }
 
         if (activeFloorPlanMove is { } floorPlanMove)
         {
@@ -1189,6 +1243,7 @@ public sealed class FloorPlanPreviewControl : Control
             PreviewPinchGroupId: PreviewPinchGroupId,
             PreviewAxisTag: PreviewAxisTag,
             ActiveDimensionHandleKind: activeDimensionEdit?.HandleKind,
+            ManualWallLineDraft: ManualWallLineDraft,
             ChangePreviewGhostGeometry: changePreviewGhostGeometry,
             ChangePreviewGhostOpacity: ghostOpacity);
     }
@@ -1808,6 +1863,32 @@ public sealed class FloorPlanPreviewControl : Control
         public decimal? TranslationDx { get; }
 
         public decimal? TranslationDy { get; }
+    }
+
+    public sealed class ManualWallLinePointClickedEventArgs : EventArgs
+    {
+        public ManualWallLinePointClickedEventArgs(decimal x, decimal y)
+        {
+            X = x;
+            Y = y;
+        }
+
+        public decimal X { get; }
+
+        public decimal Y { get; }
+    }
+
+    public sealed class ManualWallLinePreviewPointChangedEventArgs : EventArgs
+    {
+        public ManualWallLinePreviewPointChangedEventArgs(decimal x, decimal y)
+        {
+            X = x;
+            Y = y;
+        }
+
+        public decimal X { get; }
+
+        public decimal Y { get; }
     }
 
     internal readonly record struct PreviewZoomState(double ZoomFactor, Vector PanOffset)

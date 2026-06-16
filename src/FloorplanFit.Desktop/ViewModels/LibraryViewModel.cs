@@ -136,8 +136,19 @@ public sealed partial class LibraryViewModel : ObservableObject
         }
 
         var autoFitPlanSuggester = scope.ServiceProvider.GetRequiredService<IAutoFitPlanSuggester>();
+        var adjustedSitePlanExporter = scope.ServiceProvider.GetRequiredService<IAdjustedSitePlanExporter>();
+        var extractionSourceReader = scope.ServiceProvider.GetRequiredService<IFloorPlanExtractionSourceReader>();
+        var extractionSource = await extractionSourceReader.GetByVersionAsync(version.VersionId, cancellationToken);
         StatusMessage = $"Previewing {item.Code} v{version.VersionNumber} over {sitePlan.FileName}";
-        return SitePlanAdjustmentPreviewProjector.Build(item, version, reviewViewModel, sitePlan, autoFitPlanSuggester);
+        return SitePlanAdjustmentPreviewProjector.Build(
+            item,
+            version,
+            reviewViewModel,
+            sitePlan,
+            autoFitPlanSuggester,
+            extractionSource?.ManagedFilePath,
+            sitePlanFilePath,
+            adjustedSitePlanExporter);
     }
 
     public void SelectVersion(FloorPlanLibraryItemDto item, FloorPlanLibraryVersionDto version)

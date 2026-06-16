@@ -293,6 +293,15 @@ public sealed class ExtractWallCandidatesHandlerTests
             Items.Add(run);
             return Task.CompletedTask;
         }
+
+        public Task<WallExtractionRun?> GetLatestByVersionAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<WallExtractionRun?>(Items
+                .Where(item => item.FloorPlanVersionId == floorPlanVersionId)
+                .OrderByDescending(item => item.StartedAtUtc)
+                .ThenByDescending(item => item.Id)
+                .FirstOrDefault());
+        }
     }
 
     private sealed class InMemoryExtractedRoomLabelRepository : IExtractedRoomLabelRepository
@@ -449,9 +458,28 @@ public sealed class ExtractWallCandidatesHandlerTests
             return Task.CompletedTask;
         }
 
+        public Task AddAsync(
+            ExtractedWallCandidate domainCandidate,
+            DetectedWallCandidate detectedCandidate,
+            CancellationToken cancellationToken)
+        {
+            Items.Add(domainCandidate);
+            return Task.CompletedTask;
+        }
+
         public Task<ExtractedWallCandidate?> GetByIdAsync(Guid candidateId, CancellationToken cancellationToken)
         {
             return Task.FromResult(Items.SingleOrDefault(item => item.Id == candidateId));
+        }
+
+        public Task<int> GetNextSortOrderAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+        {
+            var next = Items
+                .Where(item => item.WallExtractionRunId == wallExtractionRunId)
+                .Select(item => item.SortOrder)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+            return Task.FromResult(next);
         }
 
         public Task UpdateAsync(ExtractedWallCandidate candidate, CancellationToken cancellationToken)

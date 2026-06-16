@@ -29,149 +29,143 @@
       <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}" />
       <Setter Property="RenderTransform" Value="scale(1.012)" />
     </Style>
+
+    <Style Selector="Button.sidebar-action">
+      <Setter Property="MinWidth" Value="120" />
+      <Setter Property="Height" Value="48" />
+      <Setter Property="Padding" Value="14,10" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="Button.sidebar-action.sidebar-action-active">
+      <Setter Property="Background" Value="{DynamicResource ToolActiveBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}" />
+    </Style>
   </Window.Styles>
 
-  <Grid RowDefinitions="Auto,*"
-        Margin="24">
-    <Grid ColumnDefinitions="*,Auto"
-          ColumnSpacing="16">
-      <StackPanel Spacing="8">
-        <TextBlock FontSize="30"
-                   FontWeight="Bold"
-                   Text="{Binding Title}" />
-        <TextBlock Classes="muted"
-                   Text="{Binding Subtitle}" />
-        <TextBlock Classes="muted"
-                   Text="{Binding StatusMessage}"
-                   TextWrapping="Wrap" />
-      </StackPanel>
-
-      <Border Grid.Column="1"
-              Classes="metric-chip"
-              VerticalAlignment="Center">
-        <StackPanel Orientation="Horizontal"
-                    Spacing="10">
-          <Button Classes="tool"
-                  Classes.tool-active="{Binding IsFloorPlanMoveToolActive}"
-                  Content="Move Floor Plan"
-                  Command="{Binding ToggleFloorPlanMoveToolCommand}"
-                  ToolTip.Tip="ArrastrÃ¡ el floor plan; el site plan queda fijo." />
-          <TextBlock FontWeight="SemiBold"
-                     Text="Cotas"
-                     VerticalAlignment="Center" />
-          <ToggleSwitch Classes="preview-switch"
-                        IsChecked="{Binding ArePreviewDimensionsVisible}"
-                        OnContent="Visibles"
-                        OffContent="Ocultas"
-                        ToolTip.Tip="Mostrá u ocultá visualmente todas las cotas del preview." />
-        </StackPanel>
-      </Border>
-    </Grid>
-
-    <Border Grid.Row="1"
+  <Grid ColumnDefinitions="*,400"
+        ColumnSpacing="16"
+        Margin="16">
+    <Border x:Name="PreviewShell"
+            Grid.Column="0"
             Classes="panel-card"
-            ClipToBounds="True"
-            Margin="0,20,0,0">
-      <Grid RowDefinitions="Auto,*"
-            RowSpacing="12"
             ClipToBounds="True">
-        <Border Classes="section-card"
-                Height="280"
-                MaxHeight="280"
-                ClipToBounds="True">
-          <Grid RowDefinitions="Auto,Auto"
-                ColumnDefinitions="*,Auto"
-                ColumnSpacing="16"
-                RowSpacing="10">
-            <StackPanel Spacing="4"
-                        MinWidth="0">
-              <TextBlock FontSize="20"
-                         FontWeight="SemiBold"
-                         Text="Preview" />
-              <TextBlock Classes="muted"
-                         Text="{Binding PreviewSelectionLabel}"
-                         TextWrapping="Wrap" />
-              <TextBlock Classes="muted"
-                         Text="{Binding AutoFitCandidateSummary}"
-                         TextWrapping="Wrap" />
-              <TextBlock FontWeight="SemiBold"
-                         Text="{Binding AutoFitSuggestionStatus}"
-                         TextWrapping="Wrap" />
-              <TextBlock Text="{Binding AutoFitSuggestionSummary}"
-                         TextWrapping="Wrap" />
-              <TextBlock Classes="muted"
-                         Text="{Binding AutoFitSuggestionPlanDetails}"
-                         TextWrapping="Wrap"
-                         MaxHeight="42" />
-            </StackPanel>
+      <controls:FloorPlanPreviewControl x:Name="PreviewControl"
+                                        MinHeight="0"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        ClipToBounds="True"
+                                        IsFloorPlanMoveToolActive="{Binding IsFloorPlanMoveToolActive}"
+                                        SitePlanGeometryPaths="{Binding SitePlanGeometryPaths}"
+                                        SitePlanRenderPaths="{Binding SitePlanRenderPaths}"
+                                        SitePlanTexts="{Binding SitePlanTexts}"
+                                        GeometryPaths="{Binding FloorPlanGeometryPaths}"
+                                        RoomLabels="{Binding RoomLabels}"
+                                        OpeningLabels="{Binding OpeningLabels}"
+                                        Dimensions="{Binding Dimensions}"
+                                        ChangedNumberDimensionIds="{Binding ChangedNumberDimensionIds}"
+                                        AreDimensionsVisible="{Binding ArePreviewDimensionsVisible}" />
+    </Border>
 
-            <Button Grid.Column="1"
-                    VerticalAlignment="Top"
-                    Content="Suggest Fit Plan (OpenAI)"
-                    Command="{Binding SuggestAutoFitPlanCommand}"
-                    ToolTip.Tip="OpenAI propone; el validator determin?stico decide si el plan es v?lido." />
-
-            <ScrollViewer x:Name="AutoFitOptionsScroller"
-                          Grid.Row="1"
-                          Grid.ColumnSpan="2"
-                          MaxHeight="136"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Disabled">
-              <ItemsControl ItemsSource="{Binding AutoFitSuggestionOptions}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal"
-                                Spacing="10" />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="viewModels:AutoFitSuggestionOptionViewModel">
-                    <Border Classes="section-card fit-option-card"
-                            Classes.fit-option-applied="{Binding IsApplied}"
-                            Width="560"
-                            MaxHeight="128"
-                            ClipToBounds="True">
-                      <Grid ColumnDefinitions="*,Auto"
-                            ColumnSpacing="12">
-                        <StackPanel Spacing="3"
-                                    MinWidth="0">
-                          <TextBlock FontWeight="SemiBold"
-                                     Text="{Binding Title}"
-                                     TextWrapping="Wrap" />
-                          <TextBlock Classes="muted"
-                                     Text="{Binding Details}"
-                                     TextWrapping="Wrap"
-                                     MaxHeight="58" />
-                        </StackPanel>
-                        <Button Grid.Column="1"
-                                VerticalAlignment="Top"
-                                Content="{Binding ApplyLabel}"
-                                Click="ApplyAutoFitOptionButton_OnClick" />
-                      </Grid>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
-          </Grid>
+    <Border x:Name="AdjustmentSidebar"
+            Grid.Column="1"
+            Classes="panel-card"
+            ClipToBounds="True">
+      <Grid RowDefinitions="Auto,Auto,Auto,*"
+            RowSpacing="12">
+        <Border Classes="metric-chip">
+          <StackPanel Orientation="Horizontal"
+                      Spacing="10">
+            <Button Classes="sidebar-action"
+                    Classes.sidebar-action-active="{Binding IsFloorPlanMoveToolActive}"
+                    MinWidth="120"
+                    Content="Mover plano"
+                    Command="{Binding ToggleFloorPlanMoveToolCommand}"
+                    ToolTip.Tip="Arrastrá el floor plan; el site plan queda fijo." />
+            <TextBlock FontWeight="SemiBold"
+                       Text="Cotas"
+                       VerticalAlignment="Center" />
+            <ToggleSwitch Classes="preview-switch"
+                          IsChecked="{Binding ArePreviewDimensionsVisible}"
+                          OnContent="Visibles"
+                          OffContent="Ocultas"
+                          ToolTip.Tip="Mostrá u ocultá visualmente todas las cotas del preview." />
+          </StackPanel>
         </Border>
 
-        <controls:FloorPlanPreviewControl x:Name="PreviewControl"
-                                          Grid.Row="1"
-                                          MinHeight="0"
-                                          HorizontalAlignment="Stretch"
-                                          VerticalAlignment="Stretch"
-                                          ClipToBounds="True"
-                                          IsFloorPlanMoveToolActive="{Binding IsFloorPlanMoveToolActive}"
-                                          SitePlanGeometryPaths="{Binding SitePlanGeometryPaths}"
-                                          SitePlanRenderPaths="{Binding SitePlanRenderPaths}"
-                                          SitePlanTexts="{Binding SitePlanTexts}"
-                                          GeometryPaths="{Binding FloorPlanGeometryPaths}"
-                                          RoomLabels="{Binding RoomLabels}"
-                                          OpeningLabels="{Binding OpeningLabels}"
-                                          Dimensions="{Binding Dimensions}"
-                                          ChangedNumberDimensionIds="{Binding ChangedNumberDimensionIds}"
-                                          AreDimensionsVisible="{Binding ArePreviewDimensionsVisible}" />
+        <Border Grid.Row="1"
+                Classes="section-card">
+          <StackPanel Spacing="6"
+                      MinWidth="0">
+            <TextBlock Classes="muted"
+                       Text="{Binding PreviewSelectionLabel}"
+                       TextWrapping="Wrap" />
+            <TextBlock Classes="muted"
+                       Text="{Binding AutoFitCandidateSummary}"
+                       TextWrapping="Wrap" />
+            <TextBlock FontWeight="SemiBold"
+                       Text="{Binding AutoFitSuggestionStatus}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding AutoFitSuggestionSummary}"
+                       TextWrapping="Wrap" />
+            <TextBlock Classes="muted"
+                       Text="{Binding AutoFitSuggestionPlanDetails}"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2"
+                    Spacing="8">
+          <Button HorizontalAlignment="Stretch"
+                  Content="Sugerir ajuste (AI)"
+                  Command="{Binding SuggestAutoFitPlanCommand}"
+                  ToolTip.Tip="AI ordena; el validador determinístico decide si el plan es válido." />
+          <Button HorizontalAlignment="Stretch"
+                  Content="Exportar DXF"
+                  IsEnabled="{Binding CanExportAdjustedSitePlan}"
+                  Click="ExportAdjustedSitePlanButton_OnClick"
+                  ToolTip.Tip="Genera un DXF con el floor plan ajustado (recortes aplicados) y el site plan con sus capas, listo para CAD." />
+        </StackPanel>
+
+        <ScrollViewer x:Name="AutoFitOptionsScroller"
+                      Grid.Row="3"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding AutoFitSuggestionOptions}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Vertical"
+                            Spacing="10" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="viewModels:AutoFitSuggestionOptionViewModel">
+                <Border Classes="section-card fit-option-card"
+                        Classes.fit-option-applied="{Binding IsApplied}"
+                        HorizontalAlignment="Stretch"
+                        MinHeight="144">
+                  <Grid RowDefinitions="Auto,Auto,Auto"
+                        RowSpacing="8">
+                    <TextBlock FontSize="13"
+                               FontWeight="SemiBold"
+                               Text="{Binding Title}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="1"
+                               Classes="muted"
+                               FontSize="12"
+                               Text="{Binding Details}"
+                               TextWrapping="Wrap" />
+                    <Button Grid.Row="2"
+                            HorizontalAlignment="Stretch"
+                            Content="{Binding ApplyLabel}"
+                            Click="ApplyAutoFitOptionButton_OnClick" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
       </Grid>
     </Border>
   </Grid>

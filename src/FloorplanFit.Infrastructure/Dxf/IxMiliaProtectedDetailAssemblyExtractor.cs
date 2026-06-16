@@ -286,7 +286,7 @@ public sealed class IxMiliaProtectedDetailAssemblyExtractor : IProtectedDetailAs
 
         public void AddRange(IReadOnlyList<IReadOnlyList<GeometryPoint>> geometryPaths, string? colorArgb, string sourceEntityKind)
         {
-            foreach (var geometryPath in geometryPaths.Where(path => path.Count >= 2))
+            foreach (var geometryPath in geometryPaths.Where(GeometryPointPaths.HasExtent))
             {
                 GeometryPaths.Add(geometryPath);
             }

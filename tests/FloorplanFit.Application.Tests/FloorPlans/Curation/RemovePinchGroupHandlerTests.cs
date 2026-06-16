@@ -109,6 +109,9 @@ public sealed class RemovePinchGroupHandlerTests
             Items.RemoveAll(item => item.Id == pinchGroupId);
             return Task.CompletedTask;
         }
+
+        public Task UpdateAsync(PinchGroup group, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class InMemoryPinchMarkerRepository : IPinchMarkerRepository

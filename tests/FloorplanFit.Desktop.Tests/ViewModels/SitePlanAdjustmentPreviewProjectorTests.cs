@@ -2,6 +2,7 @@ using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace FloorplanFit.Desktop.Tests.ViewModels;
@@ -36,6 +37,56 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
         Assert.Equal(150m, projectedBounds.MinY);
         Assert.Equal(225m, projectedBounds.MaxX);
         Assert.Equal(250m, projectedBounds.MaxY);
+    }
+
+    [Fact]
+    public void Build_uses_spanish_site_plan_context_copy_for_the_sidebar()
+    {
+        var templateId = Guid.NewGuid();
+        var version = new FloorPlanLibraryVersionDto(
+            Guid.NewGuid(),
+            1,
+            "Published",
+            DateTime.UtcNow,
+            "inch",
+            IsCurrent: true,
+            ActivePublishedCurationId: Guid.NewGuid());
+        var libraryItem = new FloorPlanLibraryItemDto(
+            templateId,
+            "seminole2000",
+            "Seminole",
+            VersionCount: 1,
+            CurrentVersionId: version.VersionId,
+            CurrentVersionNumber: version.VersionNumber,
+            Versions: [version]);
+        using var provider = new ServiceCollection().BuildServiceProvider();
+        var reviewViewModel = new FloorPlanReviewViewModel(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            templateId);
+        var floorPathId = Guid.NewGuid();
+        reviewViewModel.GeometryPaths.Add(CreateRectangle(floorPathId, minX: 0m, minY: 0m, maxX: 100m, maxY: 200m));
+        reviewViewModel.MeasurementContext = new MeasurementContextDto("inch", 25.4m, 0.1m, 1m);
+        var sitePlan = new SitePlanPreviewDto(
+            "lote.dxf",
+            "inch",
+            25.4m,
+            [CreateRectangle(Guid.NewGuid(), minX: 0m, minY: 0m, maxX: 700m, maxY: 1100m)],
+            new SitePlanBuildableAreaDto(100m, 101m, 583.786m, 1029m));
+
+        var viewModel = SitePlanAdjustmentPreviewProjector.Build(
+            libraryItem,
+            version,
+            reviewViewModel,
+            sitePlan);
+
+        Assert.Equal("Ajustar a site plan", viewModel.Title);
+        Assert.Equal("seminole2000 v1 sobre lote.dxf", viewModel.Subtitle);
+        Assert.Contains("Centrado en área edificable: 100, 101 -> 583.786, 1029", viewModel.PreviewSelectionLabel, StringComparison.Ordinal);
+        Assert.Contains("Vista previa", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("Centered in buildable area", viewModel.PreviewSelectionLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Preview only", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Move Floor Plan", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(" over ", viewModel.Subtitle, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -137,6 +188,107 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
 
         Assert.Equal(0m, facts.Deficit.WidthInches);
         Assert.Equal(2m, facts.Deficit.HeightInches);
+    }
+
+    [Fact]
+    public void Auto_fit_facts_do_not_require_width_trim_when_centered_structural_width_matches_buildable_width()
+    {
+        var wallPathId = Guid.NewGuid();
+        var floorGeometry = new[]
+        {
+            CreateRectangle(wallPathId, minX: 0m, minY: 0m, maxX: 483.786m, maxY: 930m)
+        };
+        var sitePlan = new SitePlanPreviewDto(
+            "alto-menos-2.dxf",
+            "inch",
+            25.4m,
+            [CreateRectangle(Guid.NewGuid(), minX: 100m, minY: 101m, maxX: 583.786m, maxY: 1029m)],
+            new SitePlanBuildableAreaDto(100m, 101m, 583.786m, 1029m));
+
+        var projection = SitePlanAdjustmentPreviewProjector.Project(
+            floorGeometry,
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            new MeasurementContextDto("inch", 25.4m, 0.1m, 1m),
+            sitePlan,
+            floorPlanPlacementGeometryPathIds: new HashSet<Guid> { wallPathId });
+        var projectedBounds = BoundsOf(projection.FloorPlanGeometryPaths);
+        var autoFitGeometryPaths = SitePlanAdjustmentPreviewProjector.ResolveAutoFitGeometryPaths(
+            projection.FloorPlanGeometryPaths,
+            new HashSet<Guid> { wallPathId });
+
+        var facts = AutoFitSuggestionFactBuilder.Build(
+            autoFitGeometryPaths,
+            sitePlan.BuildableArea,
+            sitePlan.ToMillimetersFactor,
+            pinchGroups: [],
+            articulationBands: []);
+
+        Assert.Equal(sitePlan.BuildableArea.MinX, projectedBounds.MinX);
+        Assert.Equal(sitePlan.BuildableArea.MaxX, projectedBounds.MaxX);
+        Assert.Equal(0m, facts.Deficit.WidthInches);
+        Assert.Equal(2m, facts.Deficit.HeightInches);
+    }
+
+    [Fact]
+    public void Build_uses_wall_candidate_footprint_not_total_preview_outliers_for_width_deficit()
+    {
+        var templateId = Guid.NewGuid();
+        var version = new FloorPlanLibraryVersionDto(
+            Guid.NewGuid(),
+            1,
+            "Published",
+            DateTime.UtcNow,
+            "inch",
+            IsCurrent: true,
+            ActivePublishedCurationId: Guid.NewGuid());
+        var libraryItem = new FloorPlanLibraryItemDto(
+            templateId,
+            "seminole2000",
+            "Seminole",
+            VersionCount: 1,
+            CurrentVersionId: version.VersionId,
+            CurrentVersionNumber: version.VersionNumber,
+            Versions: [version]);
+        using var provider = new ServiceCollection().BuildServiceProvider();
+        var reviewViewModel = new FloorPlanReviewViewModel(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            templateId);
+        var wallPathId = Guid.NewGuid();
+        var rightOutlierPathId = Guid.NewGuid();
+        reviewViewModel.GeometryPaths.Add(CreateRectangle(wallPathId, minX: 0m, minY: 0m, maxX: 100m, maxY: 100m));
+        reviewViewModel.GeometryPaths.Add(CreateRectangle(rightOutlierPathId, minX: 100m, minY: 40m, maxX: 160m, maxY: 60m));
+        reviewViewModel.WallCandidates.Add(new WallCandidateDto(
+            Guid.NewGuid(),
+            "LINE:WALL:1",
+            "WALLS",
+            "Accepted",
+            0.95m,
+            null,
+            null,
+            wallPathId,
+            1));
+        reviewViewModel.MeasurementContext = new MeasurementContextDto("inch", 25.4m, 0.1m, 1m);
+        var sitePlan = new SitePlanPreviewDto(
+            "ancho-menos-1.dxf",
+            "inch",
+            25.4m,
+            [CreateRectangle(Guid.NewGuid(), minX: 100.5m, minY: 100m, maxX: 199.5m, maxY: 200m)],
+            new SitePlanBuildableAreaDto(100.5m, 100m, 199.5m, 200m));
+
+        var viewModel = SitePlanAdjustmentPreviewProjector.Build(
+            libraryItem,
+            version,
+            reviewViewModel,
+            sitePlan);
+
+        var projectedWallBounds = BoundsOf(viewModel.FloorPlanGeometryPaths.Where(path => path.Id == wallPathId).ToArray());
+        var renderedBounds = BoundsOf(viewModel.FloorPlanGeometryPaths);
+        Assert.Equal(100m, projectedWallBounds.MinX);
+        Assert.Equal(200m, projectedWallBounds.MaxX);
+        Assert.Equal(260m, renderedBounds.MaxX);
+        Assert.Contains("ancho 1\"", viewModel.AutoFitCandidateSummary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -325,9 +477,79 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
         Assert.NotNull(fakeSuggester.ReceivedCandidatePlans);
         Assert.True(fakeSuggester.ReceivedCandidatePlans.Count >= 3);
         var option = Assert.Single(viewModel.AutoFitSuggestionOptions);
-        Assert.Equal("Use Ajuste 2 exactly.", option.Title);
+        Assert.Equal("Alto: recortar 2\" en Ajuste 2.", option.Title);
         Assert.Contains("Ajuste 2", option.Details, StringComparison.Ordinal);
-        Assert.Contains("1 fit option", viewModel.AutoFitSuggestionSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Matches the exact height deficit", option.Details, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No over-trim", option.Details, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Aplicar", option.ApplyLabel);
+        Assert.Contains("1 opción disponible", viewModel.AutoFitSuggestionSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AI ordenó", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("OpenAI", viewModel.AutoFitSuggestionStatus, StringComparison.Ordinal);
+        Assert.DoesNotContain("Pick the option", viewModel.AutoFitSuggestionPlanDetails, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SuggestAutoFitPlanAsync_keeps_visible_suggestion_copy_in_spanish_even_when_openai_returns_english()
+    {
+        var facts = new AutoFitSuggestionFacts(
+            new AutoFitEnvelopeDeficitDto(WidthInches: 0m, HeightInches: 2m, LeftInches: 0m, RightInches: 0m, BottomInches: 1m, TopInches: 1m),
+            [
+                new AutoFitCandidateGroupDto(Guid.NewGuid(), "alto del patio", "Height", 2m, 10m, 20m, 0),
+                new AutoFitCandidateGroupDto(Guid.NewGuid(), "alto porche", "Height", 2m, 30m, 40m, 0)
+            ],
+            []);
+        var englishPlan = new AutoFitSuggestionPlan(
+            "Reduce height by 2 inches, splitting evenly between alto porche and alto del patio.",
+            [
+                new AutoFitSuggestionStep("alto porche", "Height", 1m, "Distributes the reduction, which may be preferable for balanced fit."),
+                new AutoFitSuggestionStep("alto del patio", "Height", 1m, "Distributes the reduction, which may be preferable for visual reasons.")
+            ],
+            "This option distributes the required reduction evenly.");
+        var response = new AutoFitSuggestionPlanResponse(
+            true,
+            englishPlan,
+            AutoFitSuggestionPlanValidator.Validate(facts, englishPlan),
+            null)
+        {
+            Plans = [englishPlan]
+        };
+        var viewModel = new SitePlanAdjustmentViewModel(
+            "Adjust",
+            "Subtitle",
+            "Selection",
+            "Status",
+            sitePlanGeometryPaths: [],
+            sitePlanRenderPaths: [],
+            sitePlanTexts: [],
+            floorPlanGeometryPaths: [],
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            autoFitSuggestionFacts: facts,
+            autoFitPlanSuggester: new FakeAutoFitPlanSuggester(response));
+
+        await viewModel.SuggestAutoFitPlanAsync(CancellationToken.None);
+
+        var option = Assert.Single(viewModel.AutoFitSuggestionOptions);
+        var visibleCopy = string.Join(
+            " ",
+            viewModel.AutoFitCandidateSummary,
+            viewModel.AutoFitSuggestionStatus,
+            viewModel.AutoFitSuggestionSummary,
+            viewModel.AutoFitSuggestionPlanDetails,
+            option.Title,
+            option.Details,
+            option.ApplyLabel);
+        Assert.Contains("Alto: recortar 2\" dividido entre alto porche y alto del patio.", option.Title);
+        Assert.Contains("alto porche: 1\"", option.Details);
+        Assert.Contains("alto del patio: 1\"", option.Details);
+        Assert.DoesNotContain("Reduce height", visibleCopy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("inches", visibleCopy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("splitting evenly", visibleCopy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Distributes", visibleCopy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Apply option", visibleCopy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("OpenAI", visibleCopy, StringComparison.Ordinal);
+        Assert.DoesNotContain("Height", visibleCopy, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -374,7 +596,7 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
         var bounds = BoundsOf(viewModel.FloorPlanGeometryPaths);
         Assert.Equal(0m, bounds.MinY);
         Assert.Equal(8m, bounds.MaxY);
-        Assert.Contains("Applied option 1", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Opción 1 aplicada", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -440,7 +662,240 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
         Assert.Equal(99m, bounds.MaxX);
         Assert.False(unselectedOption.IsApplied);
         Assert.True(option.IsApplied);
-        Assert.Contains("Applied option 3", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Opción 3 aplicada", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Build_centers_floor_plan_by_structural_mass_not_by_a_stray_appendage()
+    {
+        var templateId = Guid.NewGuid();
+        var version = new FloorPlanLibraryVersionDto(
+            Guid.NewGuid(),
+            1,
+            "Published",
+            DateTime.UtcNow,
+            "inch",
+            IsCurrent: true,
+            ActivePublishedCurationId: Guid.NewGuid());
+        var libraryItem = new FloorPlanLibraryItemDto(
+            templateId,
+            "seminole2000",
+            "Seminole",
+            VersionCount: 1,
+            CurrentVersionId: version.VersionId,
+            CurrentVersionNumber: version.VersionNumber,
+            Versions: [version]);
+        using var provider = new ServiceCollection().BuildServiceProvider();
+        var reviewViewModel = new FloorPlanReviewViewModel(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            templateId);
+
+        // Dense structural body in X[100..200]; a single stray wall line juts left to
+        // X=70. The body must center in the buildable, ignoring the appendage.
+        var bodyIds = new List<Guid>();
+        var bodyRectId = Guid.NewGuid();
+        bodyIds.Add(bodyRectId);
+        reviewViewModel.GeometryPaths.Add(CreateRectangle(bodyRectId, minX: 100m, minY: 0m, maxX: 200m, maxY: 100m));
+        reviewViewModel.WallCandidates.Add(WallCandidate(bodyRectId, 1));
+        for (var index = 1; index < 80; index++)
+        {
+            var pathId = Guid.NewGuid();
+            var x = 100m + (index * (100m / 80m));
+            reviewViewModel.GeometryPaths.Add(new GeometryPathDto(pathId, false, [new GeometrySegmentDto(pathId, 1, x, 0m, x, 100m)]));
+            reviewViewModel.WallCandidates.Add(WallCandidate(pathId, index + 1));
+            bodyIds.Add(pathId);
+        }
+
+        var strayId = Guid.NewGuid();
+        reviewViewModel.GeometryPaths.Add(new GeometryPathDto(strayId, false, [new GeometrySegmentDto(strayId, 1, 100m, 50m, 70m, 50m)]));
+        reviewViewModel.WallCandidates.Add(WallCandidate(strayId, 999));
+
+        reviewViewModel.MeasurementContext = new MeasurementContextDto("inch", 25.4m, 0.1m, 1m);
+        var sitePlan = new SitePlanPreviewDto(
+            "structural-center.dxf",
+            "inch",
+            25.4m,
+            [CreateRectangle(Guid.NewGuid(), minX: 0m, minY: 0m, maxX: 100m, maxY: 100m)],
+            new SitePlanBuildableAreaDto(0m, 0m, 100m, 100m));
+
+        var viewModel = SitePlanAdjustmentPreviewProjector.Build(libraryItem, version, reviewViewModel, sitePlan);
+
+        var bodyBounds = BoundsOf(viewModel.FloorPlanGeometryPaths.Where(path => bodyIds.Contains(path.Id)).ToArray());
+        // Body (structural width 100) centered on the buildable center (50): X[0..100].
+        Assert.Equal(0m, bodyBounds.MinX);
+        Assert.Equal(100m, bodyBounds.MaxX);
+    }
+
+    [Fact]
+    public void ApplyAutoFitPlan_records_compression_steps_in_floor_source_coordinates()
+    {
+        var pathId = Guid.NewGuid();
+        var rightGroupId = Guid.NewGuid();
+        var facts = new AutoFitSuggestionFacts(
+            new AutoFitEnvelopeDeficitDto(1m, 0m, 0.5m, 0.5m, 0m, 0m),
+            [new AutoFitCandidateGroupDto(rightGroupId, "Ajuste derecha", "Width", 1m, 0m, 0m, 0)],
+            []);
+        var plan = new AutoFitSuggestionPlan(
+            "Trim right.",
+            [new AutoFitSuggestionStep("Ajuste derecha", "Width", 1m, "Right half marker.")],
+            "Recorded step must be invariant to manual moves.");
+        var viewModel = new SitePlanAdjustmentViewModel(
+            "Adjust",
+            "Subtitle",
+            "Selection",
+            "Status",
+            sitePlanGeometryPaths: [],
+            sitePlanRenderPaths: [],
+            sitePlanTexts: [],
+            floorPlanGeometryPaths: [CreateRectangle(pathId, minX: 0m, minY: 0m, maxX: 100m, maxY: 100m)],
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            autoFitSuggestionFacts: facts,
+            autoFitPlanSuggester: null,
+            sitePlanToMillimetersFactor: 25.4m,
+            pinchMarkers:
+            [
+                new PinchMarkerDto(Guid.NewGuid(), rightGroupId, "Ajuste derecha", Guid.NewGuid(), pathId, "Width", 0.20m, 25.4m, 1)
+            ]);
+
+        // Manual move BEFORE applying: the recorded source coordinate must stay invariant.
+        viewModel.MoveFloorPlanBy(5m, 0m);
+        viewModel.ApplyAutoFitPlan(new AutoFitSuggestionOptionViewModel(1, plan));
+
+        var placement = viewModel.BuildAdjustedSitePlanPlacement();
+        var step = Assert.Single(placement.CompressionSteps);
+        Assert.Equal("Width", step.AxisTag);
+        Assert.Equal("Right", step.Edge);
+        var marker = Assert.Single(step.Markers);
+        // Marker sits at preview X=85 after the +5 move; back in floor source coords: 80.
+        Assert.Equal(80m, marker.Coordinate);
+        Assert.Equal(1m, marker.TrimSourceUnits);
+        // Affine part reflects the accumulated manual offset.
+        Assert.Equal(5m, placement.SiteOffsetX);
+        Assert.Equal(0m, placement.SiteOffsetY);
+        Assert.Equal(1m, placement.FloorToSiteScale);
+    }
+
+    [Fact]
+    public async Task ExportAdjustedSitePlanAsync_invokes_exporter_with_current_placement_and_paths()
+    {
+        var pathId = Guid.NewGuid();
+        var exporter = new FakeAdjustedSitePlanExporter();
+        var viewModel = new SitePlanAdjustmentViewModel(
+            "Adjust",
+            "Subtitle",
+            "Selection",
+            "Status",
+            sitePlanGeometryPaths: [],
+            sitePlanRenderPaths: [],
+            sitePlanTexts: [],
+            floorPlanGeometryPaths: [CreateRectangle(pathId, minX: 0m, minY: 0m, maxX: 100m, maxY: 100m)],
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            autoFitSuggestionFacts: null,
+            autoFitPlanSuggester: null,
+            sitePlanToMillimetersFactor: 25.4m,
+            projectionScale: 1m,
+            projectionOffsetX: 100m,
+            projectionOffsetY: 50m,
+            floorPlanSourcePath: @"C:\plans\floor.dxf",
+            sitePlanSourcePath: @"C:\plans\site.dxf",
+            adjustedSitePlanExporter: exporter);
+
+        Assert.True(viewModel.CanExportAdjustedSitePlan);
+        viewModel.MoveFloorPlanBy(10m, -4m);
+
+        await viewModel.ExportAdjustedSitePlanAsync(@"C:\out\combined.dxf", CancellationToken.None);
+
+        Assert.NotNull(exporter.LastCall);
+        Assert.Equal(@"C:\plans\floor.dxf", exporter.LastCall!.FloorPlanSourcePath);
+        Assert.Equal(@"C:\plans\site.dxf", exporter.LastCall.SitePlanSourcePath);
+        Assert.Equal(@"C:\out\combined.dxf", exporter.LastCall.OutputFilePath);
+        Assert.Equal(110m, exporter.LastCall.Placement.SiteOffsetX);
+        Assert.Equal(46m, exporter.LastCall.Placement.SiteOffsetY);
+        Assert.Contains("combined.dxf", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class FakeAdjustedSitePlanExporter : FloorplanFit.Application.Abstractions.IAdjustedSitePlanExporter
+    {
+        public sealed record Call(
+            string FloorPlanSourcePath,
+            string SitePlanSourcePath,
+            string OutputFilePath,
+            AdjustedSitePlanPlacementDto Placement);
+
+        public Call? LastCall { get; private set; }
+
+        public Task<FloorplanFit.Application.Abstractions.AdjustedSitePlanExportResult> ExportAsync(
+            string floorPlanSourcePath,
+            string sitePlanSourcePath,
+            string outputFilePath,
+            AdjustedSitePlanPlacementDto placement,
+            CancellationToken cancellationToken)
+        {
+            LastCall = new Call(floorPlanSourcePath, sitePlanSourcePath, outputFilePath, placement);
+            return Task.FromResult(new FloorplanFit.Application.Abstractions.AdjustedSitePlanExportResult(
+                outputFilePath,
+                4,
+                []));
+        }
+    }
+
+    [Fact]
+    public void ApplyAutoFitPlan_edge_inference_ignores_degenerate_outlier_geometry()
+    {
+        var pathId = Guid.NewGuid();
+        var degeneratePathId = Guid.NewGuid();
+        var rightGroupId = Guid.NewGuid();
+        var facts = new AutoFitSuggestionFacts(
+            new AutoFitEnvelopeDeficitDto(
+                WidthInches: 1m,
+                HeightInches: 0m,
+                LeftInches: 0.5m,
+                RightInches: 0.5m,
+                BottomInches: 0m,
+                TopInches: 0m),
+            [new AutoFitCandidateGroupDto(rightGroupId, "Ajuste derecha", "Width", 1m, 0m, 0m, 0)],
+            []);
+        var plan = new AutoFitSuggestionPlan(
+            "Trim the right side group.",
+            [new AutoFitSuggestionStep("Ajuste derecha", "Width", 1m, "Marker sits on the right half.")],
+            "The degenerate outlier path must not shift the inferred center.");
+        var viewModel = new SitePlanAdjustmentViewModel(
+            "Adjust",
+            "Subtitle",
+            "Selection",
+            "Status",
+            sitePlanGeometryPaths: [],
+            sitePlanRenderPaths: [],
+            sitePlanTexts: [],
+            floorPlanGeometryPaths:
+            [
+                CreateRectangle(pathId, minX: 0m, minY: 0m, maxX: 100m, maxY: 100m),
+                new GeometryPathDto(
+                    degeneratePathId,
+                    IsClosed: true,
+                    [new GeometrySegmentDto(degeneratePathId, 1, 1000m, 50m, 1000m, 50m)])
+            ],
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            autoFitSuggestionFacts: facts,
+            autoFitPlanSuggester: null,
+            sitePlanToMillimetersFactor: 25.4m,
+            pinchMarkers:
+            [
+                new PinchMarkerDto(Guid.NewGuid(), rightGroupId, "Ajuste derecha", Guid.NewGuid(), pathId, "Width", 0.20m, 25.4m, 1)
+            ]);
+        var option = new AutoFitSuggestionOptionViewModel(1, plan);
+
+        viewModel.ApplyAutoFitPlan(option);
+
+        var bounds = BoundsOf(viewModel.FloorPlanGeometryPaths.Where(path => path.Id == pathId).ToArray());
+        Assert.Equal(0m, bounds.MinX);
+        Assert.Equal(99m, bounds.MaxX);
     }
 
     [Fact]
@@ -496,7 +951,7 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
         var bounds = BoundsOf(viewModel.FloorPlanGeometryPaths);
         Assert.Equal(1m, bounds.MinY);
         Assert.Equal(99m, bounds.MaxY);
-        Assert.Contains("Applied option 4", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Opción 4 aplicada", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -694,6 +1149,13 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
         Assert.Equal("8'-0\"", unaffected.DisplayText);
         Assert.Contains(dimension.DimensionId, viewModel.ChangedNumberDimensionIds);
         Assert.DoesNotContain(unaffectedDimension.DimensionId, viewModel.ChangedNumberDimensionIds);
+
+        var placement = viewModel.BuildAdjustedSitePlanPlacement();
+        var exportedDimensionPatch = Assert.Single(placement.AdjustedDimensions);
+        Assert.Equal(dimension.DimensionId, exportedDimensionPatch.DimensionId);
+        Assert.Equal("10'-2\"", exportedDimensionPatch.DisplayText);
+        Assert.Equal("10'-2\"", Assert.Single(exportedDimensionPatch.TextPrimitives).Text);
+        Assert.Equal(222m, exportedDimensionPatch.DefPoint2X);
     }
 
     [Fact]
@@ -886,11 +1348,11 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
 
         Assert.Null(fakeSuggester.ReceivedFacts);
         Assert.Contains("pinch", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Width deficit 78.459", viewModel.AutoFitSuggestionPlanDetails, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Déficit de ancho 78.459", viewModel.AutoFitSuggestionPlanDetails, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void FilterSitePlanForAdjustment_keeps_only_terrain_and_setbacks()
+    public void FilterSitePlanForAdjustment_keeps_full_site_plan_content_for_visual_fidelity()
     {
         var terrainPathId = Guid.NewGuid();
         var setbackPathId = Guid.NewGuid();
@@ -934,10 +1396,9 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
 
         var filtered = SitePlanAdjustmentPreviewProjector.FilterSitePlanForAdjustment(sitePlan);
 
-        Assert.Equal([terrainPathId, setbackPathId], filtered.RenderPaths.Select(path => path.Id).ToArray());
-        Assert.Equal([terrainPathId, setbackPathId], filtered.GeometryPaths.Select(path => path.Id).ToArray());
-        var text = Assert.Single(filtered.Texts);
-        Assert.Contains("SETBACK", text.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal([terrainPathId, setbackPathId, streetPathId], filtered.RenderPaths.Select(path => path.Id).ToArray());
+        Assert.Equal([terrainPathId, setbackPathId, streetPathId], filtered.GeometryPaths.Select(path => path.Id).ToArray());
+        Assert.Equal(["SITE PLAN", "20' REAR SETBACK LINE"], filtered.Texts.Select(text => text.Text).ToArray());
     }
 
     private static GeometryPathDto CreateRectangle(Guid pathId, decimal minX, decimal minY, decimal maxX, decimal maxY)
@@ -952,6 +1413,18 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
                 new GeometrySegmentDto(pathId, 4, minX, maxY, minX, minY)
             ]);
     }
+
+    private static WallCandidateDto WallCandidate(Guid geometryPathId, int sortOrder)
+        => new(
+            Guid.NewGuid(),
+            $"LINE:WALL:{sortOrder}",
+            "WALLS",
+            "Accepted",
+            0.95m,
+            null,
+            null,
+            geometryPathId,
+            sortOrder);
 
     private static GeometryBounds BoundsOf(IReadOnlyList<GeometryPathDto> paths)
     {

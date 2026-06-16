@@ -176,7 +176,7 @@
               <TextBlock Grid.Column="2"
                          Classes="muted"
                          FontSize="18"
-                         Text="âŒ„"
+                         Text="⌄"
                          VerticalAlignment="Center" />
             </Grid>
           </ToggleButton>
@@ -444,6 +444,19 @@
                           HorizontalAlignment="Left"
                           Spacing="8">
                 <Button Classes="tool"
+                        Classes.tool-active="{Binding IsManualWallLinePlacementArmed}"
+                        Tag="Agregar pared"
+                        ToolTip.Tip="Agregar pared"
+                        Click="AddManualWallLineButton_OnClick">
+                  <Path Width="18"
+                        Height="18"
+                        Stretch="Uniform"
+                        Stroke="{DynamicResource TextPrimaryBrush}"
+                        StrokeThickness="2"
+                        StrokeLineCap="Round"
+                        Data="M4,18 L20,6 M6,16 L8,18 M10,12 L12,14 M14,8 L16,10" />
+                </Button>
+                <Button Classes="tool"
                         Classes.tool-active="{Binding IsPinchPlacementArmed}"
                         Tag="Agregar ajuste"
                         ToolTip.Tip="Marcar pinch"
@@ -505,6 +518,8 @@
                                             MovableArtifactMoved="PreviewControl_OnMovableArtifactMoved"
                                             DimensionClicked="PreviewControl_OnDimensionClicked"
                                             DimensionEdited="PreviewControl_OnDimensionEdited"
+                                            ManualWallLinePointClicked="PreviewControl_OnManualWallLinePointClicked"
+                                            ManualWallLinePreviewPointChanged="PreviewControl_OnManualWallLinePreviewPointChanged"
                                             GeometryPaths="{Binding GeometryPaths}"
                                             HighlightGeometryPathId="{Binding HighlightGeometryPathId}"
                                             PinchMarkers="{Binding PinchMarkers}"
@@ -533,6 +548,8 @@
                                              CuratedPlanArtifacts="{Binding VisibleCuratedPlanArtifacts}"
                                             PreviewPinchGroupId="{Binding SelectedPinchGroupId}"
                                             PreviewAxisTag="{Binding SelectedPinchAxis}"
+                                            ManualWallLineDraft="{Binding ManualWallLineDraft}"
+                                            IsManualWallLinePlacementArmed="{Binding IsManualWallLinePlacementArmed}"
                                             IsPinchPlacementArmed="{Binding IsPinchPlacementArmed}" />
         </Grid>
       </Border>
@@ -594,6 +611,11 @@
                       <Button Classes="subtle"
                               Content="Crear grupo de pinches"
                               Click="AddPinchGroupButton_OnClick" />
+
+                      <Button Classes="subtle"
+                              Content="Renombrar grupo"
+                              IsEnabled="{Binding CanRenameSelectedPinchGroup}"
+                              Click="RenamePinchGroupButton_OnClick" />
 
                       <Button Classes="danger"
                               Content="Eliminar grupo de pinches"
@@ -865,7 +887,7 @@
                 <StackPanel Spacing="8">
                   <TextBlock FontWeight="SemiBold"
                              Text="Acciones de selección" />
-                  <Button Content="Exportar DXF ajustado"
+                  <Button Content="Exportar DXF"
                           Click="ExportAdjustedDxfButton_OnClick" />
                   <Button Classes="danger"
                           IsEnabled="{Binding HasSelectedArtifact}"

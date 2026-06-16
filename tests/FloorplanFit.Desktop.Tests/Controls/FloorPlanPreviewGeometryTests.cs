@@ -50,6 +50,64 @@ public sealed class FloorPlanPreviewGeometryTests
     }
 
     [Fact]
+    public void CalculateViewport_ignores_degenerate_zero_length_segments_when_fitting()
+    {
+        var realPathId = Guid.NewGuid();
+        var degeneratePathId = Guid.NewGuid();
+        GeometryPathDto[] realPathsOnly =
+        [
+            new GeometryPathDto(
+                realPathId,
+                IsClosed: false,
+                [
+                    new GeometrySegmentDto(realPathId, 1, 0m, 0m, 100m, 0m),
+                    new GeometrySegmentDto(realPathId, 2, 100m, 0m, 100m, 200m)
+                ])
+        ];
+        GeometryPathDto[] pathsWithDegenerateOutlier =
+        [
+            realPathsOnly[0],
+            new GeometryPathDto(
+                degeneratePathId,
+                IsClosed: true,
+                [
+                    new GeometrySegmentDto(degeneratePathId, 1, 1000m, 1000m, 1000m, 1000m),
+                    new GeometrySegmentDto(degeneratePathId, 2, 1000m, 1000m, 1000m, 1000m)
+                ])
+        ];
+        var bounds = new Rect(0, 0, 1000, 700);
+
+        var reference = FloorPlanPreviewGeometry.CalculateViewport(realPathsOnly, bounds, 16d);
+        var viewport = FloorPlanPreviewGeometry.CalculateViewport(pathsWithDegenerateOutlier, bounds, 16d);
+
+        Assert.NotNull(reference);
+        Assert.NotNull(viewport);
+        Assert.Equal(reference.Value.Scale, viewport.Value.Scale);
+        Assert.Equal(reference.Value.Project(0m, 0m), viewport.Value.Project(0m, 0m));
+        Assert.Equal(reference.Value.Project(100m, 200m), viewport.Value.Project(100m, 200m));
+    }
+
+    [Fact]
+    public void CalculateViewport_still_builds_viewport_when_every_segment_is_degenerate()
+    {
+        var pathId = Guid.NewGuid();
+        GeometryPathDto[] geometryPaths =
+        [
+            new GeometryPathDto(
+                pathId,
+                IsClosed: false,
+                [new GeometrySegmentDto(pathId, 1, 40m, 40m, 40m, 40m)])
+        ];
+
+        var viewport = FloorPlanPreviewGeometry.CalculateViewport(geometryPaths, new Rect(0, 0, 1000, 700), 16d);
+
+        Assert.NotNull(viewport);
+        var projected = viewport.Value.Project(40m, 40m);
+        Assert.InRange(projected.X, 0d, 1000d);
+        Assert.InRange(projected.Y, 0d, 700d);
+    }
+
+    [Fact]
     public void GetPathStyle_returns_selection_green_style_for_highlighted_path()
     {
         var highlightedPathId = Guid.NewGuid();

@@ -25,6 +25,7 @@ internal sealed class FloorPlanReviewNotificationCoordinator
     private static readonly string[] UxPropertyNames =
     [
         nameof(FloorPlanReviewViewModel.AddPinchButtonLabel),
+        nameof(FloorPlanReviewViewModel.AddManualWallLineButtonLabel),
         nameof(FloorPlanReviewViewModel.SelectedPinchGroupId),
         nameof(FloorPlanReviewViewModel.InteractionHint),
         nameof(FloorPlanReviewViewModel.HasSelectedArtifact),

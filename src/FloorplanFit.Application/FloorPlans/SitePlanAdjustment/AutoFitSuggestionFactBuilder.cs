@@ -59,14 +59,18 @@ public static class AutoFitSuggestionFactBuilder
         SitePlanBuildableAreaDto buildableArea,
         decimal sitePlanToMillimetersFactor)
     {
+        var buildableWidth = Math.Max(0m, buildableArea.MaxX - buildableArea.MinX);
+        var buildableHeight = Math.Max(0m, buildableArea.MaxY - buildableArea.MinY);
+        var widthDeficit = Math.Max(0m, bounds.Width - buildableWidth);
+        var heightDeficit = Math.Max(0m, bounds.Height - buildableHeight);
         var left = Math.Max(0m, buildableArea.MinX - bounds.MinX);
         var right = Math.Max(0m, bounds.MaxX - buildableArea.MaxX);
         var bottom = Math.Max(0m, buildableArea.MinY - bounds.MinY);
         var top = Math.Max(0m, bounds.MaxY - buildableArea.MaxY);
 
         return new AutoFitEnvelopeDeficitDto(
-            WidthInches: ConvertSourceUnitsToInches(left + right, sitePlanToMillimetersFactor),
-            HeightInches: ConvertSourceUnitsToInches(bottom + top, sitePlanToMillimetersFactor),
+            WidthInches: ConvertSourceUnitsToInches(widthDeficit, sitePlanToMillimetersFactor),
+            HeightInches: ConvertSourceUnitsToInches(heightDeficit, sitePlanToMillimetersFactor),
             LeftInches: ConvertSourceUnitsToInches(left, sitePlanToMillimetersFactor),
             RightInches: ConvertSourceUnitsToInches(right, sitePlanToMillimetersFactor),
             BottomInches: ConvertSourceUnitsToInches(bottom, sitePlanToMillimetersFactor),
@@ -159,28 +163,13 @@ public static class AutoFitSuggestionFactBuilder
 
     private static Bounds? ResolveBounds(IReadOnlyList<GeometryPathDto> geometryPaths)
     {
-        decimal? minX = null;
-        decimal? minY = null;
-        decimal? maxX = null;
-        decimal? maxY = null;
-
-        foreach (var segment in geometryPaths.SelectMany(path => path.Segments))
-        {
-            Include(segment.StartX, segment.StartY);
-            Include(segment.EndX, segment.EndY);
-        }
-
-        return minX.HasValue && minY.HasValue && maxX.HasValue && maxY.HasValue
-            ? new Bounds(minX.Value, minY.Value, maxX.Value, maxY.Value)
+        // Measure the structural footprint (dominant wall mass), not the raw bounding
+        // box, so a stray thin segment cannot define the plan's width or height. See
+        // StructuralFootprint for the rationale and trade-off.
+        var footprint = StructuralFootprint.Resolve(geometryPaths);
+        return footprint is { } bounds
+            ? new Bounds(bounds.MinX, bounds.MinY, bounds.MaxX, bounds.MaxY)
             : null;
-
-        void Include(decimal x, decimal y)
-        {
-            minX = minX.HasValue ? Math.Min(minX.Value, x) : x;
-            minY = minY.HasValue ? Math.Min(minY.Value, y) : y;
-            maxX = maxX.HasValue ? Math.Max(maxX.Value, x) : x;
-            maxY = maxY.HasValue ? Math.Max(maxY.Value, y) : y;
-        }
     }
 
     private static void AddCapacityWarning(
@@ -225,5 +214,10 @@ public static class AutoFitSuggestionFactBuilder
     private static decimal ConvertMillimetersToInches(decimal millimeters) =>
         decimal.Round(millimeters / MillimetersPerInch, 3, MidpointRounding.AwayFromZero);
 
-    private readonly record struct Bounds(decimal MinX, decimal MinY, decimal MaxX, decimal MaxY);
+    private readonly record struct Bounds(decimal MinX, decimal MinY, decimal MaxX, decimal MaxY)
+    {
+        public decimal Width => Math.Max(0m, MaxX - MinX);
+
+        public decimal Height => Math.Max(0m, MaxY - MinY);
+    }
 }

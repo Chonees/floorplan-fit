@@ -157,6 +157,61 @@ public sealed class IxMiliaFixedPlanComponentExtractorTests
         }
     }
 
+    [Fact]
+    public async Task ExtractAsync_discards_collapsed_zero_extent_geometry_instead_of_emitting_phantom_components()
+    {
+        var sourcePath = CreateCollapsedFaceFixture();
+        var extractor = new IxMiliaFixedPlanComponentExtractor();
+
+        try
+        {
+            var components = await extractor.ExtractAsync(sourcePath, CancellationToken.None);
+
+            var fixture = Assert.Single(components);
+            Assert.Equal("FIXTURES", fixture.SourceLayer);
+            Assert.All(fixture.GeometryPaths, path =>
+                Assert.Contains(path, point => point != path[0]));
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+        }
+    }
+
+    private static string CreateCollapsedFaceFixture()
+    {
+        var dxf = new DxfFile();
+        dxf.Layers.Add(new DxfLayer("FIXTURES", DxfColor.FromIndex(1)));
+        dxf.Layers.Add(new DxfLayer("L1", DxfColor.FromIndex(3)));
+
+        dxf.Entities.Add(new DxfLine(new DxfPoint(0d, 0d, 0d), new DxfPoint(4d, 0d, 0d))
+        {
+            Layer = "FIXTURES"
+        });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(4d, 0d, 0d), new DxfPoint(4d, 2d, 0d))
+        {
+            Layer = "FIXTURES"
+        });
+        dxf.Entities.Add(new DxfCircle(new DxfPoint(2d, 1d, 0d), 0.5d)
+        {
+            Layer = "FIXTURES"
+        });
+
+        var collapsedCorner = new DxfPoint(640d, 147d, 0d);
+        dxf.Entities.Add(new Dxf3DFace
+        {
+            Layer = "L1",
+            FirstCorner = collapsedCorner,
+            SecondCorner = collapsedCorner,
+            ThirdCorner = collapsedCorner,
+            FourthCorner = collapsedCorner
+        });
+
+        var sourcePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        dxf.Save(sourcePath, false);
+        return sourcePath;
+    }
+
     private static string CreateNestedCabinetFixture()
     {
         var dxf = new DxfFile();

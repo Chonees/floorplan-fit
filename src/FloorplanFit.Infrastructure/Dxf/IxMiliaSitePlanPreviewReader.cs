@@ -130,7 +130,7 @@ public sealed class IxMiliaSitePlanPreviewReader : ISitePlanPreviewReader
         string? byBlockColorArgb,
         SitePlanPathGeometry geometry)
     {
-        if (geometry.Points.Count < 2)
+        if (geometry.Points.Count < 2 || !HasExtent(geometry.Points))
         {
             return;
         }
@@ -506,6 +506,26 @@ public sealed class IxMiliaSitePlanPreviewReader : ISitePlanPreviewReader
         }
 
         return entityLayer;
+    }
+
+    // Collapsed entities (all points coincident) carry no drawable geometry, and because
+    // the buildable area is the bounding box of the setback paths, letting one through
+    // would silently stretch the fit envelope.
+    private const double ExtentTolerance = 0.000001d;
+
+    private static bool HasExtent(IReadOnlyList<DxfPoint> points)
+    {
+        var origin = points[0];
+        for (var index = 1; index < points.Count; index++)
+        {
+            if (Math.Abs(points[index].X - origin.X) > ExtentTolerance ||
+                Math.Abs(points[index].Y - origin.Y) > ExtentTolerance)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsSetback(string? layer, string? text)

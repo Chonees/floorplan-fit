@@ -86,7 +86,7 @@ public sealed class IxMiliaFixedPlanComponentExtractor : IFixedPlanComponentExtr
                 transform,
                 blockLookup,
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase)))
-            .Where(path => path.Count >= 2)
+            .Where(GeometryPointPaths.HasExtent)
             .ToArray();
 
         if (geometryPaths.Length == 0)
@@ -133,7 +133,7 @@ public sealed class IxMiliaFixedPlanComponentExtractor : IFixedPlanComponentExtr
             ComponentTransform.Identity,
             blockLookup: null,
             visitedBlockNames: null)
-            .Where(path => path.Count >= 2)
+            .Where(GeometryPointPaths.HasExtent)
             .ToArray();
         if (geometryPaths.Length == 0)
         {
@@ -256,7 +256,7 @@ public sealed class IxMiliaFixedPlanComponentExtractor : IFixedPlanComponentExtr
             NextIndex(sourceIndexes, sourceKey));
         var geometryPaths = seeds
             .SelectMany(seed => seed.GeometryPaths)
-            .Where(path => path.Count >= 2)
+            .Where(GeometryPointPaths.HasExtent)
             .ToArray();
         if (geometryPaths.Length == 0)
         {
@@ -643,7 +643,7 @@ public sealed class IxMiliaFixedPlanComponentExtractor : IFixedPlanComponentExtr
             var transform = parentTransform.Append(ComponentTransform.FromInsert(insert, block?.BasePoint));
             return GetInsertEntities(insert, block)
                 .SelectMany(entity => ExtractEntityGeometryPaths(entity, transform, blockLookup, visitedBlockNames))
-                .Where(path => path.Count >= 2)
+                .Where(GeometryPointPaths.HasExtent)
                 .ToArray();
         }
         finally

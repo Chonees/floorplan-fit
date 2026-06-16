@@ -162,13 +162,17 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
-    public void SitePlanPreviewLayerRenderer_colors_only_setbacks_and_keeps_the_rest_gray()
+    public void SitePlanPreviewLayerRenderer_preserves_site_plan_source_colors()
     {
         var nonSetback = SitePlanPreviewLayerRenderer.ResolveColor("#FF00FFFF", isSetback: false);
-        var setback = SitePlanPreviewLayerRenderer.ResolveColor("#FF00FFFF", isSetback: true);
+        var setback = SitePlanPreviewLayerRenderer.ResolveColor("#FFFF00FF", isSetback: true);
+        var fallbackNonSetback = SitePlanPreviewLayerRenderer.ResolveColor(null, isSetback: false);
+        var fallbackSetback = SitePlanPreviewLayerRenderer.ResolveColor(null, isSetback: true);
 
-        Assert.Equal(Color.FromArgb(210, 148, 163, 184), nonSetback);
-        Assert.Equal(Color.Parse("#FFFFB000"), setback);
+        Assert.Equal(Color.Parse("#FF00FFFF"), nonSetback);
+        Assert.Equal(Color.Parse("#FFFF00FF"), setback);
+        Assert.Equal(Color.FromArgb(210, 148, 163, 184), fallbackNonSetback);
+        Assert.Equal(Color.Parse("#FFFFB000"), fallbackSetback);
     }
 
     [Fact]

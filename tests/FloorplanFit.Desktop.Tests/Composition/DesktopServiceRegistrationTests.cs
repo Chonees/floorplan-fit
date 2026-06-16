@@ -40,9 +40,11 @@ public sealed class DesktopServiceRegistrationTests
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemoveFloorPlanVersionHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<StartOrResumeCurationHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<AddPinchGroupHandler>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<AddManualWallCandidateHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<AddPinchMarkerHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<ChangeMeasurementCorridorAxisHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemovePinchGroupHandler>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<RenamePinchGroupHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemovePinchMarkerHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemoveRoomLabelHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RemoveProtectedDetailAssemblyHandler>());

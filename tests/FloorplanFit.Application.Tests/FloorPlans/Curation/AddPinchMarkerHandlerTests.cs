@@ -63,8 +63,14 @@ public sealed class AddPinchMarkerHandlerTests
         public Task AddRangeAsync(IReadOnlyList<ExtractedWallCandidate> domainCandidates, IReadOnlyList<DetectedWallCandidate> detectedCandidates, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public Task AddAsync(ExtractedWallCandidate domainCandidate, DetectedWallCandidate detectedCandidate, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task<ExtractedWallCandidate?> GetByIdAsync(Guid candidateId, CancellationToken cancellationToken)
             => Task.FromResult(candidate.Id == candidateId ? candidate : null);
+
+        public Task<int> GetNextSortOrderAsync(Guid wallExtractionRunId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
 
         public Task UpdateAsync(ExtractedWallCandidate candidate, CancellationToken cancellationToken)
             => Task.CompletedTask;
@@ -92,6 +98,9 @@ public sealed class AddPinchMarkerHandlerTests
             => Task.FromResult<IReadOnlyList<PinchGroup>>(Items.Where(item => item.FloorPlanCurationId == curationId).ToArray());
 
         public Task RemoveAsync(Guid pinchGroupId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task UpdateAsync(PinchGroup group, CancellationToken cancellationToken)
             => throw new NotSupportedException();
     }
 

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FloorplanFit.Application.Abstractions;
@@ -16,6 +17,13 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     private readonly AutoFitSuggestionFacts? autoFitSuggestionFacts;
     private readonly IAutoFitPlanSuggester? autoFitPlanSuggester;
     private readonly decimal sitePlanToMillimetersFactor;
+    private readonly decimal projectionScale;
+    private readonly decimal projectionOffsetX;
+    private readonly decimal projectionOffsetY;
+    private readonly string? floorPlanSourcePath;
+    private readonly string? sitePlanSourcePath;
+    private readonly IAdjustedSitePlanExporter? adjustedSitePlanExporter;
+    private IReadOnlyList<AdjustedCompressionStepDto> appliedCompressionSteps = [];
     private readonly IReadOnlyList<PinchMarkerDto> pinchMarkers;
     private readonly IReadOnlyList<MeasurementCorridorDto> measurementCorridors;
     private readonly IReadOnlyList<MeasurementNodeDto> measurementNodes;
@@ -45,7 +53,13 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         IReadOnlyList<MeasurementCorridorDto>? measurementCorridors = null,
         IReadOnlyList<MeasurementNodeDto>? measurementNodes = null,
         IReadOnlyList<DimensionIntervalBindingDto>? dimensionIntervalBindings = null,
-        IReadOnlyList<ArticulationBandDto>? articulationBands = null)
+        IReadOnlyList<ArticulationBandDto>? articulationBands = null,
+        decimal projectionScale = 1m,
+        decimal projectionOffsetX = 0m,
+        decimal projectionOffsetY = 0m,
+        string? floorPlanSourcePath = null,
+        string? sitePlanSourcePath = null,
+        IAdjustedSitePlanExporter? adjustedSitePlanExporter = null)
     {
         Title = title;
         Subtitle = subtitle;
@@ -56,6 +70,12 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         this.sitePlanToMillimetersFactor = sitePlanToMillimetersFactor > 0m
             ? sitePlanToMillimetersFactor
             : 1m;
+        this.projectionScale = projectionScale > 0m ? projectionScale : 1m;
+        this.projectionOffsetX = projectionOffsetX;
+        this.projectionOffsetY = projectionOffsetY;
+        this.floorPlanSourcePath = floorPlanSourcePath;
+        this.sitePlanSourcePath = sitePlanSourcePath;
+        this.adjustedSitePlanExporter = adjustedSitePlanExporter;
         this.pinchMarkers = pinchMarkers ?? [];
         this.measurementCorridors = measurementCorridors ?? [];
         this.measurementNodes = measurementNodes ?? [];
@@ -103,7 +123,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         autoFitSuggestionFacts?.NeedsAdjustment == true;
 
     public string AutoFitCandidateSummary => autoFitSuggestionFacts is null
-        ? "No fit facts available yet."
+        ? "Todavía no hay datos de encaje."
         : FormatCandidateSummary(autoFitSuggestionFacts);
 
     [ObservableProperty]
@@ -119,10 +139,10 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     private decimal manualOffsetY;
 
     [ObservableProperty]
-    private string autoFitSuggestionStatus = "Auto-fit suggestion not generated yet.";
+    private string autoFitSuggestionStatus = "Todavía no se generó una sugerencia de ajuste.";
 
     [ObservableProperty]
-    private string autoFitSuggestionSummary = "No fit plan generated.";
+    private string autoFitSuggestionSummary = "No hay plan de ajuste generado.";
 
     [ObservableProperty]
     private string autoFitSuggestionPlanDetails = string.Empty;
@@ -143,14 +163,14 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
 
         if (autoFitSuggestionFacts is null)
         {
-            AutoFitSuggestionStatus = "Fit suggestions are unavailable because fit facts are missing.";
+            AutoFitSuggestionStatus = "No se pueden sugerir ajustes porque faltan datos de encaje.";
             return;
         }
 
         if (!autoFitSuggestionFacts.HasRequiredCandidateCapacity)
         {
-            AutoFitSuggestionStatus = "OpenAI suggestion is blocked until compatible pinch groups have enough capacity.";
-            AutoFitSuggestionSummary = "No valid fit plan generated.";
+            AutoFitSuggestionStatus = "AI bloqueada: faltan grupos de pinches compatibles con capacidad suficiente.";
+            AutoFitSuggestionSummary = "No hay plan de ajuste válido.";
             AutoFitSuggestionPlanDetails = FormatBlockedSuggestionDetails(autoFitSuggestionFacts);
             return;
         }
@@ -158,34 +178,34 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         var deterministicPlans = AutoFitSuggestionOptionGenerator.Generate(autoFitSuggestionFacts);
         if (deterministicPlans.Count == 0)
         {
-            AutoFitSuggestionStatus = "No deterministic fit options were generated.";
-            AutoFitSuggestionSummary = "No valid fit plan generated.";
-            AutoFitSuggestionPlanDetails = "Review named pinch groups and capacities before asking OpenAI to rank options.";
+            AutoFitSuggestionStatus = "No se generaron opciones determinísticas de ajuste.";
+            AutoFitSuggestionSummary = "No hay plan de ajuste válido.";
+            AutoFitSuggestionPlanDetails = "Revisá nombres y capacidades de los grupos de pinches antes de pedir el ranking.";
             return;
         }
 
         if (autoFitPlanSuggester is null)
         {
             PopulateAutoFitOptions(deterministicPlans);
-            AutoFitSuggestionStatus = "Generated deterministic fit options.";
+            AutoFitSuggestionStatus = "Opciones determinísticas generadas.";
             AutoFitSuggestionSummary = FormatOptionSummary(AutoFitSuggestionOptions.Count);
-            AutoFitSuggestionPlanDetails = "OpenAI ranking is unavailable, so options are shown in deterministic order.";
+            AutoFitSuggestionPlanDetails = "AI no está disponible; las opciones se muestran en orden determinístico.";
             return;
         }
 
-        AutoFitSuggestionStatus = "Asking OpenAI to rank deterministic fit options...";
+        AutoFitSuggestionStatus = "Pidiendo a AI que ordene las opciones determinísticas...";
         var response = await autoFitPlanSuggester.SuggestAsync(autoFitSuggestionFacts, deterministicPlans, cancellationToken);
         if (response.Succeeded && response.Plans.Count > 0)
         {
             PopulateAutoFitOptions(response.Plans);
-            AutoFitSuggestionStatus = "OpenAI ranked deterministic fit options.";
+            AutoFitSuggestionStatus = "AI ordenó las opciones determinísticas.";
             AutoFitSuggestionSummary = FormatOptionSummary(AutoFitSuggestionOptions.Count);
-            AutoFitSuggestionPlanDetails = "Pick the option you prefer; Apply only reduces the listed pinch groups.";
+            AutoFitSuggestionPlanDetails = "Elegí una opción; Aplicar solo recorta los grupos listados.";
             return;
         }
 
         PopulateAutoFitOptions(deterministicPlans);
-        AutoFitSuggestionStatus = "OpenAI ranking failed; showing deterministic fit options.";
+        AutoFitSuggestionStatus = "AI no pudo ordenar; muestro opciones determinísticas.";
         AutoFitSuggestionSummary = FormatOptionSummary(AutoFitSuggestionOptions.Count);
         AutoFitSuggestionPlanDetails = FormatFailureDetails(response);
     }
@@ -202,15 +222,21 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         var roomLabels = autoFitBaselineRoomLabels.ToArray();
         var openingLabels = autoFitBaselineOpeningLabels.ToArray();
         var dimensions = autoFitBaselineDimensions.ToArray();
+        var recordedSteps = new List<AdjustedCompressionStepDto>();
 
         foreach (var step in option.Plan.Steps)
         {
             var transform = BuildCompressionTransform(step, geometry);
             if (transform is null)
             {
-                AutoFitSuggestionStatus = $"Could not apply option {option.OptionNumber}: no compatible pinch markers were found for {step.GroupName}.";
+                AutoFitSuggestionStatus = $"No se pudo aplicar la opción {option.OptionNumber}: no hay pinches compatibles para {step.GroupName}.";
                 return;
             }
+
+            // Record the step against the untouched baseline so the exported cut sits at
+            // the real wall coordinate, independent of compressions applied before it.
+            var baselineTransform = BuildCompressionTransform(step, autoFitBaselineGeometryPaths) ?? transform;
+            recordedSteps.Add(ToSourceCompressionStep(baselineTransform));
 
             var sourceGeometryBeforeStep = geometry;
             geometry = geometry.Select(path => TransformPath(path, transform)).ToArray();
@@ -228,6 +254,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         ReplaceItems(OpeningLabels, openingLabels);
         ReplaceItems(Dimensions, dimensions);
         ChangedNumberDimensionIds = ResolveChangedNumberDimensionIds(autoFitBaselineDimensions, dimensions);
+        appliedCompressionSteps = recordedSteps;
 
         foreach (var autoFitOption in AutoFitSuggestionOptions)
         {
@@ -239,9 +266,9 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
             option.IsApplied = true;
         }
 
-        AutoFitSuggestionStatus = $"Applied option {option.OptionNumber} to the preview.";
+        AutoFitSuggestionStatus = $"Opción {option.OptionNumber} aplicada al preview.";
         AutoFitSuggestionSummary = option.Title;
-        AutoFitSuggestionPlanDetails = "Selected option is highlighted below; preview geometry and related dimensions were updated.";
+        AutoFitSuggestionPlanDetails = "La opción elegida queda marcada; el preview y sus cotas relacionadas se recalcularon.";
     }
 
     public void MoveFloorPlanBy(decimal deltaX, decimal deltaY)
@@ -278,6 +305,170 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         ManualOffsetY = Round(ManualOffsetY + deltaY);
     }
 
+    public bool CanExportAdjustedSitePlan =>
+        adjustedSitePlanExporter is not null &&
+        !string.IsNullOrWhiteSpace(floorPlanSourcePath) &&
+        !string.IsNullOrWhiteSpace(sitePlanSourcePath);
+
+    public async Task ExportAdjustedSitePlanAsync(string outputFilePath, CancellationToken cancellationToken)
+    {
+        if (!CanExportAdjustedSitePlan)
+        {
+            AutoFitSuggestionStatus = "No se puede exportar: faltan los archivos DXF de origen o el exportador.";
+            return;
+        }
+
+        try
+        {
+            var result = await adjustedSitePlanExporter!.ExportAsync(
+                floorPlanSourcePath!,
+                sitePlanSourcePath!,
+                outputFilePath,
+                BuildAdjustedSitePlanPlacement(),
+                cancellationToken);
+
+            AutoFitSuggestionStatus = result.Warnings.Count == 0
+                ? $"DXF combinado exportado: {result.OutputFilePath}"
+                : $"DXF combinado exportado: {result.OutputFilePath} ({result.Warnings.Count} avisos).";
+            AutoFitSuggestionPlanDetails = result.Warnings.Count == 0
+                ? $"Se inyectaron {result.InjectedSitePlanEntityCount} entidades del site plan con sus capas."
+                : string.Join(Environment.NewLine, result.Warnings);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            AutoFitSuggestionStatus = $"No se pudo exportar el DXF combinado: {exception.Message}";
+        }
+    }
+
+    internal AdjustedSitePlanPlacementDto BuildAdjustedSitePlanPlacement()
+    {
+        var siteOffsetX = projectionOffsetX + ManualOffsetX;
+        var siteOffsetY = projectionOffsetY + ManualOffsetY;
+        return new AdjustedSitePlanPlacementDto(
+            projectionScale,
+            siteOffsetX,
+            siteOffsetY,
+            appliedCompressionSteps,
+            BuildAdjustedDimensionPatches(siteOffsetX, siteOffsetY));
+    }
+
+    private IReadOnlyList<DimensionDto> BuildAdjustedDimensionPatches(decimal siteOffsetX, decimal siteOffsetY)
+    {
+        if (ChangedNumberDimensionIds.Count == 0 || Dimensions.Count == 0)
+        {
+            return [];
+        }
+
+        var changedIds = ChangedNumberDimensionIds.ToHashSet();
+        return Dimensions
+            .Where(dimension => changedIds.Contains(dimension.DimensionId))
+            .Select(dimension => MapPreviewDimensionToFloorSource(dimension, siteOffsetX, siteOffsetY))
+            .ToArray();
+    }
+
+    private DimensionDto MapPreviewDimensionToFloorSource(
+        DimensionDto dimension,
+        decimal siteOffsetX,
+        decimal siteOffsetY)
+    {
+        decimal X(decimal value) => Round((value - siteOffsetX) / projectionScale);
+        decimal Y(decimal value) => Round((value - siteOffsetY) / projectionScale);
+        decimal Length(decimal value) => Round(value / projectionScale);
+        decimal? NullableX(decimal? value) => value is decimal resolved ? X(resolved) : null;
+        decimal? NullableY(decimal? value) => value is decimal resolved ? Y(resolved) : null;
+        decimal? NullableLength(decimal? value) => value is decimal resolved ? Length(resolved) : null;
+
+        return dimension with
+        {
+            DefPointX = X(dimension.DefPointX),
+            DefPointY = Y(dimension.DefPointY),
+            DefPoint2X = X(dimension.DefPoint2X),
+            DefPoint2Y = Y(dimension.DefPoint2Y),
+            DefPoint3X = X(dimension.DefPoint3X),
+            DefPoint3Y = Y(dimension.DefPoint3Y),
+            RenderTextX = NullableX(dimension.RenderTextX),
+            RenderTextY = NullableY(dimension.RenderTextY),
+            RenderTextHeight = NullableLength(dimension.RenderTextHeight),
+            LineSegments = dimension.LineSegments
+                .Select(segment => new DimensionLineSegmentDto(
+                    X(segment.StartX),
+                    Y(segment.StartY),
+                    X(segment.EndX),
+                    Y(segment.EndY)))
+                .ToArray(),
+            LinePrimitives = dimension.LinePrimitives
+                .Select(line => line with
+                {
+                    StartX = X(line.StartX),
+                    StartY = Y(line.StartY),
+                    EndX = X(line.EndX),
+                    EndY = Y(line.EndY)
+                })
+                .ToArray(),
+            TextPrimitives = dimension.TextPrimitives
+                .Select(text => text with
+                {
+                    X = X(text.X),
+                    Y = Y(text.Y),
+                    Height = Length(text.Height)
+                })
+                .ToArray(),
+            InsertPrimitives = dimension.InsertPrimitives
+                .Select(insert => insert with
+                {
+                    X = X(insert.X),
+                    Y = Y(insert.Y)
+                })
+                .ToArray(),
+            CirclePrimitives = dimension.CirclePrimitives
+                .Select(circle => circle with
+                {
+                    CenterX = X(circle.CenterX),
+                    CenterY = Y(circle.CenterY),
+                    Radius = Length(circle.Radius)
+                })
+                .ToArray(),
+            ArcPrimitives = dimension.ArcPrimitives
+                .Select(arc => arc with
+                {
+                    CenterX = X(arc.CenterX),
+                    CenterY = Y(arc.CenterY),
+                    Radius = Length(arc.Radius)
+                })
+                .ToArray(),
+            SolidPrimitives = dimension.SolidPrimitives
+                .Select(solid => solid with
+                {
+                    Point1X = X(solid.Point1X),
+                    Point1Y = Y(solid.Point1Y),
+                    Point2X = X(solid.Point2X),
+                    Point2Y = Y(solid.Point2Y),
+                    Point3X = X(solid.Point3X),
+                    Point3Y = Y(solid.Point3Y),
+                    Point4X = X(solid.Point4X),
+                    Point4Y = Y(solid.Point4Y)
+                })
+                .ToArray()
+        };
+    }
+
+    private AdjustedCompressionStepDto ToSourceCompressionStep(AutoFitCompressionTransform transform)
+    {
+        var isWidth = !IsHeight(transform.AxisTag);
+        var offsetAxis = isWidth
+            ? projectionOffsetX + ManualOffsetX
+            : projectionOffsetY + ManualOffsetY;
+
+        return new AdjustedCompressionStepDto(
+            NormalizeAxis(transform.AxisTag),
+            transform.Edge.ToString(),
+            transform.Markers
+                .Select(marker => new AdjustedCompressionMarkerDto(
+                    Round((marker.Coordinate - offsetAxis) / projectionScale),
+                    Round(marker.TrimSourceUnits / projectionScale)))
+                .ToArray());
+    }
+
     private static void ReplaceItems<T>(ObservableCollection<T> target, IEnumerable<T> source)
     {
         target.Clear();
@@ -295,50 +486,90 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     {
         if (facts is null)
         {
-            return "Auto-fit facts are not available yet.";
+            return "Todavía no hay datos de encaje disponibles.";
         }
 
         return facts.NeedsAdjustment
             ? facts.HasRequiredCandidateCapacity
-                ? "Auto-fit facts are ready. Review candidates, then ask OpenAI for a bounded suggestion."
-                : "Auto-fit needs compatible pinch groups with enough capacity before OpenAI can suggest a valid plan."
-            : "The projected floor plan already fits inside the buildable area.";
+                ? "Datos listos: revisá candidatos y pedí a AI que ordene opciones acotadas."
+                : "El ajuste necesita grupos de pinches compatibles y con capacidad antes de sugerir un plan válido."
+            : "El floor plan proyectado ya entra dentro del área edificable.";
     }
 
     private static string FormatCandidateSummary(AutoFitSuggestionFacts facts)
     {
         if (!facts.NeedsAdjustment)
         {
-            return "Fits: no Width or Height deficit detected.";
+            return "Entra: no hay déficit de ancho ni de alto.";
         }
 
-        var deficit = $"Deficit: Width {facts.Deficit.WidthInches:0.###}\"; Height {facts.Deficit.HeightInches:0.###}\".";
+        var deficit = $"Déficit: ancho {FormatInches(facts.Deficit.WidthInches)}; alto {FormatInches(facts.Deficit.HeightInches)}.";
         if (facts.CandidateGroups.Count == 0)
         {
-            return $"{deficit} No candidate pinch groups are available for the required axes.";
+            return $"{deficit} No hay grupos de pinches candidatos para los ejes necesarios.";
         }
 
         var groups = string.Join(
             "; ",
             facts.CandidateGroups.Select(group =>
-                $"{group.Name} ({group.AxisTag}, cap {group.CapacityInches:0.###}\")"));
+                $"{group.Name} ({LocalizeAxis(group.AxisTag)}, cap {FormatInches(group.CapacityInches)})"));
         var warnings = facts.Warnings.Count == 0
             ? string.Empty
-            : $" Warnings: {string.Join(" ", facts.Warnings)}";
-        return $"{deficit} Candidates: {groups}.{warnings}";
+            : $" Avisos: {string.Join(" ", facts.Warnings.Select(FormatDiagnosticLine))}";
+        return $"{deficit} Candidatos: {groups}.{warnings}";
     }
 
     internal static string FormatPlanDetails(AutoFitSuggestionPlan plan)
-    {
-        var lines = plan.Steps
-            .Select(step => $"- {step.GroupName} ({step.AxisTag}): {step.ReductionInches:0.###}\" — {step.Reason}")
-            .ToList();
+        => FormatOptionDetails(plan);
 
-        if (!string.IsNullOrWhiteSpace(plan.Explanation))
+    internal static string FormatOptionTitle(AutoFitSuggestionPlan plan)
+    {
+        if (plan.Steps.Count == 0)
         {
-            lines.Add(plan.Explanation);
+            return "Plan sin recortes.";
         }
 
+        var axisGroups = plan.Steps
+            .GroupBy(step => NormalizeAxis(step.AxisTag), StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (axisGroups.Length == 1)
+        {
+            var group = axisGroups[0];
+            var axis = LocalizeAxis(group.Key, capitalize: true);
+            var total = group.Sum(step => step.ReductionInches);
+            var groupNames = group
+                .Select(step => step.GroupName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return groupNames.Length == 1
+                ? $"{axis}: recortar {FormatInches(total)} en {groupNames[0]}."
+                : $"{axis}: recortar {FormatInches(total)} dividido entre {JoinSpanishList(groupNames)}.";
+        }
+
+        var axisParts = axisGroups
+            .Select(group => $"{LocalizeAxis(group.Key)} {FormatInches(group.Sum(step => step.ReductionInches))}")
+            .ToArray();
+        return $"Recortar {JoinSpanishList(axisParts)} usando {plan.Steps.Count} grupos.";
+    }
+
+    internal static string FormatOptionDetails(AutoFitSuggestionPlan plan)
+    {
+        if (plan.Steps.Count == 0)
+        {
+            return "Sin grupos afectados.";
+        }
+
+        var lines = plan.Steps
+            .Select(step => $"{step.GroupName}: {FormatInches(step.ReductionInches)} · {LocalizeAxis(step.AxisTag)}")
+            .ToList();
+        var affectedGroupCount = plan.Steps
+            .Select(step => step.GroupName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        lines.Add(affectedGroupCount == 1
+            ? "Cambio localizado en un grupo."
+            : $"Recorte distribuido entre {affectedGroupCount} grupos.");
         return string.Join(Environment.NewLine, lines);
     }
 
@@ -347,10 +578,15 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         var lines = new List<string>();
         if (!string.IsNullOrWhiteSpace(response.ErrorMessage))
         {
-            lines.Add(response.ErrorMessage);
+            lines.Add("AI no devolvió un ranking aplicable.");
         }
 
-        lines.AddRange(response.Validation.Errors);
+        lines.AddRange(response.Validation.Errors.Select(FormatDiagnosticLine));
+        if (lines.Count == 0)
+        {
+            lines.Add("No hubo detalle adicional del validador.");
+        }
+
         return string.Join(Environment.NewLine, lines);
     }
 
@@ -358,10 +594,10 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     {
         if (facts.Warnings.Count > 0)
         {
-            return string.Join(Environment.NewLine, facts.Warnings);
+            return string.Join(Environment.NewLine, facts.Warnings.Select(FormatDiagnosticLine));
         }
 
-        return "Create compatible Width/Height pinch groups with enough available trim before asking OpenAI.";
+        return "Creá grupos de pinches compatibles de ancho/alto con recorte disponible antes de pedir AI.";
     }
 
     private void PopulateAutoFitOptions(IReadOnlyList<AutoFitSuggestionPlan> plans)
@@ -375,8 +611,70 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
 
     private static string FormatOptionSummary(int count)
         => count == 1
-            ? "1 fit option available. Pick it to apply the preview reduction."
-            : $"{count} fit options available. Pick the one you prefer to apply the preview reduction.";
+            ? "1 opción disponible. Elegila para aplicar el recorte en el preview."
+            : $"{count} opciones disponibles. Elegí la que prefieras para aplicar el recorte en el preview.";
+
+    private static string FormatInches(decimal value)
+        => $"{value.ToString("0.###", CultureInfo.InvariantCulture)}\"";
+
+    private static string LocalizeAxis(string axisTag, bool capitalize = false)
+    {
+        var axis = IsHeight(axisTag) ? "alto" : "ancho";
+        return capitalize
+            ? axis[..1].ToUpperInvariant() + axis[1..]
+            : axis;
+    }
+
+    private static string JoinSpanishList(IReadOnlyList<string> items)
+    {
+        if (items.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (items.Count == 1)
+        {
+            return items[0];
+        }
+
+        return items.Count == 2
+            ? $"{items[0]} y {items[1]}"
+            : $"{string.Join(", ", items.Take(items.Count - 1))} y {items[^1]}";
+    }
+
+    private static string FormatDiagnosticLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = line.Trim();
+        var parts = trimmed.TrimEnd('.').Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 9 &&
+            string.Equals(parts[1], "deficit", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(parts[3], "inches", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(parts[4], "exceeds", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(parts[5], "available", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(parts[6], "capacity", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(parts[8], "inches", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Déficit de {LocalizeAxis(parts[0])} {parts[2]} supera la capacidad disponible {parts[7]}.";
+        }
+
+        return trimmed
+            .Replace("Width", "ancho", StringComparison.OrdinalIgnoreCase)
+            .Replace("Height", "alto", StringComparison.OrdinalIgnoreCase)
+            .Replace(" inches", "\"", StringComparison.OrdinalIgnoreCase)
+            .Replace("Every suggested reduction must name an existing pinch group.", "Cada recorte sugerido debe nombrar un grupo de pinches existente.", StringComparison.OrdinalIgnoreCase)
+            .Replace("does not exist in the fit facts", "no existe en los datos de encaje", StringComparison.OrdinalIgnoreCase)
+            .Replace("is ambiguous because multiple candidate groups share that name", "es ambiguo porque varios grupos candidatos comparten ese nombre", StringComparison.OrdinalIgnoreCase)
+            .Replace("must be greater than zero", "debe ser mayor que cero", StringComparison.OrdinalIgnoreCase)
+            .Replace("reduction must be exact", "el recorte debe ser exacto", StringComparison.OrdinalIgnoreCase)
+            .Replace("needed", "necesita", StringComparison.OrdinalIgnoreCase)
+            .Replace("but the plan trims", "pero el plan recorta", StringComparison.OrdinalIgnoreCase)
+            .Replace("exceeding its capacity", "supera su capacidad", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static IReadOnlyList<Guid> ResolveChangedNumberDimensionIds(
         IReadOnlyList<DimensionDto> baselineDimensions,
@@ -755,7 +1053,18 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         var maxX = 0m;
         var maxY = 0m;
 
-        foreach (var segment in geometry.SelectMany(path => path.Segments))
+        // Bounds drive the edge inference center, so collapsed zero-length artifacts
+        // must not drag it; only fall back to them when no real geometry exists.
+        var segments = geometry
+            .SelectMany(path => path.Segments)
+            .Where(segment => segment.HasExtent())
+            .ToArray();
+        if (segments.Length == 0)
+        {
+            segments = geometry.SelectMany(path => path.Segments).ToArray();
+        }
+
+        foreach (var segment in segments)
         {
             Include(segment.StartX, segment.StartY);
             Include(segment.EndX, segment.EndY);
@@ -799,8 +1108,8 @@ public sealed partial class AutoFitSuggestionOptionViewModel : ObservableObject
     {
         OptionNumber = optionNumber;
         Plan = plan;
-        Title = plan.Summary;
-        Details = SitePlanAdjustmentViewModel.FormatPlanDetails(plan);
+        Title = SitePlanAdjustmentViewModel.FormatOptionTitle(plan);
+        Details = SitePlanAdjustmentViewModel.FormatOptionDetails(plan);
     }
 
     public int OptionNumber { get; }
@@ -811,7 +1120,7 @@ public sealed partial class AutoFitSuggestionOptionViewModel : ObservableObject
 
     public string Details { get; }
 
-    public string ApplyLabel => $"Apply option {OptionNumber}";
+    public string ApplyLabel => "Aplicar";
 
     [ObservableProperty]
     private bool isApplied;
@@ -879,7 +1188,10 @@ internal static class SitePlanAdjustmentPreviewProjector
         FloorPlanLibraryVersionDto version,
         FloorPlanReviewViewModel reviewViewModel,
         SitePlanPreviewDto sitePlan,
-        IAutoFitPlanSuggester? autoFitPlanSuggester = null)
+        IAutoFitPlanSuggester? autoFitPlanSuggester = null,
+        string? floorPlanSourcePath = null,
+        string? sitePlanSourcePath = null,
+        IAdjustedSitePlanExporter? adjustedSitePlanExporter = null)
     {
         var floorPlanPlacementGeometryPathIds = reviewViewModel.WallCandidates
             .Select(candidate => candidate.GeometryPathId)
@@ -908,10 +1220,10 @@ internal static class SitePlanAdjustmentPreviewProjector
             reviewViewModel.DimensionIntervalBindings);
 
         return new SitePlanAdjustmentViewModel(
-            "Adjust to Site Plan",
-            $"{libraryItem.Code} v{version.VersionNumber} over {sitePlan.FileName}",
-            $"Centered in buildable area: {Format(sitePlan.BuildableArea.MinX)}, {Format(sitePlan.BuildableArea.MinY)} -> {Format(sitePlan.BuildableArea.MaxX)}, {Format(sitePlan.BuildableArea.MaxY)}",
-            "Preview only. Showing lot/terrain and setbacks; use Move Floor Plan for fine placement.",
+            "Ajustar a site plan",
+            $"{libraryItem.Code} v{version.VersionNumber} sobre {sitePlan.FileName}",
+            $"Centrado en área edificable: {Format(sitePlan.BuildableArea.MinX)}, {Format(sitePlan.BuildableArea.MinY)} -> {Format(sitePlan.BuildableArea.MaxX)}, {Format(sitePlan.BuildableArea.MaxY)}",
+            "Vista previa: se muestra el site plan completo con colores de origen; usá Mover plano para ajuste fino.",
             filteredSitePlan.GeometryPaths,
             filteredSitePlan.RenderPaths,
             filteredSitePlan.Texts,
@@ -926,52 +1238,25 @@ internal static class SitePlanAdjustmentPreviewProjector
             reviewViewModel.MeasurementCorridors,
             reviewViewModel.MeasurementNodes,
             reviewViewModel.DimensionIntervalBindings,
-            reviewViewModel.ArticulationBands);
+            reviewViewModel.ArticulationBands,
+            projection.Scale,
+            projection.OffsetX,
+            projection.OffsetY,
+            floorPlanSourcePath,
+            sitePlanSourcePath,
+            adjustedSitePlanExporter);
     }
 
     internal static SitePlanAdjustmentSitePlanDisplay FilterSitePlanForAdjustment(SitePlanPreviewDto sitePlan)
     {
-        var renderPaths = sitePlan.RenderPaths
-            .Where(IsTerrainOrSetbackPath)
-            .ToArray();
-
-        if (renderPaths.Length == 0)
-        {
-            renderPaths = sitePlan.RenderPaths.ToArray();
-        }
-
+        var renderPaths = sitePlan.RenderPaths.ToArray();
         var geometryPaths = renderPaths
             .Select(path => new GeometryPathDto(path.Id, path.IsClosed, path.Segments))
             .ToArray();
-        var texts = sitePlan.Texts
-            .Where(IsSetbackText)
-            .ToArray();
+        var texts = sitePlan.Texts.ToArray();
 
         return new SitePlanAdjustmentSitePlanDisplay(geometryPaths, renderPaths, texts);
     }
-
-    private static bool IsTerrainOrSetbackPath(SitePlanRenderPathDto path)
-        => path.IsSetback || ContainsTerrainLayerToken(path.SourceLayer);
-
-    private static bool IsSetbackText(SitePlanTextDto text)
-        => text.IsSetback || ContainsSetbackToken(text.Text) || ContainsSetbackToken(text.SourceLayer);
-
-    private static bool ContainsTerrainLayerToken(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        return value.Contains("PROP", StringComparison.OrdinalIgnoreCase) ||
-               value.Contains("PROPERTY", StringComparison.OrdinalIgnoreCase) ||
-               value.Contains("LOT", StringComparison.OrdinalIgnoreCase) ||
-               value.Contains("BOUND", StringComparison.OrdinalIgnoreCase) ||
-               value.Contains("PARCEL", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool ContainsSetbackToken(string? value)
-        => value?.Contains("SETBACK", StringComparison.OrdinalIgnoreCase) == true;
 
     internal static SitePlanAdjustmentProjection Project(
         IReadOnlyList<GeometryPathDto> floorPlanGeometryPaths,
@@ -982,9 +1267,16 @@ internal static class SitePlanAdjustmentPreviewProjector
         SitePlanPreviewDto sitePlan,
         IReadOnlySet<Guid>? floorPlanPlacementGeometryPathIds = null)
     {
-        var floorBounds = TryBoundsOf(ResolvePlacementGeometryPaths(
+        // Center on the structural footprint (dominant wall mass), so a stray thin
+        // segment that juts past the body cannot pull the plan off-center against the
+        // setback. This mirrors how the fit deficit is measured. See StructuralFootprint.
+        var placementGeometry = ResolvePlacementGeometryPaths(
             floorPlanGeometryPaths,
-            floorPlanPlacementGeometryPathIds));
+            floorPlanPlacementGeometryPathIds);
+        var structuralFootprint = StructuralFootprint.Resolve(placementGeometry);
+        var floorBounds = structuralFootprint is { } footprint
+            ? new GeometryBounds(footprint.MinX, footprint.MinY, footprint.MaxX, footprint.MaxY)
+            : TryBoundsOf(placementGeometry);
         if (floorBounds is null)
         {
             return new SitePlanAdjustmentProjection([], [], [], [], 1m, 0m, 0m);

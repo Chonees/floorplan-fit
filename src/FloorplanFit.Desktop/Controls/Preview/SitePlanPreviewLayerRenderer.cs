@@ -29,6 +29,11 @@ internal static class SitePlanPreviewLayerRenderer
 
     internal static Color ResolveColor(string? colorArgb, bool isSetback)
     {
+        if (Color.TryParse(colorArgb, out var sourceColor))
+        {
+            return sourceColor;
+        }
+
         return isSetback
             ? SetbackHighlightColor
             : FallbackSitePlanColor;

@@ -1,5 +1,163 @@
 # Current State
 
+## 2026-06-15 - Adjust to Site Plan preserves full site-plan appearance
+- Current truth: Loop 2 `Adjust to Site Plan` preview now keeps full site-plan render paths/texts and honors source `ColorArgb` for both setback and non-setback content. Fallback gray/orange is used only when source color is unavailable.
+- Current truth: `IxMiliaAdjustedSitePlanExporter` now injects site-plan entities from raw source DXF group-code records, transforming coordinates/lengths while preserving visual metadata such as layer, entity color, lineweight, text style, width factor, and oblique angle.
+- Current truth: missing site-plan layers are copied from source `LAYER` records where available; AutoCAD compatibility metadata (`370`, `390`, `347`, `348`) is added only when absent.
+- Verification: Desktop preview focused RED/GREEN and broader preview slice passed 84/84; Infrastructure exporter metadata RED/GREEN and full exporter slice passed 5/5.
+- See implementation note: `Implementation/2026-06-15 - Adjust to Site Plan preserves full site plan appearance.md`.
+
+## 2026-06-15 - Requested: Adjust to Site Plan preview/export preserve full site plan colors/content
+- User clarified a product correction: in Loop 2 `Adjust to Site Plan`, both preview and exported DXF must preserve site-plan colors and the rest of the CAD visual information.
+- Verified current gap: `FilterSitePlanForAdjustment(...)` filters preview down to terrain/setback paths and setback text; `SitePlanPreviewLayerRenderer.ResolveColor(...)` ignores source `ColorArgb`; `IxMiliaAdjustedSitePlanExporter` rebuilds site-plan entities/layers with simplified/default visual metadata.
+- Desired direction: preview should render full `SitePlanPreviewDto.RenderPaths`/`Texts` with source colors; export should preserve source site-plan layer/entity/text/style metadata instead of reconstructing a toy overlay.
+- See inbox note: `Inbox/2026-06-15 - Adjust to Site Plan must preserve full site plan colors and content.md`.
+
+## 2026-06-15 - Synthetic property boundary now traces setback shape
+- User clarified the exterior lot/property boundary must mirror the buildable setback shape. If the setback has a chamfer, curve, fillet, or other shape, that shape comes from the terrain and the outer boundary must trace the same shape expanded outward.
+- Root cause verified by RED: old generated files had `PINE` with property boundary `4` segments while `SETBACKS` had `5`; `CEDAR` had property `4` while `SETBACKS` had `36`; `MESA` had property `4` while `SETBACKS` had `27`.
+- Current generator truth: `lot_from_setback_shape(...)` builds the property boundary as an affine expansion of the same setback vertex sequence using the current side/front/rear margins. This preserves the exact buildable setback bbox/deficit measurements while making the outer terrain copy the setback form.
+- Verified current valid output set with AutoCAD Core Console and shape verifier: `SYNTH OAK.dxf`, `SYNTH PINE - AUTOCAD FIXED.dxf`, `SYNTH CEDAR - AUTOCAD FIXED.dxf`, `SYNTH MESA - AUTOCAD FIXED.dxf`, `SYNTH RIO.dxf`, and `SYNTH PARK.dxf` all pass `property boundary matches SETBACKS shape` and AutoCAD audit/open.
+- Cleanup attempted again, but AutoCAD/another process still locks stale exact files: old long-name 01/02 plus `SYNTH PINE.dxf`, `SYNTH CEDAR.dxf`, and `SYNTH MESA.dxf`. Those exact files remain stale until released; current valid replacements are the `- AUTOCAD FIXED` files for PINE/CEDAR/MESA.
+
+## 2026-06-15 - Synthetic title-block text scaled up; cleanup blocked by open AutoCAD files
+- User clarified the lower/title-block lettering in generated synth DXFs was still too small.
+- Current generator truth: `generate_synthetic_siteplans.py` scales the Dawson-style title block by `5.0x`, preserving the same styles/proportions while making visible lower title text much larger in the synthetic canvas.
+- Verified valid current output set with AutoCAD Core Console: `SYNTH OAK.dxf`, `SYNTH PINE.dxf`, `SYNTH CEDAR.dxf`, `SYNTH MESA - AUTOCAD FIXED.dxf`, `SYNTH RIO.dxf`, and `SYNTH PARK.dxf` all audit/open with exit `0`; sample title heights are now `SITE PLAN=40`, `HOUSE=26.015625`, `L80=8`, table headers `7.03125`.
+- Cleanup attempted: old long-name synth files 03, 04, 05, 05 fallback, and 06 were deleted.
+- Cleanup blocked: `SYNTH MESA.dxf`, old long-name 01, and old long-name 02 are locked by AutoCAD/another process. Because `SYNTH MESA.dxf` is locked, regeneration wrote the valid larger version as `SYNTH MESA - AUTOCAD FIXED.dxf`.
+- Next action: close/release those locked DXFs in AutoCAD, rerun `python generate_synthetic_siteplans.py`, then delete the fallback/old locked files and rerun `python verify_synthetic_siteplans.py`.
+
+## 2026-06-15 - Synthetic site plans now use Dawson-style title block and short fake names
+- User clarified the synth DXFs must not show diagnostic labels like `BUILDABLE BBOX`, long deficit names, or toy `SYNTHETIC STREET` text.
+- Current truth: generated synth files now use short fake file/title names: `SYNTH OAK.dxf`, `SYNTH PINE.dxf`, `SYNTH CEDAR.dxf`, `SYNTH MESA.dxf`, `SYNTH RIO.dxf`, and `SYNTH PARK.dxf`.
+- The visible CAD title block now follows the `158 DAWSON STREET.dxf` pattern: `HOUSE`, `SITE`, `L80`, `RS`, and `ARCHITECTURAL` text styles/heights, `SITE PLAN`, `SCALE 1'=20'`, R.O.W. note, legal/city lines, curve table, and survey-style bearing labels.
+- To keep AutoCAD valid, generated bearing degree marks use DXF `%%d` and the `DO?A` title text uses DXF Unicode escape `DO\U+00D1A`; literal `?`/`?` caused AutoCAD Core Console read errors.
+- Geometry truth did not change: setbacks still encode exact structural deficits, while title/labels are decorative Pointe-style CAD language.
+- Verification: RED verifier failed before new short-name outputs; GREEN `python generate_synthetic_siteplans.py`; GREEN `python verify_synthetic_siteplans.py` passed with `PASS: 6 synthetic site plan(s) match Pointe layer and title appearance`.
+- See implementation note: `Implementation/2026-06-15 - Synthetic site plans use Pointe layer appearance.md`.
+
+## 2026-06-15 - Synthetic site plan 05 exact-name file is stale/locked and still opens black
+- Fresh user report: AutoCAD still shows the black/blank symptom.
+- Fresh verification: `python verify_synthetic_siteplans.py` fails only for `SYNTH SITE PLAN 05 - LOTE TRAPEZOIDAL - alto menos 2 inch.dxf`.
+- AutoCAD Core Console rejects that exact file with exit `53`; the verifier also reports `Error in APPID Table`, `DXF read error on line 226`, `Invalid or incomplete DXF input -- drawing discarded`, and `ErrorStatus=53`.
+- File evidence: exact-name 05 is the stale small file (`2242` bytes); the generated valid replacement is `SYNTH SITE PLAN 05 - LOTE TRAPEZOIDAL - alto menos 2 inch - AUTOCAD FIXED.dxf` (`114189` bytes).
+- Lock evidence: Windows reports the exact-name 05 cannot be opened for exclusive read/write because it is being used by another process, so the generator cannot overwrite it yet.
+- Current action: close/release that exact DXF in AutoCAD, then rerun `python generate_synthetic_siteplans.py` to replace the stale exact-name file.
+- See bug note: `Bugs/2026-06-15 - Synthetic site plan 05 stale locked DXF opens black.md`.
+
+## 2026-06-15 - Synthetic site plans use Pointe structure for AutoCAD validity
+- User reported the generated synthetic site plans still showed the AutoCAD black/blank symptom.
+- Verified with AutoCAD Core Console: old synths were discarded with `Error in APPID Table`, `DXF read error on line 226`, `Invalid or incomplete DXF input -- drawing discarded`, `ErrorStatus=53`.
+- Root cause: copying layer names/metadata was not enough; the synth DXF was still structurally minimal and lacked Pointe/R2013 tables such as `VPORT`, `VIEW`, `UCS`, `APPID`, `DIMSTYLE`, and `BLOCK_RECORD`. Its `LINE`/`TEXT` entities also lacked R2013 subclass markers/handles/owners.
+- Current generator truth: `generate_synthetic_siteplans.py` now uses `158 DAWSON STREET.dxf` as structural template, replaces only `ENTITIES`, writes R2013-compatible entity records, and updates `$EXTMIN`, `$EXTMAX`, active `VPORT`, and `$HANDSEED`.
+- Verification: AutoCAD Core Console passed (`exit 0`) for fixed files 01, 02, 03, 04, 06, and `SYNTH SITE PLAN 05 - LOTE TRAPEZOIDAL - alto menos 2 inch - AUTOCAD FIXED.dxf`.
+- Caveat: original file `SYNTH SITE PLAN 05 - LOTE TRAPEZOIDAL - alto menos 2 inch.dxf` is locked by AutoCAD/another process and could not be overwritten; it remains stale/invalid until the lock is released.
+- See implementation note: `Implementation/2026-06-15 - Synthetic site plans use Pointe layer appearance.md`.
+
+## 2026-06-15 - Synthetic site plans use Pointe layer appearance
+- Current truth: generated `SYNTH SITE PLAN *.dxf` files now live in `D:\PointAIData\PLANS\originalsSitePlans` beside the real Pointe site plan fixture.
+- The generator uses the same required layer names and appearance metadata as `158 DAWSON STREET.dxf`: colors, linetypes, lineweights, plot style, material, and shadow values for `0`, `TEXT`, `E`, `SETBACKS`, and `2312-001-BM$0$C-PROP-SUBD`.
+- Product semantics: only the setback/buildable geometry varies per synthetic scenario; the CAD visual language stays Pointe-like.
+- Generated six files: three width/ancho deficit cases (`1"`, `2"`, `5"`) and three height/alto deficit cases (`1"`, `2"`, `5"`).
+- Verification: RED `python verify_synthetic_siteplans.py` failed before generation because no synth files existed in the target corpus; GREEN `python generate_synthetic_siteplans.py`; GREEN verifier passed with `PASS: 6 synthetic site plan(s) match Pointe layer appearance`.
+- See implementation note: `Implementation/2026-06-15 - Synthetic site plans use Pointe layer appearance.md`.
+
+## 2026-06-15 - Adjust to Site Plan export carries reactive dimension numbers
+- Fixed semantic parity after the AutoCAD-open fixes: Loop 2 `Exportar DXF` now carries adjusted dimension patches for cotas whose visible number changed in the preview/red-highlight state.
+- `SitePlanAdjustmentViewModel.BuildAdjustedSitePlanPlacement()` now includes changed adjusted `DimensionDto` patches mapped back from preview/site coordinates into floor-plan source coordinates.
+- `AdjustedSitePlanPlacementDto` now carries `AdjustedDimensions` in addition to scale/offset/compression steps.
+- `IxMiliaAdjustedSitePlanExporter` applies compression first, then patches affected native dimension geometry blocks/text from the preview-projected dimension state before injecting the site plan.
+- Verification: RED/GREEN Desktop contract regression; RED/GREEN Infrastructure export regression; `IxMiliaAdjustedSitePlanExporterTests|IxMiliaAdjustedDxfExporterTests` passed 8/8; `SitePlanAdjustmentPreviewProjectorTests` passed 25/25; `git diff --check` exited 0 with CRLF warnings only.
+- See bug note: `Bugs/2026-06-15 - Adjust to Site Plan export omits reactive dimension values.md`.
+
+## 2026-06-15 - Adjust to Site Plan injected layers include PlotStyleName
+- Final AutoCAD-validated root cause for the continued black-screen/`Drawing1` loop: injected `LAYER` records were missing `390 PlotStyleName`.
+- AutoCAD Core Console reproduced the real rejection: `Error in LAYER Table`, `Did not receive PlotStyleName on line 2894`, `Invalid or incomplete DXF input -- drawing discarded`, `ErrorStatus=53`.
+- Current truth: `IxMiliaAdjustedSitePlanExporter.BuildLayerRecord(...)` now emits source-compatible layer metadata tail `370 -3`, `390 F`, `347 98`, `348 0` for injected layers.
+- Diagnostic copy for immediate QA: `C:\Users\lucas\OneDrive\Escritorio\exports\plano-ajustado-al-sitio-layer390-fixed.dxf`.
+- AutoCAD Core Console verified the diagnostic file with `Regenerating model.`, `Total errors found 0 fixed 0`, and process `exit=0`.
+- Verification: RED/GREEN layer-table regression; Infrastructure `IxMiliaAdjustedSitePlanExporterTests` passed 3/3; `git diff --check` exited 0 with CRLF warnings only.
+- Updates bug note: `Bugs/2026-06-15 - Adjust to Site Plan export opens black blank DXF.md`.
+
+## 2026-06-15 - Adjust to Site Plan export advances HANDSEED
+- Follow-up fix: a fresh source-preserving Adjust-to-Site-Plan export still failed in AutoCAD, but not for the previous `ACDSDATA`/`BLOCK_RECORD` reason.
+- Verified current file evidence: `plano-ajustado-al-sitio.dxf` had `ACDSDATA` and `ezdxf.audit()` returned `errors=0`, `fixes=0`, but `ezdxf` warned about non-unique handles `#4B56..#4B5A`.
+- Root cause: site-plan injection appended entities with handles through `4B74` while preserving the source `$HANDSEED = 4B55`; CAD readers can then allocate handles that collide with injected entities.
+- Current truth: `IxMiliaAdjustedSitePlanExporter` now rewrites `$HANDSEED` to the next available generated handle after all layer/entity injection.
+- Diagnostic copy for immediate AutoCAD QA: `C:\Users\lucas\OneDrive\Escritorio\exports\plano-ajustado-al-sitio-handseed-fixed.dxf`; the original `plano-ajustado-al-sitio.dxf` was locked and could not be overwritten.
+- Verification: RED/GREEN `$HANDSEED` regression; Infrastructure `IxMiliaAdjustedSitePlanExporterTests` passed 3/3; `git diff --check` exited 0 with CRLF warnings only.
+- Updates bug note: `Bugs/2026-06-15 - Adjust to Site Plan export opens black blank DXF.md`.
+
+## 2026-06-15 - Adjust to Site Plan export preserves source DXF
+- Fixed: Loop 2 `Adjust to Site Plan` export no longer reserializes the real floor-plan DXF through IxMilia `DxfFile.Save(...)`.
+- Root cause verified: old `plano-ajustado-al-sitio.dxf` lacked `ACDSDATA`, and `ezdxf.readfile(...)` failed with `required BLOCK_RECORD #0 for layout 'Layout1' does not exist`; the RED regression also proved the exporter dropped source sections.
+- Current truth: `IxMiliaAdjustedSitePlanExporter` reads the floor-plan DXF as Latin-1 group-code pairs, patches compression coordinates directly, injects supported site-plan entities/layers with fresh handles, and preserves original sections/object graph including `ACDSDATA`.
+- UI copy truth: visible export actions now say `Exportar DXF`, not `Exportar DXF ajustado` or `Exportar DXF ajustado al sitio`.
+- Verification: Infrastructure `IxMiliaAdjustedSitePlanExporterTests` passed 3/3; Desktop `AppXamlInitializationTests|SitePlanAdjustmentPreviewProjectorTests.ExportAdjustedSitePlanAsync_invokes_exporter_with_current_placement_and_paths` passed 11/11; `git diff --check` exited 0 with CRLF warnings only.
+- See bug note: `Bugs/2026-06-15 - Adjust to Site Plan export opens black blank DXF.md`.
+- See implementation note: `Implementation/2026-06-15 - Adjust to Site Plan export preserves source DXF.md`.
+
+## 2026-06-11 - Width setback detection uses structural fit footprint
+- Current truth: Loop 2 width fit/detection uses the structural fit footprint from accepted wall candidates, not all preview geometry and not cotas/pinches/labels/outlier artifacts.
+- Correct footprint basis for the regenerated SEMINOLE2000 examples: `483.785586"` wide x `930.000286"` tall.
+- Example 01 now has setback `482.785586" x 930.000286"` centered inside the fit footprint: total width deficit `1"` = `0.5"` left + `0.5"` right.
+- Example 02 now has setback `481.785586" x 930.000286"` centered: total width deficit `2"` = `1"` left + `1"` right.
+- Height examples use the same structural fit width and only reduce height: Example 03 deficit `1"` high, Example 04 deficit `2"` high.
+- Root correction: the previous "total preview geometry" approach was wrong because it included non-footprint geometry and could invent width deficit. The correct detection basis is the building footprint used for setback compliance.
+- Verification: RED Desktop test proved total-preview/outlier centering produced wall footprint `70..170` when it should be `100..200`; GREEN passed after restoring wall-candidate footprint basis. Exported DXF numeric parse verifies centered deficits exactly. Focused Application/Desktop test commands returned exit 0 when rerun separately.
+- See bug note: `Bugs/2026-06-11 - Width deficit still uses non-footprint geometry.md`.
+
+## 2026-06-11 - Width auto-fit uses total span, not shifted side overflow
+- Current truth: Loop 2 auto-fit width deficit is now computed from the projected preview geometry span versus total buildable span: `max(0, floorWidth - buildableWidth)`.
+- User-facing result: if the floor plan appears `2"` out on the right but has enough slack on the left and the total width fits, the app reports `0"` width deficit instead of asking for a fake width trim.
+- Height behavior intentionally remains unchanged: height still reports the current vertical overflow against the buildable envelope, because the user confirmed height is working correctly.
+- Width side fields (`LeftInches`/`RightInches`) now split the real total width excess evenly for fit facts; they are no longer raw placement-overflow counters.
+- Verification: RED Application regression failed first with expected `0"` width deficit but actual `2"`; after the fix, Application `AutoFitSuggestionFactBuilderTests` passed 4/4, broader Application `AutoFitSuggestion` tests passed 10/10, Desktop `SitePlanAdjustmentPreviewProjectorTests` passed 20/20, and `git diff --check` exited 0 with LF-to-CRLF warnings only.
+- See bug note: `Bugs/2026-06-11 - Auto-fit may count placement overflow as size deficit.md`.
+
+## 2026-06-11 - Edit preview can add manual wall lines
+- Current truth: Loop 1 edit/review preview has a Fit toolbar tool named `Agregar pared`.
+- Workflow: click `Agregar pared`, click the first point, move the cursor to see a dashed ghost line, then click the second point to persist the wall.
+- Persistence truth: the second click creates an accepted manual `ExtractedWallCandidate` on the latest extraction run with source layer `MANUAL-WALLS` and source ref `MANUAL-WALL:{id}`; the review session refreshes and selects it.
+- UI behavior: arming manual wall creation cancels pinch placement and measurement-node placement so tools do not fight each other.
+- Architecture: Desktop owns the two-click/draft interaction; Application validates/orchestrates through `AddManualWallCandidateHandler`; Infrastructure writes candidate and geometry rows to SQLite.
+- Verification: Application focused tests 5/5, Infrastructure focused tests 15/15, Desktop focused tests 82/82, `git diff --check` exit 0 with LF-to-CRLF warnings only.
+- See implementation note: `Implementation/2026-06-11 - Manual wall line tool in edit preview.md`.
+
+## 2026-06-10 - Adjust to Site Plan uses full preview with sidebar controls
+- Current truth: Loop 2 Adjust to Site Plan no longer renders the large header title, version subtitle, or preview-only status line inside the window body.
+- The main shell is now a two-column layout: full-height preview on the left (`PreviewShell`) and a fixed `400px` control/sidebar on the right (`AdjustmentSidebar`).
+- Sidebar contains move/cotas controls, fit facts/status/details, the `Sugerir ajuste (AI)` action, and vertically scrollable fit option cards.
+- Remaining sidebar copy is Spanish: `Centrado en ÃƒÂ¡rea edificable...`, Spanish title/subtitle/status backing text, and no visible `OpenAI` provider wording.
+- The move action no longer reuses the global `Button.tool` 48px square style; it uses `Button.sidebar-action` with `MinWidth="120"` so `Mover plano` is not clipped.
+- Fit cards no longer use fixed width/height clipping; each card stretches to sidebar width with `MinHeight="144"`, a vertical `Auto,Auto,Auto` layout, and a full-width `Aplicar` button below the details so suggestion text is not squeezed by the button column.
+- Verification: RED/GREEN sidebar polish tests passed 3/3; broader Desktop focused tests `SitePlanAdjustmentPreviewProjectorTests|AppXamlInitializationTests` passed 28/28 using isolated `--artifacts-path`; `git diff --check` exited 0 with LF-to-CRLF warnings only.
+- Updates/follows: `Bugs/2026-06-10 - Auto-fit suggestion copy and cards were not localized.md`.
+
+## 2026-06-10 - Auto-fit suggestion cards are localized and compact
+- Current truth: Loop 2 Adjust to Site Plan no longer shows OpenAI/deterministic English summaries directly in option cards.
+- Desktop now formats visible fit-option titles/details in Spanish from validated plan steps; OpenAI remains a ranker, not the UI copy authority.
+- UI truth: suggestion panel is fixed at `Height="220"` / `MaxHeight="220"`; fit options now live in the right-side space beside the status copy, using a bounded horizontal strip with `MaxHeight="132"` and compact `420x112` cards, so options fit without pushing the preview.
+- Button copy is now `Sugerir ajuste (AI)` and Apply buttons read `Aplicar`; visible status text uses `AI` instead of `OpenAI`.
+- Verification: Desktop focused tests passed 7/7 for the side-layout/copy slice and broader SitePlanAdjustment/XAML focused tests passed 27/27 using isolated `--artifacts-path` because the running Desktop app locked the normal exe; `git diff --check` exited 0 with LF-to-CRLF warnings only.
+- See bug note: `Bugs/2026-06-10 - Auto-fit suggestion copy and cards were not localized.md`.
+
+## 2026-06-10 - Pinch groups can be named on create and renamed after creation
+- Current truth: Loop 1 edit/review preview now opens a naming popup before creating a pinch group, prefilled with the automatic suggestion such as `Ajuste 1`.
+- Existing selected pinch groups can be renamed from the Fit inspector via `Renombrar grupo`.
+- Rename changes only `pinch_groups.name`; group id, curation id, axis, sort order, markers, and downstream Loop 2 references remain stable.
+- Product reason: named pinch groups are part of human-in-the-loop fit decisions; Loop 2 suggestions explain/apply reductions by group name.
+- Verification: Application PinchGroup tests 4/4, Infrastructure PinchGroup persistence tests 3/3, Desktop ViewModel/Layout/DI focused tests 72/72, `git diff --check` exit 0 with LF-to-CRLF warnings only.
+- See implementation note: `Implementation/2026-06-10 - Pinch group naming and renaming.md`.
+
+## 2026-06-10 - Requested pinch group naming and renaming in edit preview
+- Current requested behavior: Loop 1 edit/review preview should prompt for a human group name when creating a pinch group and allow renaming existing pinch groups afterward.
+- Verified current gap: the UI has `Crear grupo de pinches`, but `FloorPlanReviewViewModel.AddPinchGroupAsync(...)` currently generates `Ajuste N` via `CreateNextPinchGroupName()`; no rename/update use case exists on `IPinchGroupRepository`.
+- Product reason: named groups are not cosmetic; Loop 2 fit options explain and apply reductions by group name, so the operator needs meaningful names such as Patio, Porch, Garage, or Lateral.
+- Status: design pending approval; no implementation yet.
+- See inbox note: `Inbox/2026-06-10 - Pinch group naming and renaming request.md`.
+
 ## 2026-06-10 - Manual site-plan move no longer starts auto-fit ghost animation
 - Current truth: in Adjust to Site Plan, geometry collection changes start the preview ghost animation only when they are not caused by an active manual `FloorPlanMove` drag.
 - Root cause fixed: `FloorPlanPreviewControl.OnObservedCollectionChanged(...)` previously animated every `GeometryPaths` collection change, and manual dragging mutates that same collection.
@@ -156,12 +314,12 @@
 - El delete de franja hace cascade manual sobre:
   - puntos de medida
   - interval bindings manuales de cotas
-- La selecciÃƒÂ³n local de franja/puntos se limpia despuÃƒÂ©s del refresh para no dejar UI colgando.
-- Fix extra: guardar "quÃƒÂ© mide" ya no crashea si el refresh limpia selecciÃƒÂ³n de franja/puntos antes del replay.
-- UX hardening: si una franja tiene exactamente 2 puntos y ya hay una cota seleccionada, el sistema autocompleta punto inicial/final y puede habilitar Guardar quÃƒÂ© mide sin obligar a elegir ambos combos manualmente.
-- Preview: el zoom mÃƒÂ¡ximo subiÃƒÂ³ de 6x a 20x para permitir curado mÃƒÂ¡s preciso.
-- Preview: el zoom mÃƒÂ¡ximo volviÃƒÂ³ a subir y ahora quedÃƒÂ³ en 40x.
-- Preview: el zoom mÃƒÂ¡ximo volviÃƒÂ³ a subir y ahora quedÃƒÂ³ en 80x.
+- La selecciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n local de franja/puntos se limpia despuÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©s del refresh para no dejar UI colgando.
+- Fix extra: guardar "quÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© mide" ya no crashea si el refresh limpia selecciÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³n de franja/puntos antes del replay.
+- UX hardening: si una franja tiene exactamente 2 puntos y ya hay una cota seleccionada, el sistema autocompleta punto inicial/final y puede habilitar Guardar quÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© mide sin obligar a elegir ambos combos manualmente.
+- Preview: el zoom mÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ximo subiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ de 6x a 20x para permitir curado mÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡s preciso.
+- Preview: el zoom mÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ximo volviÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ a subir y ahora quedÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ en 40x.
+- Preview: el zoom mÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ximo volviÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ a subir y ahora quedÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ en 80x.
 
 - Measurement interval discovery: cross-wall start/end nodes are accepted inside one corridor, but reactive rebuild still uses raw 2D node points, so total width/height only works robustly when both endpoints are already axis-aligned.
 
@@ -169,9 +327,9 @@
 
 - Measurement intervals: cross-wall Width/Height bindings are now projected back to the corridor axis before reactive rebuild, so total width/height no longer turns into a diagonal when clicks are misaligned.
 - Preview overlay: the active interval line is now axis-aligned; nodes still stay at their real clicked geometry positions.
-- Guard rail: Guardar quÃƒÂ© mide is disabled for FreeAngle dimensions (and axis-mismatched corridor selections) with Spanish guidance in the ViewModel.
+- Guard rail: Guardar quÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© mide is disabled for FreeAngle dimensions (and axis-mismatched corridor selections) with Spanish guidance in the ViewModel.
 - Preview: ahora hay un switch visual en el panel Preview para mostrar u ocultar todas las cotas del canvas.
-- Cuando el switch oculta cotas, tambiÃƒÂ©n se apaga el hit-testing de dimensions para que no queden invisibles pero clickeables.
+- Cuando el switch oculta cotas, tambiÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©n se apaga el hit-testing de dimensions para que no queden invisibles pero clickeables.
 
 ## 2026-05-19
 - Preview dimensions: las cotas que ya tienen una relacion manual con nodos (`DimensionIntervalBindingDto`) ahora se dibujan con color celeste tanto en geometria como en texto.
@@ -353,9 +511,9 @@
 ## 2026-05-21 - Publish stores Fit relationships but still lacks a hard readiness contract
 - Verified again against current code: publishing does **not** export or flatten Fit data; it marks the draft curation as `Published` and sets `floorplan_templates.active_published_curation_id` to that same curation id.
 - Therefore the already-saved Fit rows under that `floorplan_curation_id` remain the published source of truth: `pinch_groups`, `pinch_markers`, `measurement_corridors`, `measurement_nodes`, and `floorplan_dimension_interval_bindings`.
-- A dimension becomes a curated node-bound measure only after `Guardar quÃ© mide` creates/upserts a `DimensionIntervalBinding` with `BindingStatus = ManualVerified`, pointing to corridor + start/end nodes.
+- A dimension becomes a curated node-bound measure only after `Guardar quÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â© mide` creates/upserts a `DimensionIntervalBinding` with `BindingStatus = ManualVerified`, pointing to corridor + start/end nodes.
 - The reactive preview consumes the same model: preview geometry is compressed by pinches, `ArticulationBandProjector` builds bands from pinch groups/markers, and `DimensionIntervalReactiveProjector` only adjusts dimensions with `ManualVerified` bindings whose corridor axis matches the active pinch band.
-- Important gap remains: `PublishFloorPlanCurationHandler` still only gates on â€œat least one pinch markerâ€; it does not validate corridor completeness, node count, binding existence/coherence, or fit-readiness. A dedicated Fit Readiness / Published Curation Contract validator is still needed before trusting published data as Loop 2 input.
+- Important gap remains: `PublishFloorPlanCurationHandler` still only gates on ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“at least one pinch markerÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â; it does not validate corridor completeness, node count, binding existence/coherence, or fit-readiness. A dedicated Fit Readiness / Published Curation Contract validator is still needed before trusting published data as Loop 2 input.
 - Additional caveat: when opening a new draft based on a published curation, the reader applies lineage for generic overrides, but measurement corridors/nodes/bindings are read only from the active draft curation id. If published Fit semantics must carry into the next edit draft, measurement data needs explicit inheritance/copy support.
 
 ## 2026-05-21 - Franja axis editing is not implemented yet
@@ -416,7 +574,7 @@
 ## 2026-06-01 - Height handles require Height pinches and hint now says so
 - Verified from screenshots and local DB: selected `Ajuste 3` is a Height pinch group, but it currently has 0 pinch markers. Existing markers are on Width groups.
 - Current truth: top/bottom Height handles are not drawn for a Height group with no Height pinches, because the renderer requires a selected group + matching marker before exposing a draggable preview handle.
-- UX correction: the interaction hint no longer promises â€œdrag top/bottom handleâ€ when the selected group has no driver. It now tells the operator to mark at least one pinch for that axis first.
+- UX correction: the interaction hint no longer promises ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“drag top/bottom handleÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â when the selected group has no driver. It now tells the operator to mark at least one pinch for that axis first.
 - Verification: RED hint test failed first; focused Desktop ViewModel/Preview slice passed 100/100 after the fix.
 
 ## 2026-06-01 - Cross-axis bound dimensions follow pinch preview
@@ -475,7 +633,7 @@
 - Clicking **Editar** creates/resumes a draft from the active published curation and copies Fit-owned rows into it: pinch groups, pinch markers, measurement corridors/franjas, measurement nodes, and dimension interval bindings.
 - During edit mode, refresh reads by draft curation id so Crear franja / pinches / nodes mutate the draft instead of snapping back to the published view.
 - After publishing that draft, refresh sees `Published` and clears `DraftCurationId` back to `Guid.Empty`, returning the session to read-only published mode.
-- Verification: Application tests passed 87/87; Infrastructure tests passed 78/78; Desktop tests passed 192/192 via temporary artifacts path; `git diff --check` exited 0 with only LFÃ¢â€ â€™CRLF warnings.
+- Verification: Application tests passed 87/87; Infrastructure tests passed 78/78; Desktop tests passed 192/192 via temporary artifacts path; `git diff --check` exited 0 with only LFÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢CRLF warnings.
 - See decision note: `Decisions/2026-06-03 - Edit published curation creates an explicit draft copy.md`.
 - See implementation note: `Implementation/2026-06-03 - Published curation edit flow creates copied draft.md`.
 
@@ -483,7 +641,7 @@
 - Verified against local SEMINOLE2000 DB: the published curation still had 11 pinch groups, 1 pinch marker, 93 franjas, 187 nodes, and 87 interval bindings; the edit draft had 0 Fit rows but 1 dimension override.
 - Root cause fixed: `SqliteFloorPlanCurationDataCloneService` no longer lets unrelated/simple curation rows block copying Fit-owned rows into the edit draft.
 - Transaction boundary fixed: `EditPublishedFloorPlanCurationHandler` now owns create/resume draft + clone + session read + commit, instead of delegating draft creation to `StartOrResumeCurationHandler` and leaving clone persistence ambiguous.
-- Verification after fix: Application tests passed 87/87; Infrastructure tests passed 80/80; Desktop tests passed 192/192; `git diff --check` exited 0 with only LFÃ¢â€ â€™CRLF warnings.
+- Verification after fix: Application tests passed 87/87; Infrastructure tests passed 80/80; Desktop tests passed 192/192; `git diff --check` exited 0 with only LFÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢CRLF warnings.
 - See bug note: `Bugs/2026-06-03 - Editar published curation opened empty draft when draft had non-Fit data.md`.
 
 ## 2026-06-04 - Fit pinch groups can be deleted
@@ -498,7 +656,7 @@
 ## 2026-06-04 - Publish no longer crashes when Fit pinches are missing
 - Verified root cause: `PublishFloorPlanCurationHandler` correctly throws when a draft has zero `PinchMarker` rows, but Desktop let that exception escape through the Avalonia `async void` click handler, crashing the dispatcher/dotnet watch.
 - Current truth: `CanPublishCuration` now requires both an editable draft and at least one pinch marker in the current session.
-- If publish is attempted without pinches, Desktop shows `AgregÃ¡ al menos un pinche antes de publicar.` instead of crashing.
+- If publish is attempted without pinches, Desktop shows `AgregÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ al menos un pinche antes de publicar.` instead of crashing.
 - The Application publish guard remains intact; Desktop now mirrors/handles the validation at the UX boundary.
 - Verification: Application publish handler tests passed 2/2; focused Desktop publish/edit/group-delete tests passed 4/4 with isolated `--artifacts-path`; `git diff --check` exited 0 with only line-ending warnings.
 - See bug note: `Bugs/2026-06-04 - Publish without pinches crashed Desktop dispatcher.md`.
@@ -506,7 +664,7 @@
 
 ## 2026-06-04 - Publish button stays enabled for editable drafts
 - Correction to the earlier publish-crash fix: `Publish Curation` is now enabled whenever Review is editing a draft (`DraftCurationId != Guid.Empty`), not only when the ViewModel projection currently shows pinch markers.
-- Missing-pinch validation stays in `PublishFloorPlanCurationHandler`; Desktop catches that Application validation and shows `AgregÃ¡ al menos un pinche antes de publicar.` instead of crashing.
+- Missing-pinch validation stays in `PublishFloorPlanCurationHandler`; Desktop catches that Application validation and shows `AgregÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ al menos un pinche antes de publicar.` instead of crashing.
 - Root cause of the follow-up bug: gating the button on `PinchMarkers.Count` coupled the UX to a potentially stale session projection, so persisted pinches could exist while the button still looked disabled.
 - Verification: RED/green Desktop publish tests passed 2/2; broader FloorPlan Review ViewModel slice passed 58/58; `git diff --check` exited 0 with only line-ending warnings.
 - See bug note: `Bugs/2026-06-04 - Publish stayed disabled after pinches were placed.md`.
@@ -569,7 +727,7 @@
 ## 2026-06-05 - Adjusted DXF export no longer crashes when there are no dirty dimensions
 - Crash verified from user log: Desktop click path let `InvalidOperationException: No dirty native dimensions are available to export.` escape through Avalonia `async void`, killing `dotnet watch` with code `-532462766`.
 - Root cause: Application exported only `IsEdited && IsDirty` dimensions; after a previous export, edited dimensions could be clean, so the user could not generate a fresh DXF to validate exporter fixes.
-- Product correction: Adjusted DXF export now exports all edited native dimensions (`IsEdited`), not only dirty ones. Export means â€œwrite current adjusted stateâ€, not â€œwrite only never-exported deltasâ€.
+- Product correction: Adjusted DXF export now exports all edited native dimensions (`IsEdited`), not only dirty ones. Export means ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“write current adjusted stateÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â, not ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“write only never-exported deltasÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â.
 - Desktop boundary fix: `FloorPlanReviewViewModel.ExportAdjustedDxfAsync` catches Application validation exceptions and shows `No hay cotas modificadas para exportar.` instead of crashing the Dispatcher.
 - Verification: Application `ExportAdjustedDxfHandlerTests` passed 5/5; Desktop `DimensionEditingFloorPlanReviewViewModelTests` passed 6/6 using isolated artifacts because running `FloorplanFit.Desktop (9808)` locked normal output DLLs; `git diff --check` exited 0 with LF-to-CRLF warnings only.
 ## 2026-06-05 - Adjusted DXF now suppresses exact duplicate DIMENSION twins
@@ -682,3 +840,10 @@
 - Current truth: `SitePlanAdjustmentWindow` reserves the suggestion panel height (`Height="280"` with `MaxHeight="280"`), so generating options does not dynamically move the preview canvas.
 - Verification: Application Review tests passed 40/40; Desktop SitePlanAdjustment/XAML/Preview tests passed 81/81; `git diff --check` exited 0 with LF-to-CRLF warnings only.
 - See bug note: `Bugs/2026-06-10 - Auto-fit fractional reductions and suggestion panel pushed preview.md`.
+
+## 2026-06-11 - Investigating auto-fit placement overflow vs size deficit
+- Active investigation: a visible one-side setback miss with spare room on the opposite side should be treated as placement/centering or bounds-reading evidence, not automatically as trim needed.
+- Verified fixture context: the total-deficit `alto menos 2 inches` DXF has footprint `483.786 x 930` and setback `483.786 x 928`; it has no intended width deficit.
+- Code evidence: `AutoFitSuggestionFactBuilder.BuildDeficit(...)` currently sums current-position side overflows, while the product semantics require total size deficit after correct centering/placement.
+- Next verification target: dump buildable bbox, structural projected bbox, full rendered bbox, centers, side overflows/slack, and manual offset for the current preview before changing logic.
+- See bug note: `Bugs/2026-06-11 - Auto-fit may count placement overflow as size deficit.md`.

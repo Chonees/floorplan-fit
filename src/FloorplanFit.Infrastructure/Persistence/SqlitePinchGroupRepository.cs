@@ -113,6 +113,30 @@ public sealed class SqlitePinchGroupRepository : IPinchGroupRepository
         return Task.CompletedTask;
     }
 
+    public Task UpdateAsync(PinchGroup group, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            UPDATE pinch_groups
+            SET
+                floorplan_curation_id = $floorplan_curation_id,
+                name = $name,
+                axis_tag = $axis_tag,
+                sort_order = $sort_order
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", group.Id.ToString());
+        command.Parameters.AddWithValue("$floorplan_curation_id", group.FloorPlanCurationId.ToString());
+        command.Parameters.AddWithValue("$name", group.Name);
+        command.Parameters.AddWithValue("$axis_tag", (int)group.AxisTag);
+        command.Parameters.AddWithValue("$sort_order", group.SortOrder);
+        command.ExecuteNonQuery();
+
+        return Task.CompletedTask;
+    }
+
     private static PinchGroup MapGroup(SqliteDataReader reader)
     {
         return new PinchGroup(
