@@ -58,6 +58,67 @@ public sealed class DimensionIntervalReactiveProjectorTests
     }
 
     [Fact]
+    public void Project_uses_binding_interval_coordinates_to_match_source_articulation_band_after_site_projection()
+    {
+        var wallPathId = Guid.NewGuid();
+        var openingPathId = Guid.NewGuid();
+        var pinchGroupId = Guid.NewGuid();
+        var corridorId = Guid.NewGuid();
+        var startNodeId = Guid.NewGuid();
+        var endNodeId = Guid.NewGuid();
+        var dimension = CreateHorizontalDimension(1100m, 1224m) with
+        {
+            DisplayText = "10'-4\"",
+            TextPrimitives =
+            [
+                new DimensionTextPrimitiveDto("TEXT-1", 1, "10'-4\"", 1162m, 148m, 3.5m, 0m)
+            ]
+        };
+        IReadOnlyList<GeometryPathDto> sourceGeometryBeforeStep =
+        [
+            new(wallPathId, false, [new GeometrySegmentDto(wallPathId, 1, 1100m, 100m, 1100m, 140m)]),
+            new(openingPathId, false, [new GeometrySegmentDto(openingPathId, 1, 1224m, 100m, 1224m, 140m)])
+        ];
+        IReadOnlyList<GeometryPathDto> previewGeometry =
+        [
+            new(wallPathId, false, [new GeometrySegmentDto(wallPathId, 1, 1100m, 100m, 1100m, 140m)]),
+            new(openingPathId, false, [new GeometrySegmentDto(openingPathId, 1, 1222m, 100m, 1222m, 140m)])
+        ];
+        IReadOnlyList<MeasurementCorridorDto> corridors =
+        [
+            new(corridorId, "Patio-Width", "Width", wallPathId, 95m, 145m, "Verified", 1)
+        ];
+        IReadOnlyList<MeasurementNodeDto> nodes =
+        [
+            new(startNodeId, corridorId, 1, "ProjectedGeometry", FloorPlanArtifactSourceKinds.WallCandidate, Guid.NewGuid(), wallPathId, "Projected", 100m, 120m, 100m, 0m, 0m, 0.5m),
+            new(endNodeId, corridorId, 2, "ProjectedGeometry", FloorPlanArtifactSourceKinds.OpeningCandidate, Guid.NewGuid(), openingPathId, "Projected", 224m, 120m, 224m, 0m, 0m, 0.5m)
+        ];
+        IReadOnlyList<DimensionIntervalBindingDto> bindings =
+        [
+            new(dimension.DimensionId, corridorId, startNodeId, endNodeId, "ManualVerified", 100m, 224m)
+        ];
+        IReadOnlyList<ArticulationBandDto> articulationBands =
+        [
+            new(pinchGroupId, "Patio", "Width", 150m, 240m, 120m, "Verified")
+        ];
+
+        var rendered = DimensionIntervalReactiveProjector.Project(
+            [dimension],
+            previewGeometry,
+            corridors,
+            nodes,
+            bindings,
+            articulationBands,
+            pinchGroupId,
+            sourceGeometryBeforeStep);
+
+        var updated = Assert.Single(rendered);
+        Assert.Equal(122m, updated.MeasurementSourceUnits);
+        Assert.Equal("10'-2\"", updated.DisplayText);
+        Assert.Equal("10'-2\"", updated.TextPrimitives[0].Text);
+    }
+
+    [Fact]
     public void Project_replaces_dimension_placeholder_override_with_live_measurement_text_and_preserves_suffix()
     {
         var wallPathId = Guid.NewGuid();

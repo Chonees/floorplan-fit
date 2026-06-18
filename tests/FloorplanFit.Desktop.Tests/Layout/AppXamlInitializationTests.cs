@@ -38,7 +38,7 @@ public sealed class AppXamlInitializationTests
     }
 
     [Fact]
-    public void Review_and_library_windows_do_not_apply_a_solid_background_layer_over_the_glass_shell()
+    public void Main_window_keeps_glass_shell_while_embedded_workbenches_stay_transparent()
     {
         var solutionRoot = FindSolutionRoot();
         var reviewXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
@@ -52,9 +52,11 @@ public sealed class AppXamlInitializationTests
         Assert.DoesNotContain("Background=\"{DynamicResource AppBackgroundBrush}\"", reviewXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Background=\"{DynamicResource AppBackgroundBrush}\"", mainXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Background=\"{DynamicResource AppBackgroundBrush}\"", sitePlanAdjustmentXaml, StringComparison.Ordinal);
-        Assert.Contains("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", reviewXaml, StringComparison.Ordinal);
+        Assert.Contains("<UserControl", reviewXaml, StringComparison.Ordinal);
+        Assert.Contains("<UserControl", sitePlanAdjustmentXaml, StringComparison.Ordinal);
         Assert.Contains("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", mainXaml, StringComparison.Ordinal);
-        Assert.Contains("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", sitePlanAdjustmentXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", reviewXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", sitePlanAdjustmentXaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -73,6 +75,14 @@ public sealed class AppXamlInitializationTests
         Assert.Contains("Click=\"AdjustVersionToSitePlanButton_OnClick\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AdjustVersionToSitePlanButton_OnClick", codeBehind, StringComparison.Ordinal);
         Assert.Contains("Title = \"Select site plan DXF\"", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("<views:ReviewFloorPlanWindow", xaml, StringComparison.Ordinal);
+        Assert.Contains("<views:SitePlanAdjustmentWindow", xaml, StringComparison.Ordinal);
+        Assert.Contains("BackToLibraryButton_OnClick", xaml, StringComparison.Ordinal);
+        Assert.Contains("ShowSelectedReviewAsync", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ShowVersionSitePlanAdjustmentAsync", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShowDialog(this)", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("new ReviewFloorPlanWindow", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("new SitePlanAdjustmentWindow", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("Content=\"Open\"", xaml, StringComparison.Ordinal);
     }
 

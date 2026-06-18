@@ -6,7 +6,7 @@ using FloorplanFit.Desktop.ViewModels;
 
 namespace FloorplanFit.Desktop;
 
-public partial class SitePlanAdjustmentWindow : Window
+public partial class SitePlanAdjustmentWindow : UserControl
 {
     public SitePlanAdjustmentWindow()
     {
@@ -42,7 +42,13 @@ public partial class SitePlanAdjustmentWindow : Window
             return;
         }
 
-        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        var storageProvider = TopLevel.GetTopLevel(this)?.StorageProvider;
+        if (storageProvider is null)
+        {
+            return;
+        }
+
+        var file = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Exportar DXF",
             SuggestedFileName = "plano-ajustado-al-sitio.dxf",

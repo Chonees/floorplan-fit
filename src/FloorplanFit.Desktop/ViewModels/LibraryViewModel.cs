@@ -29,9 +29,27 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     private string statusMessage = "Ready";
 
+    [ObservableProperty]
+    private FloorPlanReviewViewModel? activeReviewViewModel;
+
+    [ObservableProperty]
+    private SitePlanAdjustmentViewModel? activeSitePlanAdjustmentViewModel;
+
     public string SelectedVersionLabel => SelectedItem is null || SelectedVersion is null
         ? "No version selected"
         : $"Selected: {SelectedItem.Code} v{SelectedVersion.VersionNumber}";
+
+    public string ShellTitle => ActiveReviewViewModel is not null
+        ? "Floorplan Fit - Edit"
+        : ActiveSitePlanAdjustmentViewModel is not null
+            ? "Floorplan Fit - Adjust to Site Plan"
+            : "Floorplan Fit - Library";
+
+    public bool IsLibraryScreenVisible => ActiveReviewViewModel is null && ActiveSitePlanAdjustmentViewModel is null;
+
+    public bool IsReviewScreenVisible => ActiveReviewViewModel is not null;
+
+    public bool IsSitePlanAdjustmentScreenVisible => ActiveSitePlanAdjustmentViewModel is not null;
 
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
@@ -112,6 +130,27 @@ public sealed partial class LibraryViewModel : ObservableObject
         return await OpenSelectedReviewAsync(cancellationToken);
     }
 
+    public async Task ShowSelectedReviewAsync(CancellationToken cancellationToken)
+    {
+        var reviewViewModel = await OpenSelectedReviewAsync(cancellationToken);
+        if (reviewViewModel is null)
+        {
+            return;
+        }
+
+        ActiveSitePlanAdjustmentViewModel = null;
+        ActiveReviewViewModel = reviewViewModel;
+    }
+
+    public async Task ShowVersionReviewAsync(
+        FloorPlanLibraryItemDto item,
+        FloorPlanLibraryVersionDto version,
+        CancellationToken cancellationToken)
+    {
+        SelectVersion(item, version);
+        await ShowSelectedReviewAsync(cancellationToken);
+    }
+
     public async Task<SitePlanAdjustmentViewModel?> OpenVersionSitePlanAdjustmentAsync(
         FloorPlanLibraryItemDto item,
         FloorPlanLibraryVersionDto version,
@@ -149,6 +188,33 @@ public sealed partial class LibraryViewModel : ObservableObject
             extractionSource?.ManagedFilePath,
             sitePlanFilePath,
             adjustedSitePlanExporter);
+    }
+
+    public async Task ShowVersionSitePlanAdjustmentAsync(
+        FloorPlanLibraryItemDto item,
+        FloorPlanLibraryVersionDto version,
+        string sitePlanFilePath,
+        CancellationToken cancellationToken)
+    {
+        var adjustmentViewModel = await OpenVersionSitePlanAdjustmentAsync(
+            item,
+            version,
+            sitePlanFilePath,
+            cancellationToken);
+        if (adjustmentViewModel is null)
+        {
+            return;
+        }
+
+        ActiveReviewViewModel = null;
+        ActiveSitePlanAdjustmentViewModel = adjustmentViewModel;
+    }
+
+    public async Task ShowLibraryAsync(CancellationToken cancellationToken)
+    {
+        ActiveReviewViewModel = null;
+        ActiveSitePlanAdjustmentViewModel = null;
+        await LoadAsync(cancellationToken);
     }
 
     public void SelectVersion(FloorPlanLibraryItemDto item, FloorPlanLibraryVersionDto version)
@@ -363,5 +429,23 @@ public sealed partial class LibraryViewModel : ObservableObject
     partial void OnSelectedVersionChanged(FloorPlanLibraryVersionDto? value)
     {
         OnPropertyChanged(nameof(SelectedVersionLabel));
+    }
+
+    partial void OnActiveReviewViewModelChanged(FloorPlanReviewViewModel? value)
+    {
+        NotifyActiveScreenChanged();
+    }
+
+    partial void OnActiveSitePlanAdjustmentViewModelChanged(SitePlanAdjustmentViewModel? value)
+    {
+        NotifyActiveScreenChanged();
+    }
+
+    private void NotifyActiveScreenChanged()
+    {
+        OnPropertyChanged(nameof(ShellTitle));
+        OnPropertyChanged(nameof(IsLibraryScreenVisible));
+        OnPropertyChanged(nameof(IsReviewScreenVisible));
+        OnPropertyChanged(nameof(IsSitePlanAdjustmentScreenVisible));
     }
 }

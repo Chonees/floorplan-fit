@@ -7,6 +7,7 @@ make our synths look like the real Pointe site plans in AutoCAD and in the app.
 from __future__ import annotations
 
 import subprocess
+import sqlite3
 from pathlib import Path
 
 
@@ -15,14 +16,58 @@ REFERENCE_DXF = SITE_PLAN_DIR / "158 DAWSON STREET.dxf"
 ACCORECONSOLE = Path(r"C:\Program Files\Autodesk\AutoCAD LT 2026\accoreconsole.exe")
 ACCORE_SCRIPT = Path(".testartifacts/verify-synth-accore.scr")
 TITLE_BLOCK_SCALE = 5.0
+FLOORPLAN_DB = Path(
+    r"C:\Users\lucas\OneDrive\Escritorio\floorplan adjustments-to site plan"
+    r"\src\FloorplanFit.Desktop\bin\Debug\net10.0\workspace\app.db"
+)
+FLOORPLAN_WALL_RUN_ID = "c2496c35-ad07-4846-a68c-6bcc34027d69"
+STRUCTURAL_BINS = 2048
+STRUCTURAL_TAIL = 0.005
+MAX_NORMAL_ADAPTATION_INCHES = 4.0
 
-EXPECTED_SYNTH_TITLES = {
-    "SYNTH OAK.dxf": ("101", "OAK STREET", "BEING LOT 1, BLOCK 25, RANCHO SANTA TERESA UNIT TWO"),
-    "SYNTH PINE.dxf": ("214", "PINE WAY", "BEING LOT 2, BLOCK 25, RANCHO SANTA TERESA UNIT TWO"),
-    "SYNTH CEDAR.dxf": ("32", "CEDAR COURT", "BEING LOT 3, BLOCK 25, RANCHO SANTA TERESA UNIT TWO"),
-    "SYNTH MESA.dxf": ("8", "MESA LOOP", "BEING LOT 4, BLOCK 25, RANCHO SANTA TERESA UNIT TWO"),
-    "SYNTH RIO.dxf": ("57", "RIO DRIVE", "BEING LOT 5, BLOCK 25, RANCHO SANTA TERESA UNIT TWO"),
-    "SYNTH PARK.dxf": ("16", "PARK LANE", "BEING LOT 6, BLOCK 25, RANCHO SANTA TERESA UNIT TWO"),
+EXPECTED_SYNTH_CASES = {
+    "SYNTH FALTA 1 ANCHO - RECTANGULAR - OAK.dxf": {
+        "house": "101",
+        "street": "OAK STREET",
+        "legal": "BEING LOT 1, BLOCK 25, RANCHO SANTA TERESA UNIT TWO",
+        "axis": "ancho",
+        "deficit": 1.0,
+    },
+    "SYNTH FALTA 2 ANCHO - CHAFLAN - PINE.dxf": {
+        "house": "214",
+        "street": "PINE WAY",
+        "legal": "BEING LOT 2, BLOCK 25, RANCHO SANTA TERESA UNIT TWO",
+        "axis": "ancho",
+        "deficit": 2.0,
+    },
+    "SYNTH FALTA 2 ANCHO - FILLETS - CEDAR.dxf": {
+        "house": "32",
+        "street": "CEDAR COURT",
+        "legal": "BEING LOT 3, BLOCK 25, RANCHO SANTA TERESA UNIT TWO",
+        "axis": "ancho",
+        "deficit": 2.0,
+    },
+    "SYNTH FALTA 1 ALTO - FRENTE CURVO - MESA.dxf": {
+        "house": "8",
+        "street": "MESA LOOP",
+        "legal": "BEING LOT 4, BLOCK 25, RANCHO SANTA TERESA UNIT TWO",
+        "axis": "alto",
+        "deficit": 1.0,
+    },
+    "SYNTH FALTA 2 ALTO - RECTANGULAR - RIO.dxf": {
+        "house": "57",
+        "street": "RIO DRIVE",
+        "legal": "BEING LOT 5, BLOCK 25, RANCHO SANTA TERESA UNIT TWO",
+        "axis": "alto",
+        "deficit": 2.0,
+    },
+    "SYNTH FALTA 2 ALTO - CHAFLAN CURVO - PARK.dxf": {
+        "house": "16",
+        "street": "PARK LANE",
+        "legal": "BEING LOT 6, BLOCK 25, RANCHO SANTA TERESA UNIT TWO",
+        "axis": "alto",
+        "deficit": 2.0,
+    },
 }
 
 REQUIRED_LAYER_NAMES = [
@@ -275,6 +320,130 @@ def line_vertices_on_layer(path: Path, layer_name: str) -> list[tuple[float, flo
     return vertices
 
 
+def setback_size(path: Path) -> tuple[float, float]:
+    vertices = line_vertices_on_layer(path, "SETBACKS")
+    if not vertices:
+        raise ValueError(f"{path.name}: missing SETBACKS vertices")
+
+    xs = [vertex[0] for vertex in vertices]
+    ys = [vertex[1] for vertex in vertices]
+    return max(xs) - min(xs), max(ys) - min(ys)
+
+
+def read_structural_wall_segments() -> list[tuple[float, float, float, float]]:
+    if not FLOORPLAN_DB.exists():
+        raise FileNotFoundError(f"Floor-plan workspace DB not found: {FLOORPLAN_DB}")
+
+    with sqlite3.connect(FLOORPLAN_DB) as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT
+                CAST(s.start_x AS REAL),
+                CAST(s.start_y AS REAL),
+                CAST(s.end_x AS REAL),
+                CAST(s.end_y AS REAL)
+            FROM extracted_wall_candidates w
+            JOIN geometry_segments s ON s.geometry_path_id = w.geometry_path_id
+            WHERE w.wall_extraction_run_id = ?
+            """,
+            (FLOORPLAN_WALL_RUN_ID,),
+        )
+        segments = cursor.fetchall()
+
+    if not segments:
+        raise ValueError(f"No structural wall segments found for run {FLOORPLAN_WALL_RUN_ID}")
+
+    return segments
+
+
+def structural_extent(
+    segments: list[tuple[float, float, float, float]],
+    horizontal: bool,
+) -> tuple[float, float]:
+    projected: list[tuple[float, float, float]] = []
+    minimum = float("inf")
+    maximum = float("-inf")
+
+    for start_x, start_y, end_x, end_y in segments:
+        start, end = (
+            (min(start_x, end_x), max(start_x, end_x))
+            if horizontal
+            else (min(start_y, end_y), max(start_y, end_y))
+        )
+        length = ((end_x - start_x) ** 2 + (end_y - start_y) ** 2) ** 0.5
+        projected.append((start, end, length))
+        minimum = min(minimum, start)
+        maximum = max(maximum, end)
+
+    step = (maximum - minimum) / STRUCTURAL_BINS
+    mass = [0.0] * (STRUCTURAL_BINS + 1)
+    total = 0.0
+
+    for start, end, length in projected:
+        if length <= 0:
+            continue
+
+        total += length
+        if end - start <= step:
+            bucket = min(max(int((start - minimum) / step), 0), STRUCTURAL_BINS)
+            mass[bucket] += length
+            continue
+
+        density = length / (end - start)
+        first_bucket = min(max(int((start - minimum) / step), 0), STRUCTURAL_BINS)
+        last_bucket = min(max(int((end - minimum) / step), 0), STRUCTURAL_BINS)
+        for bucket in range(first_bucket, last_bucket + 1):
+            bucket_start = minimum + bucket * step
+            overlap = min(end, bucket_start + step) - max(start, bucket_start)
+            if overlap > 0:
+                mass[bucket] += density * overlap
+
+    tail = STRUCTURAL_TAIL * total
+    accumulated = 0.0
+    low_bucket = 0
+    for bucket in range(STRUCTURAL_BINS + 1):
+        accumulated += mass[bucket]
+        if accumulated > tail:
+            low_bucket = bucket
+            break
+
+    accumulated = 0.0
+    high_bucket = STRUCTURAL_BINS
+    for bucket in range(STRUCTURAL_BINS, -1, -1):
+        accumulated += mass[bucket]
+        if accumulated > tail:
+            high_bucket = bucket
+            break
+
+    low_threshold = minimum + low_bucket * step
+    high_threshold = minimum + (high_bucket + 1) * step
+    concrete_minimum = None
+    concrete_maximum = None
+
+    for start, end, _ in projected:
+        for coordinate in (start, end):
+            if low_threshold - 1e-6 <= coordinate <= high_threshold + 1e-6:
+                concrete_minimum = (
+                    coordinate if concrete_minimum is None else min(concrete_minimum, coordinate)
+                )
+                concrete_maximum = (
+                    coordinate if concrete_maximum is None else max(concrete_maximum, coordinate)
+                )
+
+    if concrete_minimum is None or concrete_maximum is None:
+        raise ValueError("Could not resolve structural footprint extent from wall candidates")
+
+    return concrete_minimum, concrete_maximum
+
+
+def structural_footprint_size() -> tuple[float, float]:
+    segments = read_structural_wall_segments()
+    min_x, max_x = structural_extent(segments, horizontal=True)
+    min_y, max_y = structural_extent(segments, horizontal=False)
+    return max_x - min_x, max_y - min_y
+
+
 def normalized_shape(vertices: list[tuple[float, float]]) -> list[tuple[float, float]]:
     xs = [vertex[0] for vertex in vertices]
     ys = [vertex[1] for vertex in vertices]
@@ -365,14 +534,17 @@ def main() -> int:
         for layer_name in REQUIRED_LAYER_NAMES
     }
 
-    synth_files = [SITE_PLAN_DIR / file_name for file_name in EXPECTED_SYNTH_TITLES]
+    synth_files = [SITE_PLAN_DIR / file_name for file_name in EXPECTED_SYNTH_CASES]
     missing_files = [synth_file.name for synth_file in synth_files if not synth_file.exists()]
     if missing_files:
-        print(f"FAIL: missing expected short-name synth file(s): {', '.join(missing_files)}")
+        print(f"FAIL: missing expected descriptive synth file(s): {', '.join(missing_files)}")
         return 1
+
+    structural_width, structural_height = structural_footprint_size()
 
     failures: list[str] = []
     for synth_file in synth_files:
+        expected_case = EXPECTED_SYNTH_CASES[synth_file.name]
         table_names = read_table_names(synth_file)
         missing_tables = [table_name for table_name in REQUIRED_TABLE_NAMES if table_name not in table_names]
         if missing_tables:
@@ -397,8 +569,38 @@ def main() -> int:
         if not shape_ok:
             failures.append(f"{synth_file.name}: property boundary must trace SETBACKS shape: {shape_summary}")
 
+        buildable_width, buildable_height = setback_size(synth_file)
+        width_deficit = max(0.0, structural_width - buildable_width)
+        height_deficit = max(0.0, structural_height - buildable_height)
+        largest_deficit = max(width_deficit, height_deficit)
+        tolerance = 0.01
+        if largest_deficit > MAX_NORMAL_ADAPTATION_INCHES + tolerance:
+            failures.append(
+                f"{synth_file.name}: normal synth deficit exceeds {MAX_NORMAL_ADAPTATION_INCHES:g}\" "
+                f"(width={width_deficit:.3f}\", height={height_deficit:.3f}\")"
+            )
+
+        expected_deficit = float(expected_case["deficit"])
+        expected_axis = str(expected_case["axis"])
+        if expected_axis == "ancho":
+            if abs(width_deficit - expected_deficit) > tolerance or height_deficit > tolerance:
+                failures.append(
+                    f"{synth_file.name}: expected {expected_deficit:g}\" width deficit only, "
+                    f"got width={width_deficit:.3f}\" height={height_deficit:.3f}\""
+                )
+        elif expected_axis == "alto":
+            if abs(height_deficit - expected_deficit) > tolerance or width_deficit > tolerance:
+                failures.append(
+                    f"{synth_file.name}: expected {expected_deficit:g}\" height deficit only, "
+                    f"got width={width_deficit:.3f}\" height={height_deficit:.3f}\""
+                )
+        else:
+            failures.append(f"{synth_file.name}: unknown expected axis {expected_axis!r}")
+
         text_records = read_text_records(synth_file)
-        house_number, street_name, legal_line = EXPECTED_SYNTH_TITLES[synth_file.name]
+        house_number = str(expected_case["house"])
+        street_name = str(expected_case["street"])
+        legal_line = str(expected_case["legal"])
         file_required_texts = [
             (house_number, "E", "HOUSE", title_height(5.203124999999999)),
             (street_name, "E", "HOUSE", title_height(5.203124999999999)),
@@ -430,7 +632,10 @@ def main() -> int:
             print(f" - {failure}")
         return 1
 
-    print(f"PASS: {len(synth_files)} synthetic site plan(s) match Pointe layer and title appearance")
+    print(
+        f"PASS: {len(synth_files)} synthetic site plan(s) match Pointe layer/title appearance "
+        f"and expected <= {MAX_NORMAL_ADAPTATION_INCHES:g}\" deficits"
+    )
     return 0
 
 

@@ -3,6 +3,9 @@ type: Implementation
 date: 2026-06-15
 project: floorplan-fit
 status: current
+partially_replaced_by:
+  - [[../Decisions/2026-06-16 - Synthetic site plans max adaptation capacity four]]
+  - [[2026-06-16 - Synthetic site plans use descriptive deficit titles]]
 related:
   - ../Inbox/2026-06-15 - Synthetic site plans must use Pointe layer appearance.md
   - ../Experiments/2026-06-08 - Total-deficit setback non-fit DXF examples.md
@@ -173,3 +176,11 @@ Cleanup status:
 
 - Could not delete/overwrite stale exact `SYNTH PINE.dxf`, `SYNTH CEDAR.dxf`, `SYNTH MESA.dxf`, or old long-name synth 01/02 because AutoCAD/another process is locking them.
 - Current valid PINE/CEDAR/MESA outputs are the `- AUTOCAD FIXED` files until the exact names are released.
+
+## Follow-up: normal synths must not exceed 4 inches adaptation capacity
+
+> Partially superseded: the earlier generated-file list in this note included two `5` inch deficit cases. The Pointe/template/CAD-validity implementation details remain current, but the normal synthetic corpus must now stay within a `4` inch adaptation ceiling. See [[../Decisions/2026-06-16 - Synthetic site plans max adaptation capacity four]].
+
+User clarified on 2026-06-16 that all normal synth/site-plan fixtures must stay within capacity `4`. The current generator still has `5.0` cases for `SETBACK CON FILLETS` (`ancho`) and `CHAFLAN Y FRENTE CURVO` (`alto`), so the next implementation should reduce/rework those cases and make the verifier enforce the cap.
+
+Implemented by [[2026-06-16 - Synthetic site plans use descriptive deficit titles]].

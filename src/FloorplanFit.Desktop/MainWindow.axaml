@@ -2,122 +2,158 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:viewModels="using:FloorplanFit.Desktop.ViewModels"
         xmlns:contracts="using:FloorplanFit.Contracts.FloorPlans"
+        xmlns:views="using:FloorplanFit.Desktop"
         x:Class="FloorplanFit.Desktop.MainWindow"
         x:DataType="viewModels:LibraryViewModel"
         RequestedThemeVariant="Dark"
         TransparencyLevelHint="AcrylicBlur, Mica, Blur"
-        Width="1100"
-        Height="680"
-        Title="Floorplan Fit - Library">
-  <Grid RowDefinitions="Auto,Auto,*"
-        Margin="24">
-    <TextBlock FontSize="24"
-               FontWeight="Bold"
-               Text="Floorplan Library" />
+        Width="1280"
+        Height="800"
+        Title="{Binding ShellTitle}">
+  <Grid>
+    <Grid RowDefinitions="Auto,Auto,*"
+          Margin="24"
+          IsVisible="{Binding IsLibraryScreenVisible}">
+      <TextBlock FontSize="24"
+                 FontWeight="Bold"
+                 Text="Floorplan Library" />
 
-    <Grid Grid.Row="1"
-          ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
-          ColumnSpacing="12"
-          Margin="0,16,0,16">
-      <Button Name="ImportButton"
-              Grid.Column="0"
-              Content="Import DXF"
-              Click="ImportButton_OnClick" />
-      <Button Name="ExtractButton"
-              Grid.Column="1"
-              Content="Extract Selected Version"
-              Click="ExtractButton_OnClick" />
-      <Button Name="ReviewButton"
-              Grid.Column="2"
-              Content="Edit Selected Review"
-              Click="ReviewButton_OnClick" />
-      <Button Name="DeleteSelectedVersionButton"
-              Grid.Column="3"
-              Content="Delete Selected Version"
-              Click="DeleteSelectedVersionButton_OnClick" />
-      <TextBlock Grid.Column="4"
-                 VerticalAlignment="Center"
-                 Text="{Binding SelectedVersionLabel}" />
-      <TextBlock Grid.Column="5"
-                 VerticalAlignment="Center"
-                 Text="{Binding StatusMessage}" />
+      <Grid Grid.Row="1"
+            ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
+            ColumnSpacing="12"
+            Margin="0,16,0,16">
+        <Button Name="ImportButton"
+                Grid.Column="0"
+                Content="Import DXF"
+                Click="ImportButton_OnClick" />
+        <Button Name="ExtractButton"
+                Grid.Column="1"
+                Content="Extract Selected Version"
+                Click="ExtractButton_OnClick" />
+        <Button Name="ReviewButton"
+                Grid.Column="2"
+                Content="Edit Selected Review"
+                Click="ReviewButton_OnClick" />
+        <Button Name="DeleteSelectedVersionButton"
+                Grid.Column="3"
+                Content="Delete Selected Version"
+                Click="DeleteSelectedVersionButton_OnClick" />
+        <TextBlock Grid.Column="4"
+                   VerticalAlignment="Center"
+                   Text="{Binding SelectedVersionLabel}" />
+        <TextBlock Grid.Column="5"
+                   VerticalAlignment="Center"
+                   Text="{Binding StatusMessage}" />
+      </Grid>
+
+      <ScrollViewer Grid.Row="2"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding Items}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="contracts:FloorPlanLibraryItemDto">
+              <Border Classes="panel-card"
+                      Padding="12"
+                      Margin="0,0,0,10">
+                <Expander IsExpanded="True">
+                  <Expander.Header>
+                    <Grid ColumnDefinitions="2*,2*,Auto,Auto">
+                      <TextBlock Grid.Column="0"
+                                 FontWeight="SemiBold"
+                                 Text="{Binding Code}" />
+                      <TextBlock Grid.Column="1"
+                                 Margin="12,0,0,0"
+                                 Text="{Binding Name}" />
+                      <TextBlock Grid.Column="2"
+                                 Margin="12,0,0,0"
+                                 Text="{Binding VersionCount, StringFormat='{}{0} version(s)'}" />
+                      <TextBlock Grid.Column="3"
+                                 Margin="12,0,0,0"
+                                 Text="{Binding ActiveVersionNumber, StringFormat='Current v{0}'}" />
+                    </Grid>
+                  </Expander.Header>
+
+                  <ItemsControl Margin="0,12,0,0"
+                                ItemsSource="{Binding Versions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="contracts:FloorPlanLibraryVersionDto">
+                        <Border Classes="section-card"
+                                Padding="10"
+                                Margin="0,0,0,8">
+                          <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto">
+                            <TextBlock Grid.Column="0"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding DisplayName}" />
+                            <TextBlock Grid.Column="1"
+                                       Margin="12,0,0,0"
+                                       Text="{Binding Status}" />
+                            <TextBlock Grid.Column="2"
+                                       Margin="12,0,0,0"
+                                       Text="{Binding SourceUnit}" />
+                            <TextBlock Grid.Column="3"
+                                       Margin="12,0,0,0"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding CurrentLabel}" />
+                            <Button Grid.Column="4"
+                                    Margin="12,0,0,0"
+                                    Content="Select"
+                                    Click="SelectVersionButton_OnClick" />
+                            <Button Grid.Column="5"
+                                    Margin="12,0,0,0"
+                                    Content="Edit"
+                                    Click="OpenVersionButton_OnClick" />
+                            <Button Grid.Column="6"
+                                    Margin="12,0,0,0"
+                                    Content="Adjust to Site Plan"
+                                    IsEnabled="{Binding CanAdjustToSitePlan}"
+                                    Click="AdjustVersionToSitePlanButton_OnClick" />
+                            <Button Grid.Column="7"
+                                    Margin="12,0,0,0"
+                                    Content="Delete"
+                                    Click="DeleteVersionButton_OnClick" />
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Expander>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
     </Grid>
 
-    <ScrollViewer Grid.Row="2"
-                  HorizontalScrollBarVisibility="Disabled"
-                  VerticalScrollBarVisibility="Auto">
-      <ItemsControl ItemsSource="{Binding Items}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="contracts:FloorPlanLibraryItemDto">
-            <Border Classes="panel-card"
-                    Padding="12"
-                    Margin="0,0,0,10">
-              <Expander IsExpanded="True">
-                <Expander.Header>
-                  <Grid ColumnDefinitions="2*,2*,Auto,Auto">
-                    <TextBlock Grid.Column="0"
-                               FontWeight="SemiBold"
-                               Text="{Binding Code}" />
-                    <TextBlock Grid.Column="1"
-                               Margin="12,0,0,0"
-                               Text="{Binding Name}" />
-                    <TextBlock Grid.Column="2"
-                               Margin="12,0,0,0"
-                               Text="{Binding VersionCount, StringFormat='{}{0} version(s)'}" />
-                    <TextBlock Grid.Column="3"
-                               Margin="12,0,0,0"
-                               Text="{Binding ActiveVersionNumber, StringFormat='Current v{0}'}" />
-                  </Grid>
-                </Expander.Header>
+    <Grid RowDefinitions="Auto,*"
+          IsVisible="{Binding IsReviewScreenVisible}">
+      <Grid ColumnDefinitions="Auto,*"
+            Margin="16,12,16,0"
+            ColumnSpacing="12">
+        <Button Content="← Library"
+                Click="BackToLibraryButton_OnClick" />
+        <TextBlock Grid.Column="1"
+                   VerticalAlignment="Center"
+                   Classes="muted"
+                   Text="{Binding StatusMessage}" />
+      </Grid>
+      <views:ReviewFloorPlanWindow Grid.Row="1"
+                                   DataContext="{Binding ActiveReviewViewModel}" />
+    </Grid>
 
-                <ItemsControl Margin="0,12,0,0"
-                              ItemsSource="{Binding Versions}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="contracts:FloorPlanLibraryVersionDto">
-                      <Border Classes="section-card"
-                              Padding="10"
-                              Margin="0,0,0,8">
-                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto">
-                          <TextBlock Grid.Column="0"
-                                     FontWeight="SemiBold"
-                                     Text="{Binding DisplayName}" />
-                          <TextBlock Grid.Column="1"
-                                     Margin="12,0,0,0"
-                                     Text="{Binding Status}" />
-                          <TextBlock Grid.Column="2"
-                                     Margin="12,0,0,0"
-                                     Text="{Binding SourceUnit}" />
-                          <TextBlock Grid.Column="3"
-                                     Margin="12,0,0,0"
-                                     FontWeight="SemiBold"
-                                     Text="{Binding CurrentLabel}" />
-                          <Button Grid.Column="4"
-                                  Margin="12,0,0,0"
-                                  Content="Select"
-                                  Click="SelectVersionButton_OnClick" />
-                          <Button Grid.Column="5"
-                                  Margin="12,0,0,0"
-                                  Content="Edit"
-                                  Click="OpenVersionButton_OnClick" />
-                          <Button Grid.Column="6"
-                                  Margin="12,0,0,0"
-                                  Content="Adjust to Site Plan"
-                                  IsEnabled="{Binding CanAdjustToSitePlan}"
-                                  Click="AdjustVersionToSitePlanButton_OnClick" />
-                          <Button Grid.Column="7"
-                                  Margin="12,0,0,0"
-                                  Content="Delete"
-                                  Click="DeleteVersionButton_OnClick" />
-                        </Grid>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </Expander>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-    </ScrollViewer>
+    <Grid RowDefinitions="Auto,*"
+          IsVisible="{Binding IsSitePlanAdjustmentScreenVisible}">
+      <Grid ColumnDefinitions="Auto,*"
+            Margin="16,12,16,0"
+            ColumnSpacing="12">
+        <Button Content="← Library"
+                Click="BackToLibraryButton_OnClick" />
+        <TextBlock Grid.Column="1"
+                   VerticalAlignment="Center"
+                   Classes="muted"
+                   Text="{Binding StatusMessage}" />
+      </Grid>
+      <views:SitePlanAdjustmentWindow Grid.Row="1"
+                                      DataContext="{Binding ActiveSitePlanAdjustmentViewModel}" />
+    </Grid>
   </Grid>
 </Window>

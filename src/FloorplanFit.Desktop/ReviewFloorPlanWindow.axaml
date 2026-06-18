@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:viewModels="using:FloorplanFit.Desktop.ViewModels"
         xmlns:contracts="using:FloorplanFit.Contracts.FloorPlans"
@@ -6,12 +6,7 @@
         x:Class="FloorplanFit.Desktop.ReviewFloorPlanWindow"
         x:DataType="viewModels:FloorPlanReviewViewModel"
         x:Name="Root"
-        RequestedThemeVariant="Dark"
-        TransparencyLevelHint="AcrylicBlur, Mica, Blur"
-        Width="1280"
-        Height="800"
-        WindowState="Maximized"
-        Title="Floor Plan Review">
+        RequestedThemeVariant="Dark">
   <Grid RowDefinitions="Auto,*"
         Margin="24">
     <Grid ColumnDefinitions="*,Auto"
@@ -984,4 +979,4 @@
       </Border>
     </Grid>
   </Grid>
-</Window>
+</UserControl>

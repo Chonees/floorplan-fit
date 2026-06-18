@@ -5,7 +5,7 @@ using FloorplanFit.Desktop.ViewModels;
 
 namespace FloorplanFit.Desktop;
 
-public partial class ReviewFloorPlanWindow : Window
+public partial class ReviewFloorPlanWindow : UserControl
 {
     public ReviewFloorPlanWindow()
     {
@@ -113,8 +113,13 @@ public partial class ReviewFloorPlanWindow : Window
 
     private async Task<string?> PromptForPinchGroupNameAsync(string title, string description, string initialName)
     {
+        if (TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return null;
+        }
+
         var dialog = new PinchGroupNameDialog(title, description, initialName);
-        return await dialog.ShowDialog<string?>(this);
+        return await dialog.ShowDialog<string?>(owner);
     }
 
     private async void AddMeasurementCorridorButton_OnClick(object? sender, RoutedEventArgs e)

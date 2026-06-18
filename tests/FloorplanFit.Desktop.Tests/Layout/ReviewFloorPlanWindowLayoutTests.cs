@@ -11,9 +11,10 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
         var xaml = File.ReadAllText(xamlPath);
 
+        Assert.Contains("<UserControl", xaml, StringComparison.Ordinal);
         Assert.Contains("RequestedThemeVariant=\"Dark\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("WindowState=\"Maximized\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("WindowState=\"Maximized\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Width=\"1450\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Height=\"920\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("FloorPlanPreviewControl Height=\"700\"", xaml, StringComparison.Ordinal);
@@ -259,7 +260,7 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         var codeBehind = File.ReadAllText(codeBehindPath);
 
         Assert.Contains("PinchGroupNameDialog", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("ShowDialog<string?>(this)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ShowDialog<string?>(owner)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("AddPinchGroupAsync(groupName", codeBehind, StringComparison.Ordinal);
         Assert.Contains("RenamePinchGroupButton_OnClick", codeBehind, StringComparison.Ordinal);
         Assert.Contains("RenameSelectedPinchGroupAsync(groupName", codeBehind, StringComparison.Ordinal);

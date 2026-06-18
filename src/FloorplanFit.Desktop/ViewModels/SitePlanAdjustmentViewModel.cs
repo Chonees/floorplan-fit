@@ -14,9 +14,10 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     private const decimal MillimetersPerInch = 25.4m;
     private const decimal EdgeInferenceTolerance = 0.000001m;
 
-    private readonly AutoFitSuggestionFacts? autoFitSuggestionFacts;
+    private AutoFitSuggestionFacts? autoFitSuggestionFacts;
     private readonly IAutoFitPlanSuggester? autoFitPlanSuggester;
     private readonly decimal sitePlanToMillimetersFactor;
+    private readonly SitePlanAdjustmentFitContext? autoFitFitContext;
     private readonly decimal projectionScale;
     private readonly decimal projectionOffsetX;
     private readonly decimal projectionOffsetY;
@@ -25,6 +26,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     private readonly IAdjustedSitePlanExporter? adjustedSitePlanExporter;
     private IReadOnlyList<AdjustedCompressionStepDto> appliedCompressionSteps = [];
     private readonly IReadOnlyList<PinchMarkerDto> pinchMarkers;
+    private readonly IReadOnlyList<PinchGroupDto> pinchGroups;
     private readonly IReadOnlyList<MeasurementCorridorDto> measurementCorridors;
     private readonly IReadOnlyList<MeasurementNodeDto> measurementNodes;
     private readonly IReadOnlyList<DimensionIntervalBindingDto> dimensionIntervalBindings;
@@ -59,7 +61,10 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         decimal projectionOffsetY = 0m,
         string? floorPlanSourcePath = null,
         string? sitePlanSourcePath = null,
-        IAdjustedSitePlanExporter? adjustedSitePlanExporter = null)
+        IAdjustedSitePlanExporter? adjustedSitePlanExporter = null,
+        IReadOnlyList<PinchGroupDto>? pinchGroups = null,
+        SitePlanBuildableAreaDto? autoFitBuildableArea = null,
+        IReadOnlySet<Guid>? autoFitGeometryPathIds = null)
     {
         Title = title;
         Subtitle = subtitle;
@@ -77,10 +82,21 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         this.sitePlanSourcePath = sitePlanSourcePath;
         this.adjustedSitePlanExporter = adjustedSitePlanExporter;
         this.pinchMarkers = pinchMarkers ?? [];
+        this.pinchGroups = pinchGroups ?? [];
         this.measurementCorridors = measurementCorridors ?? [];
         this.measurementNodes = measurementNodes ?? [];
         this.dimensionIntervalBindings = dimensionIntervalBindings ?? [];
         this.articulationBands = articulationBands ?? [];
+        autoFitFitContext = autoFitBuildableArea is null
+            ? null
+            : new SitePlanAdjustmentFitContext(
+                autoFitBuildableArea,
+                this.sitePlanToMillimetersFactor,
+                this.pinchGroups,
+                this.articulationBands,
+                this.measurementCorridors,
+                this.dimensionIntervalBindings,
+                autoFitGeometryPathIds);
         autoFitBaselineGeometryPaths = floorPlanGeometryPaths.ToArray();
         autoFitBaselineRoomLabels = roomLabels.ToArray();
         autoFitBaselineOpeningLabels = openingLabels.ToArray();
@@ -253,7 +269,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         ReplaceItems(RoomLabels, roomLabels);
         ReplaceItems(OpeningLabels, openingLabels);
         ReplaceItems(Dimensions, dimensions);
-        ChangedNumberDimensionIds = ResolveChangedNumberDimensionIds(autoFitBaselineDimensions, dimensions);
+        ChangedNumberDimensionIds = ResolveAffectedDimensionIds(option.Plan, autoFitBaselineDimensions, dimensions);
         appliedCompressionSteps = recordedSteps;
 
         foreach (var autoFitOption in AutoFitSuggestionOptions)
@@ -303,6 +319,46 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         autoFitBaselineDimensions = baselineProjection.Dimensions.ToArray();
         ManualOffsetX = Round(ManualOffsetX + deltaX);
         ManualOffsetY = Round(ManualOffsetY + deltaY);
+        RefreshAutoFitFactsAfterManualMove(deltaX, deltaY);
+    }
+
+    private void RefreshAutoFitFactsAfterManualMove(decimal deltaX, decimal deltaY)
+    {
+        if (autoFitFitContext is not null)
+        {
+            autoFitSuggestionFacts = SitePlanAdjustmentFitAnalyzer.BuildFacts(autoFitBaselineGeometryPaths, autoFitFitContext);
+        }
+        else if (autoFitSuggestionFacts is not null)
+        {
+            autoFitSuggestionFacts = SitePlanAdjustmentFitAnalyzer.TranslateSideOverflows(
+                autoFitSuggestionFacts,
+                deltaX,
+                deltaY,
+                sitePlanToMillimetersFactor);
+        }
+
+        OnPropertyChanged(nameof(CanSuggestAutoFitPlan));
+        OnPropertyChanged(nameof(AutoFitCandidateSummary));
+        SuggestAutoFitPlanCommand.NotifyCanExecuteChanged();
+    }
+
+    private IReadOnlyList<Guid> ResolveAffectedDimensionIds(
+        AutoFitSuggestionPlan plan,
+        IReadOnlyList<DimensionDto> baselineDimensions,
+        IReadOnlyList<DimensionDto> appliedDimensions)
+    {
+        if (measurementCorridors.Count > 0 &&
+            dimensionIntervalBindings.Count > 0 &&
+            autoFitSuggestionFacts is not null)
+        {
+            return AdjustedDimensionImpactResolver.ResolveAffectedDimensionIds(
+                plan.Steps,
+                autoFitSuggestionFacts.CandidateGroups,
+                measurementCorridors,
+                dimensionIntervalBindings);
+        }
+
+        return ChangedDimensionDetector.ResolveAffectedDimensionIds(baselineDimensions, appliedDimensions);
     }
 
     public bool CanExportAdjustedSitePlan =>
@@ -675,32 +731,6 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
             .Replace("but the plan trims", "pero el plan recorta", StringComparison.OrdinalIgnoreCase)
             .Replace("exceeding its capacity", "supera su capacidad", StringComparison.OrdinalIgnoreCase);
     }
-
-    private static IReadOnlyList<Guid> ResolveChangedNumberDimensionIds(
-        IReadOnlyList<DimensionDto> baselineDimensions,
-        IReadOnlyList<DimensionDto> appliedDimensions)
-    {
-        if (baselineDimensions.Count == 0 || appliedDimensions.Count == 0)
-        {
-            return [];
-        }
-
-        var baselineById = baselineDimensions.ToDictionary(dimension => dimension.DimensionId);
-        return appliedDimensions
-            .Where(dimension =>
-                baselineById.TryGetValue(dimension.DimensionId, out var baselineDimension) &&
-                !string.Equals(
-                    NormalizeVisibleDimensionText(baselineDimension.DisplayText),
-                    NormalizeVisibleDimensionText(dimension.DisplayText),
-                    StringComparison.Ordinal))
-            .Select(dimension => dimension.DimensionId)
-            .ToArray();
-    }
-
-    private static string NormalizeVisibleDimensionText(string? value)
-        => string.IsNullOrWhiteSpace(value)
-            ? string.Empty
-            : value.Trim();
 
     private AutoFitCompressionTransform? BuildCompressionTransform(
         AutoFitSuggestionStep step,
@@ -1207,17 +1237,17 @@ internal static class SitePlanAdjustmentPreviewProjector
             sitePlan,
             floorPlanPlacementGeometryPathIds);
         var filteredSitePlan = FilterSitePlanForAdjustment(sitePlan);
-        var autoFitGeometryPaths = ResolveAutoFitGeometryPaths(
-            projection.FloorPlanGeometryPaths,
-            floorPlanPlacementGeometryPathIds);
-        var autoFitFacts = AutoFitSuggestionFactBuilder.Build(
-            autoFitGeometryPaths,
+        var autoFitFitContext = new SitePlanAdjustmentFitContext(
             sitePlan.BuildableArea,
             sitePlan.ToMillimetersFactor,
             reviewViewModel.PinchGroups,
             reviewViewModel.ArticulationBands,
             reviewViewModel.MeasurementCorridors,
-            reviewViewModel.DimensionIntervalBindings);
+            reviewViewModel.DimensionIntervalBindings,
+            floorPlanPlacementGeometryPathIds);
+        var autoFitFacts = SitePlanAdjustmentFitAnalyzer.BuildFacts(
+            projection.FloorPlanGeometryPaths,
+            autoFitFitContext);
 
         return new SitePlanAdjustmentViewModel(
             "Ajustar a site plan",
@@ -1244,7 +1274,10 @@ internal static class SitePlanAdjustmentPreviewProjector
             projection.OffsetY,
             floorPlanSourcePath,
             sitePlanSourcePath,
-            adjustedSitePlanExporter);
+            adjustedSitePlanExporter,
+            reviewViewModel.PinchGroups,
+            sitePlan.BuildableArea,
+            floorPlanPlacementGeometryPathIds);
     }
 
     internal static SitePlanAdjustmentSitePlanDisplay FilterSitePlanForAdjustment(SitePlanPreviewDto sitePlan)
@@ -1340,7 +1373,7 @@ internal static class SitePlanAdjustmentPreviewProjector
     internal static IReadOnlyList<GeometryPathDto> ResolveAutoFitGeometryPaths(
         IReadOnlyList<GeometryPathDto> projectedFloorPlanGeometryPaths,
         IReadOnlySet<Guid>? floorPlanPlacementGeometryPathIds)
-        => ResolvePlacementGeometryPaths(projectedFloorPlanGeometryPaths, floorPlanPlacementGeometryPathIds);
+        => SitePlanAdjustmentFitAnalyzer.ResolveFitGeometryPaths(projectedFloorPlanGeometryPaths, floorPlanPlacementGeometryPathIds);
 
     private static GeometryPathDto TransformPath(GeometryPathDto path, CoordinateTransform transform)
         => new(

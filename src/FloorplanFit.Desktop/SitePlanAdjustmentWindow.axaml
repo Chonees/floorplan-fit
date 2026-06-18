@@ -1,16 +1,11 @@
-<Window xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:viewModels="using:FloorplanFit.Desktop.ViewModels"
         xmlns:controls="using:FloorplanFit.Desktop.Controls"
         x:Class="FloorplanFit.Desktop.SitePlanAdjustmentWindow"
         x:DataType="viewModels:SitePlanAdjustmentViewModel"
-        RequestedThemeVariant="Dark"
-        TransparencyLevelHint="AcrylicBlur, Mica, Blur"
-        Width="1280"
-        Height="800"
-        WindowState="Maximized"
-        Title="Adjust to Site Plan">
-  <Window.Styles>
+        RequestedThemeVariant="Dark">
+  <UserControl.Styles>
     <Style Selector="Border.fit-option-card">
       <Setter Property="Background" Value="{DynamicResource SectionBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
@@ -42,7 +37,7 @@
       <Setter Property="Background" Value="{DynamicResource ToolActiveBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}" />
     </Style>
-  </Window.Styles>
+  </UserControl.Styles>
 
   <Grid ColumnDefinitions="*,400"
         ColumnSpacing="16"
@@ -169,4 +164,4 @@
       </Grid>
     </Border>
   </Grid>
-</Window>
+</UserControl>

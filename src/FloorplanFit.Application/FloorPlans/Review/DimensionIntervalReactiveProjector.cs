@@ -80,11 +80,7 @@ public static class DimensionIntervalReactiveProjector
                     : ResolveAuthoredPoint(endNode, corridor.AxisTag);
 
                 if (!string.Equals(corridor.AxisTag, band.AxisTag, StringComparison.OrdinalIgnoreCase) ||
-                    !IntervalsOverlap(
-                        ResolveAxisCoordinate(authoredStartPoint, corridor.AxisTag),
-                        ResolveAxisCoordinate(authoredEndPoint, corridor.AxisTag),
-                        band.BandStartCoordinate,
-                        band.BandEndCoordinate))
+                    !OverlapsSelectedBand(binding, authoredStartPoint, authoredEndPoint, corridor.AxisTag, band))
                 {
                     return DimensionGeometryProjector.TranslateAssociatedDimensionFromAnchorDeltas(
                         dimension,
@@ -112,6 +108,23 @@ public static class DimensionIntervalReactiveProjector
             })
             .ToArray();
     }
+
+    private static bool OverlapsSelectedBand(
+        DimensionIntervalBindingDto binding,
+        Point2 authoredStartPoint,
+        Point2 authoredEndPoint,
+        string axisTag,
+        ArticulationBandDto band)
+        => IntervalsOverlap(
+               binding.IntervalStartCoordinate,
+               binding.IntervalEndCoordinate,
+               band.BandStartCoordinate,
+               band.BandEndCoordinate) ||
+           IntervalsOverlap(
+               ResolveAxisCoordinate(authoredStartPoint, axisTag),
+               ResolveAxisCoordinate(authoredEndPoint, axisTag),
+               band.BandStartCoordinate,
+               band.BandEndCoordinate);
 
     private static bool IntervalsOverlap(
         decimal firstStart,

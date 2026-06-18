@@ -1,5 +1,87 @@
 # Current State
 
+## 2026-06-18 - Desktop navigation now uses one main window
+- Current Desktop truth: Library, Edit, and Adjust-to-Site-Plan now live inside one `MainWindow` shell instead of opening Edit/Adjust as modal top-level windows.
+- Implementation: `ReviewFloorPlanWindow.axaml` and `SitePlanAdjustmentWindow.axaml` are now embedded `UserControl` screens; `MainWindow.axaml` switches Library/Edit/Adjust visibility through `LibraryViewModel` state.
+- Product effect: the app now feels like one desktop product flow: `Library -> Edit -> Adjust to Site Plan -> Library`.
+- Dialog boundary remains intentional: file open/save pickers and pinch-group naming remain dialogs because they are short user decisions, not primary app screens.
+- Verification: no build was run per repo rule; source checks confirmed no main-screen `ShowDialog(this)` remains in `MainWindow.axaml.cs`; `git diff --check` passed for touched files with CRLF warnings only.
+- See implementation note: `Implementation/2026-06-18 - Single-window desktop navigation.md`.
+
+## 2026-06-18 - Navigation and packaging state verified
+- Current Desktop truth: `FloorplanFit.Desktop` is already configured as a windowed Avalonia app with `<OutputType>WinExe</OutputType>`.
+- Current navigation truth: startup creates `MainWindow` with `LibraryViewModel`; Library is the root screen. `Edit` opens `ReviewFloorPlanWindow` via `ShowDialog(...)`, and `Adjust to Site Plan` opens `SitePlanAdjustmentWindow` via `ShowDialog(...)`.
+- Product concern captured: this modal-window flow can feel less like a single app shell and more like jumping between tools. The minimal product direction to evaluate is a Library-rooted single shell with internal navigation/workbench states for Edit and Adjust.
+- Packaging truth: the visible CMD comes from the development launcher (`scripts/dev-desktop.bat`) running `dotnet watch`, not from the release app shape. No installer/publish profile is checked in yet.
+- Distribution caveat: runtime data currently writes under `AppContext.BaseDirectory/workspace`; this is fine for a writable portable folder, but a real installed app should store workspace data in a user-writable location such as LocalAppData.
+- See inbox note: `Inbox/2026-06-18 - Navigation and packaging question.md`.
+
+## 2026-06-16 - Auto-fit apply now recalculates projected dimension values
+- Fixed root cause for Loop 2 Adjust-to-Site-Plan: after applying an AI/deterministic recorte, bound dimension values could stay visually unchanged because `DimensionIntervalReactiveProjector` compared projected/site-plan anchor coordinates against source-floor-plan articulation band coordinates.
+- Current truth: selected-band detection now accepts either coordinate space: the curated `DimensionIntervalBindingDto` interval against the source band, or the authored/projected anchor interval against a projected band. This preserves existing projected-band behavior and fixes real Adjust-to-Site-Plan projection.
+- Product effect: when a selected pinch group affects a manually verified dimension interval, the preview dimension text/primitives recalculate (example regression: projected `10'-4"` / `124"` becomes `10'-2"` / `122"` after a 2" recorte).
+- Export boundary verified: `BuildAdjustedSitePlanPlacement()` carries the recalculated projected cota back into source coordinates inside `AdjustedDimensions`, and `IxMiliaAdjustedSitePlanExporter` patches reactive dimension text when it receives those patches. If a fresh app export still shows the old cota, the next likely causes are stale running binaries/output file, exporting before applying the option, or the selected cota not being in the affected/manual interval-bound set.
+- Verification: RED `Project_uses_binding_interval_coordinates_to_match_source_articulation_band_after_site_projection` failed at `Expected: 122 Actual: 124`; GREEN passed after fix; `DimensionIntervalReactiveProjectorTests` passed 17/17; Desktop `ApplyAutoFitPlan` tests passed 11/11; full Application tests passed 121/121; `git diff --check` exited `0` with CRLF warnings only.
+- See implementation note: `Implementation/2026-06-16 - Auto-fit projected dimension values recalculate.md`.
+
+## 2026-06-16 - Synthetic previews must match the DXF content
+- Current truth: Adjust-to-Site-Plan preview must render synthetic DXF text exactly like real DXF text. If the synthetic DXF contains `57`, `RIO DRIVE`, `SITE PLAN`, or survey/title-block text, the preview should show it because the preview's job is visual fidelity to the selected DXF.
+- Correction: the prior Desktop filtering approach that hid non-setback text for `SYNTH ` files was wrong-layer and has been reverted. The issue is not preview filtering; the issue is that the synthetic DXF generator must produce precise/real-enough values if those values are shown.
+- Verification: RED/GREEN `FilterSitePlanForAdjustment_keeps_synthetic_title_block_text_because_preview_matches_the_dxf`; focused `FilterSitePlanForAdjustment` tests passed 2/2.
+- Replaces implementation note: `Implementation/2026-06-16 - Synthetic previews hide fake title block text.md`.
+- See implementation note: `Implementation/2026-06-16 - Synthetic preview preserves DXF text.md`.
+
+## 2026-06-16 - Site-plan visible data must be precise and real
+- User requirement: visible data in the Adjust-to-Site-Plan site-plan panel must be precise and real, not decorative fake data.
+- Current verified gap: synthetic title-block values like `57`, `RIO DRIVE`, legal/city text, and curve-table values are written into the generated DXF by `generate_synthetic_siteplans.py`, but they are fake/decorative fixtures rather than real surveyed/legal data.
+- Product implication: if synthetic plans continue to show a title block, its values must either be computed from the generated geometry/metadata and clearly synthetic, or the fake legal/survey-looking title block must be removed/hidden from the adjustment preview.
+- See requirement note: `Inbox/2026-06-16 - Site-plan visible data must be precise and real.md`.
+
+## 2026-06-16 - Adjust-to-Site-Plan title-block text provenance verified
+- Current truth: the Adjust-to-Site-Plan panel does not hardcode visible title-block strings like `57`, `RIO DRIVE`, `SITE PLAN`, `C186`, or `SCALE 1'=20'`.
+- Those strings are present as `TEXT` entities inside the selected synthetic DXF and are read by `IxMiliaSitePlanPreviewReader` into `SitePlanTextDto`, passed through `SitePlanAdjustmentViewModel.FilterSitePlanForAdjustment(...)`, and rendered by `SitePlanPreviewLayerRenderer`.
+- Synthetic provenance: the data is hardcoded upstream in `generate_synthetic_siteplans.py` when generating fake Pointe-style site plans. For the RIO case, `CASES` defines `house_number = "57"` and `street_name = "RIO DRIVE"`; `add_pointe_title_block(...)` writes the title block, legal line, scale, curve table, and city text.
+- Product interpretation: legitimate as synthetic-DXF content for visual fidelity/testing; not legitimate as surveyed/legal data from a real site plan.
+- See implementation note: `Implementation/2026-06-16 - Synthetic title block provenance.md`.
+
+## 2026-06-16 - Floorplan teaching skill is available in the repo
+- Current environment truth: `skills/floorplan-fit-teaching-mode/SKILL.md` exists in this workspace and is the repository-default teaching lens for implementation/refactor/bugfix work.
+- Earlier compacted memory said the skill file had been unavailable in a prior session; that is superseded by the current verified file path.
+- Active response stack for this repo: `superpowers:using-superpowers`, `ponytail:ponytail` full mode, and `floorplan-fit-teaching-mode` baseline for code work.
+
+## 2026-06-16 - Ponytail installed as personal Codex plugin
+- Current environment truth: `DietrichGebert/ponytail` is installed as a personal Codex plugin from `C:\Users\lucas\plugins\ponytail`.
+- Codex marketplace truth: `C:\Users\lucas\.agents\plugins\marketplace.json` defines marketplace `personal` and entry `ponytail`; the file must be UTF-8 without BOM or Codex rejects it with `expected value at line 1 column 1`.
+- Codex config truth: `C:\Users\lucas\.codex\config.toml` now contains `[plugins."ponytail@personal"] enabled = true`.
+- Verification: `validate_plugin.py` passed; `codex plugin add ponytail@personal` succeeded; `codex plugin list` shows `ponytail@personal installed, enabled 4.7.0`; installed skill folders include `ponytail`, `ponytail-audit`, `ponytail-debt`, `ponytail-help`, and `ponytail-review`.
+- To test it for real, start a new Codex thread so the plugin skills are loaded into the session registry.
+- See implementation note: `Implementation/2026-06-16 - Ponytail installed as personal Codex plugin.md`.
+
+## 2026-06-16 - Ponytail whole-app audit identifies simplicity hotspots
+- Current truth: Ponytail is useful here as a repo-wide simplicity/anti-bloat lens, not as a geometry/DXF dependency. It should enforce YAGNI, no speculative abstractions, native/current dependencies first, and focused runnable checks for non-trivial behavior.
+- Evidence snapshot: production C# is concentrated in `Infrastructure` (~14.9k lines) and `Desktop` (~12.6k lines). Largest risk files are `FloorPlanReviewViewModel.cs`, `SqliteFloorPlanReviewSessionReader.cs`, `FloorPlanPreviewControl.cs`, `SitePlanAdjustmentViewModel.cs`, `DimensionGeometryProjector.cs`, and `IxMiliaAdjustedSitePlanExporter.cs`.
+- Good foundation: dependencies are lean and Application does not take real Infrastructure/Avalonia/IxMilia dependencies; the only Application `ixmilia` hit is a string version label.
+- Main Ponytail rule for this app: keep Application/Infrastructure ports even with one implementation when they protect the hexagonal boundary, but avoid new internal interfaces/factories until a second real implementation exists.
+- Workspace-health finding: `.testartifacts` contains many ignored isolated test-output folders and measured around `31GB`; it should get an explicit cleanup convention/command.
+- See audit note: `Experiments/2026-06-16 - Ponytail whole-app audit.md`.
+
+## 2026-06-16 - Adjust to Site Plan reajustado is modularized around structural fit and affected cotas
+- Current truth: Loop 2 `Adjust to Site Plan` now keeps structural fit facts separate from visual preview extents. Dimensions/cotas can visually extend outside the setback without inflating the structural deficit.
+- Manual floor-plan moves now refresh auto-fit side-overflow facts before applying a selected plan, so a plan moved downward can correctly choose the bottom edge instead of using stale centered/top facts.
+- Red cota highlighting now represents dimensions affected by the selected adjustment. Bound interval dimensions use the selected candidate band to avoid painting cotas outside the band; fallback/no-binding cases use actual dimension geometry/text changes.
+- New Application modules: `SitePlanAdjustmentFitAnalyzer`, `ChangedDimensionDetector`, and `AdjustedDimensionImpactResolver` split fit geometry selection, side-overflow refresh, affected-dimension detection, and band-based impact resolution out of the ViewModel.
+- Verification: RED/GREEN Desktop regressions for stale manual-move facts and affected unchanged-text cotas; Application `SitePlanAdjustment` tests passed 23/23; Desktop `SitePlanAdjustmentPreviewProjectorTests` passed 28/28 using isolated `--output` because a running Desktop process locks normal bin DLLs; `git diff --check` exit `0` with CRLF warnings only.
+- Replaces older note: `Implementation/2026-06-09 - Auto-fit changed-number dimensions highlighted red.md`.
+- See implementation note: `Implementation/2026-06-16 - Adjust to Site Plan modular fit and affected dimensions.md`.
+
+## 2026-06-16 - Synthetic site plans use descriptive deficit titles within capacity
+- User clarified the real product requirement: the synths are terrain/site-plan examples. The site plan should express missing buildable width/height, but normal examples must stay within the floor plan's adaptation envelope.
+- Current generator truth: normal synth filenames now show the tested deficit directly in the picker: `SYNTH FALTA 1 ANCHO - RECTANGULAR - OAK.dxf`, `SYNTH FALTA 2 ANCHO - CHAFLAN - PINE.dxf`, `SYNTH FALTA 2 ANCHO - FILLETS - CEDAR.dxf`, `SYNTH FALTA 1 ALTO - FRENTE CURVO - MESA.dxf`, `SYNTH FALTA 2 ALTO - RECTANGULAR - RIO.dxf`, and `SYNTH FALTA 2 ALTO - CHAFLAN CURVO - PARK.dxf`.
+- Current rule: normal synths use `1"`/`2"` deficits on Width/Height and the generator rejects normal cases above the `4"` adaptation cap. The old shaped `5.0` cases were reduced to `2.0` while preserving shape variety.
+- Current verifier truth: `verify_synthetic_siteplans.py` now checks descriptive filenames, Pointe layer/title appearance, property-boundary shape parity, AutoCAD audit, and exact expected deficits against the structural footprint.
+- Verification: RED missing-descriptive-files verifier; GREEN `python generate_synthetic_siteplans.py`; GREEN `python verify_synthetic_siteplans.py` passed with `expected <= 4" deficits`; GREEN `git diff --check` exit `0` with CRLF warnings only.
+- See implementation note: `Implementation/2026-06-16 - Synthetic site plans use descriptive deficit titles.md`.
+
 ## 2026-06-15 - Adjust to Site Plan preserves full site-plan appearance
 - Current truth: Loop 2 `Adjust to Site Plan` preview now keeps full site-plan render paths/texts and honors source `ColorArgb` for both setback and non-setback content. Fallback gray/orange is used only when source color is unavailable.
 - Current truth: `IxMiliaAdjustedSitePlanExporter` now injects site-plan entities from raw source DXF group-code records, transforming coordinates/lengths while preserving visual metadata such as layer, entity color, lineweight, text style, width factor, and oblique angle.
@@ -847,3 +929,10 @@
 - Code evidence: `AutoFitSuggestionFactBuilder.BuildDeficit(...)` currently sums current-position side overflows, while the product semantics require total size deficit after correct centering/placement.
 - Next verification target: dump buildable bbox, structural projected bbox, full rendered bbox, centers, side overflows/slack, and manual offset for the current preview before changing logic.
 - See bug note: `Bugs/2026-06-11 - Auto-fit may count placement overflow as size deficit.md`.
+
+## 2026-06-16 - OpenAI no-internet suggestion fallback
+- Bug: clicking **Sugerir** in Adjust to Site Plan could crash the app when there was no internet/DNS for `api.openai.com`.
+- Root cause: `OpenAiAutoFitPlanSuggester.SuggestAsync` let `HttpRequestException` escape from `httpClient.SendAsync(...)` before any OpenAI response existed.
+- Current truth: the OpenAI adapter catches network request failures and returns an unsuccessful suggestion result; Desktop then uses the existing deterministic fallback options instead of crashing Avalonia/dotnet watch.
+- Verification: focused RED reproduced the unhandled `HttpRequestException`; GREEN passed 1/1; `OpenAiAutoFitPlanSuggesterTests` passed 4/4; Desktop `SuggestAutoFitPlanAsync` tests passed 3/3; `git diff --check` exited 0 with LF-to-CRLF warnings only.
+- See implementation note: `Implementation/2026-06-16 - OpenAI no-internet suggestion fallback.md`.

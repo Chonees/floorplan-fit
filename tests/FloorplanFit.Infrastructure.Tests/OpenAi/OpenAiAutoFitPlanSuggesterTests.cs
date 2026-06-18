@@ -76,6 +76,25 @@ public sealed class OpenAiAutoFitPlanSuggesterTests
     }
 
     [Fact]
+    public async Task SuggestAsync_returns_unavailable_when_openai_network_request_fails()
+    {
+        var suggester = new OpenAiAutoFitPlanSuggester(
+            new HttpClient(new ThrowingHandler(new HttpRequestException("No such host is known."))),
+            new OpenAiAutoFitPlanSuggesterOptions(
+                ApiKey: "test-openai-key",
+                Model: "gpt-test-model",
+                BaseUri: new Uri("https://openai.test")));
+
+        var result = await suggester.SuggestAsync(WidthFacts(), CandidatePlans(), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Null(result.Plan);
+        Assert.False(result.Validation.IsValid);
+        Assert.Contains("OpenAI request failed", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No such host", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task SuggestAsync_rejects_openai_ranked_plan_that_invents_group()
     {
         var handler = new CaptureHandler(
@@ -161,5 +180,13 @@ public sealed class OpenAiAutoFitPlanSuggesterTests
                 Content = new StringContent(responseJson)
             };
         }
+    }
+
+    private sealed class ThrowingHandler(Exception exception) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+            => Task.FromException<HttpResponseMessage>(exception);
     }
 }

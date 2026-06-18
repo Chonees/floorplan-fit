@@ -70,13 +70,25 @@ public sealed class OpenAiAutoFitPlanSuggester : IAutoFitPlanSuggester
         }
 
         using var request = BuildRequest(facts, candidatePlans);
-        using var response = await httpClient.SendAsync(request, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
         {
             return Failure(
-                $"OpenAI returned HTTP {(int)response.StatusCode} {response.ReasonPhrase}.",
+                "OpenAI request failed before a response was received.",
+                $"OpenAI request failed: {exception.Message}");
+        }
+
+        using var responseMessage = response;
+        var responseBody = await responseMessage.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!responseMessage.IsSuccessStatusCode)
+        {
+            return Failure(
+                $"OpenAI returned HTTP {(int)responseMessage.StatusCode} {responseMessage.ReasonPhrase}.",
                 responseBody);
         }
 

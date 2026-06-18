@@ -51,7 +51,6 @@ public sealed class AutoFitSuggestionFactBuilderTests
                 Assert.Equal(3m, group.CapacityInches);
             });
     }
-
     [Fact]
     public void Build_reports_when_matching_axis_has_less_capacity_than_required_deficit()
     {
@@ -175,6 +174,25 @@ public sealed class AutoFitSuggestionFactBuilderTests
         Assert.Equal(0m, facts.Deficit.LeftInches);
         Assert.Equal(0m, facts.Deficit.RightInches);
         Assert.False(facts.NeedsAdjustment);
+    }
+
+
+    [Fact]
+    public void Build_splits_centered_one_inch_vertical_structural_deficit_between_bottom_and_top()
+    {
+        var floorPathId = Guid.NewGuid();
+
+        var facts = AutoFitSuggestionFactBuilder.Build(
+            floorPlanGeometryPaths: [RectanglePath(floorPathId, minX: 0m, minY: -0.5m, maxX: 100m, maxY: 100.5m)],
+            buildableArea: new SitePlanBuildableAreaDto(0m, 0m, 100m, 100m),
+            sitePlanToMillimetersFactor: 25.4m,
+            pinchGroups: [],
+            articulationBands: []);
+
+        Assert.Equal(0m, facts.Deficit.WidthInches);
+        Assert.Equal(1m, facts.Deficit.HeightInches);
+        Assert.Equal(0.5m, facts.Deficit.BottomInches);
+        Assert.Equal(0.5m, facts.Deficit.TopInches);
     }
 
     private static GeometryPathDto RectanglePath(Guid pathId, decimal minX, decimal minY, decimal maxX, decimal maxY)

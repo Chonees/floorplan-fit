@@ -12,6 +12,7 @@ Layers y rotulo de la empresa (copiados de 158 DAWSON STREET.dxf):
 
 La geometria inventada conserva los deficits exactos; el texto visible evita diagnosticos
 tipo "BUILDABLE BBOX" y usa un rotulo corto/falso con la misma familia visual del plano real.
+Los nombres de archivo son descriptivos para que el picker muestre que deficit se prueba.
 """
 import math
 import os
@@ -83,6 +84,7 @@ PROP_LAYER = "2312-001-BM$0$C-PROP-SUBD"
 PHANTOM = "2312-001-BM$0$PHANTOM2"
 TEMPLATE = os.path.join(OUT, "158 DAWSON STREET.dxf")
 TITLE_BLOCK_SCALE = 5.0
+MAX_NORMAL_ADAPTATION_INCHES = 4.0
 
 def read_dxf_pairs(path):
     with open(path, encoding="latin1", errors="ignore") as f:
@@ -433,20 +435,70 @@ def lot_from_setback_shape(setback_pts, side, front, rear):
         for x, y in setback_pts
     ]
 
+def format_deficit_label(deficit):
+    return str(int(deficit)) if float(deficit).is_integer() else fmt(deficit)
+
+def axis_label(axis):
+    if axis == "ancho":
+        return "ANCHO"
+    if axis == "alto":
+        return "ALTO"
+    raise ValueError(f"Eje de deficit desconocido: {axis}")
+
+def synth_file_name(axis, deficit, style, short_name):
+    return f"SYNTH FALTA {format_deficit_label(deficit)} {axis_label(axis)} - {style} - {short_name}.dxf"
+
+def cleanup_stale_synth_outputs(expected_names):
+    """Deja el picker limpio: remueve synths viejos que no tienen titulo descriptivo actual."""
+    removed = []
+    locked = []
+    for file_name in os.listdir(OUT):
+        if not file_name.upper().startswith("SYNTH ") or not file_name.lower().endswith(".dxf"):
+            continue
+        if file_name in expected_names:
+            continue
+        path = os.path.join(OUT, file_name)
+        try:
+            os.remove(path)
+            removed.append(file_name)
+        except PermissionError:
+            locked.append(file_name)
+
+    if removed:
+        print("Synths viejos removidos del picker:")
+        for file_name in removed:
+            print(f"  - {file_name}")
+    if locked:
+        print("WARNING: no pude borrar synths viejos porque estan abiertos/bloqueados:")
+        for file_name in locked:
+            print(f"  - {file_name}")
+
 CASES = [
-    (1, "ancho", 1.0, "LOTE RECTANGULAR", shape_rect, {}, "OAK", "101", "OAK STREET"),
-    (2, "ancho", 2.0, "LOTE ESQUINA CON CHAFLAN", shape_chamfer_ne, {"cut": 60.0}, "PINE", "214", "PINE WAY"),
-    (3, "ancho", 5.0, "SETBACK CON FILLETS", shape_fillets, {"r": 36.0}, "CEDAR", "32", "CEDAR COURT"),
-    (4, "alto",  1.0, "FRENTE CURVO CUL-DE-SAC", shape_curved_front, {"sagitta": 35.0}, "MESA", "8", "MESA LOOP"),
-    (5, "alto",  2.0, "LOTE TRAPEZOIDAL", shape_rect, {}, "RIO", "57", "RIO DRIVE"),
-    (6, "alto",  5.0, "CHAFLAN Y FRENTE CURVO", shape_chamfer_and_curve, {"cut": 50.0, "sagitta": 30.0}, "PARK", "16", "PARK LANE"),
+    (1, "ancho", 1.0, "RECTANGULAR", shape_rect, {}, "OAK", "101", "OAK STREET"),
+    (2, "ancho", 2.0, "CHAFLAN", shape_chamfer_ne, {"cut": 60.0}, "PINE", "214", "PINE WAY"),
+    (3, "ancho", 2.0, "FILLETS", shape_fillets, {"r": 36.0}, "CEDAR", "32", "CEDAR COURT"),
+    (4, "alto",  1.0, "FRENTE CURVO", shape_curved_front, {"sagitta": 35.0}, "MESA", "8", "MESA LOOP"),
+    (5, "alto",  2.0, "RECTANGULAR", shape_rect, {}, "RIO", "57", "RIO DRIVE"),
+    (6, "alto",  2.0, "CHAFLAN CURVO", shape_chamfer_and_curve, {"cut": 50.0, "sagitta": 30.0}, "PARK", "16", "PARK LANE"),
 ]
 
 SIDE, FRONT, REAR = 90.0, 300.0, 240.0  # retiros tipicos: 7.5' / 25' / 20'
 
 print()
 results = []
+expected_output_names = {
+    synth_file_name(axis, deficit, style, short_name)
+    for _, axis, deficit, style, _, _, short_name, _, _ in CASES
+}
+cleanup_stale_synth_outputs(expected_output_names)
+
 for number, axis, deficit, style, shape_fn, kwargs, short_name, house_number, street_name in CASES:
+    if deficit > MAX_NORMAL_ADAPTATION_INCHES:
+        raise ValueError(
+            f"{style} {short_name} pide {deficit}\" de {axis}, "
+            f"pero los synths normales no pueden superar {MAX_NORMAL_ADAPTATION_INCHES}\"."
+        )
+
     reset_handles()
     sbw = W - deficit if axis == "ancho" else W
     sbh = H if axis == "ancho" else H - deficit
@@ -469,7 +521,7 @@ for number, axis, deficit, style, shape_fn, kwargs, short_name, house_number, st
 
     extmin = (min(lot_minx - 200, title_bounds[0] - 100), min(title_bounds[1] - 80, lot_miny - 200))
     extmax = (max(lot_maxx + 200, title_bounds[2] + 100), max(lot_maxy + 200, title_bounds[3] + 80))
-    name = f"SYNTH {short_name}.dxf"
+    name = synth_file_name(axis, deficit, style, short_name)
     path = os.path.join(OUT, name)
     content = dxf_doc(extmin, extmax, ents)
     try:
@@ -500,7 +552,8 @@ for number, axis, deficit, style, shape_fn, kwargs, short_name, house_number, st
 with open(os.path.join(OUT, "README.txt"), "w", encoding="latin1") as f:
     f.write("Site plans sinteticos con layers y rotulo Pointe (estilo 158 DAWSON STREET)\n")
     f.write("Unidades: pulgadas ($INSUNITS=1). Capas: SETBACKS / " + PROP_LAYER + " / E / TEXT.\n")
-    f.write("Los nombres visibles/archivos son cortos y falsos: OAK, PINE, CEDAR, MESA, RIO, PARK.\n")
+    f.write("Los nombres de archivo describen el deficit testeado: FALTA 1/2 ANCHO o FALTA 1/2 ALTO.\n")
+    f.write("Los rotulos visibles dentro del CAD siguen siendo cortos/falsos: OAK, PINE, CEDAR, MESA, RIO, PARK.\n")
     f.write(f"Referencia: footprint ESTRUCTURAL SEMINOLE2000 = {fmt(W)}\" x {fmt(H)}\" (masa de pared).\n\n")
     for name, bw, bh, wdef, hdef, left, right, bottom, top in results:
         f.write(f"- {name}\n")

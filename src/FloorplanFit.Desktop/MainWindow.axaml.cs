@@ -70,19 +70,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var reviewViewModel = await viewModel.OpenSelectedReviewAsync(CancellationToken.None);
-        if (reviewViewModel is null)
-        {
-            return;
-        }
-
-        var reviewWindow = new ReviewFloorPlanWindow
-        {
-            DataContext = reviewViewModel
-        };
-
-        await reviewWindow.ShowDialog(this);
-        await viewModel.LoadAsync(CancellationToken.None);
+        await viewModel.ShowSelectedReviewAsync(CancellationToken.None);
     }
 
     private async void OpenVersionButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -104,19 +92,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var reviewViewModel = await viewModel.OpenVersionReviewAsync(item, version, CancellationToken.None);
-        if (reviewViewModel is null)
-        {
-            return;
-        }
-
-        var reviewWindow = new ReviewFloorPlanWindow
-        {
-            DataContext = reviewViewModel
-        };
-
-        await reviewWindow.ShowDialog(this);
-        await viewModel.LoadAsync(CancellationToken.None);
+        await viewModel.ShowVersionReviewAsync(item, version, CancellationToken.None);
     }
 
     private async void AdjustVersionToSitePlanButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -157,22 +133,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        var adjustmentViewModel = await viewModel.OpenVersionSitePlanAdjustmentAsync(
+        await viewModel.ShowVersionSitePlanAdjustmentAsync(
             item,
             version,
             file.Path.LocalPath,
             CancellationToken.None);
-        if (adjustmentViewModel is null)
+    }
+
+    private async void BackToLibraryButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not LibraryViewModel viewModel)
         {
             return;
         }
 
-        var adjustmentWindow = new SitePlanAdjustmentWindow
-        {
-            DataContext = adjustmentViewModel
-        };
-
-        await adjustmentWindow.ShowDialog(this);
+        await viewModel.ShowLibraryAsync(CancellationToken.None);
     }
 
     private void SelectVersionButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
