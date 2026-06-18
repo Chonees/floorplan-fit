@@ -656,6 +656,24 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void ResolvePreviewFontSize_clamps_extreme_zoom_text_to_safe_render_size()
+    {
+        var fontSize = CadTextPreviewLayerRenderer.ResolvePreviewFontSize(3.5m, viewportScale: 1_000_000d);
+
+        Assert.Equal(CadTextPreviewLayerRenderer.MaxPreviewFontSize, fontSize);
+    }
+
+    [Fact]
+    public void CanRenderText_rejects_far_offscreen_text_after_extreme_zoom()
+    {
+        var canRender = CadTextPreviewLayerRenderer.CanRenderText(
+            new Point(10_000_000d, 0d),
+            CadTextPreviewLayerRenderer.MaxPreviewFontSize);
+
+        Assert.False(canRender);
+    }
+
+    [Fact]
     public void CreateRoomLabelRenderPlan_forces_black_text_for_readable_preview()
     {
         var pathId = Guid.NewGuid();
@@ -1154,18 +1172,26 @@ public sealed class FloorPlanPreviewControlTests
         var zoomedIn = FloorPlanPreviewControl.CalculateWheelZoomFactor(1d, wheelDeltaY: 1d);
         var zoomedOut = FloorPlanPreviewControl.CalculateWheelZoomFactor(1d, wheelDeltaY: -1d);
         var clampedMinimum = FloorPlanPreviewControl.CalculateWheelZoomFactor(0.2d, wheelDeltaY: -10d);
-        var clampedMaximum = FloorPlanPreviewControl.CalculateWheelZoomFactor(100d, wheelDeltaY: 10d);
+        var clampedMaximum = FloorPlanPreviewControl.CalculateWheelZoomFactor(100d, wheelDeltaY: 20d);
 
-        Assert.True(zoomedIn > 1d);
-        Assert.True(zoomedOut < 1d);
+        Assert.Equal(2d, zoomedIn);
+        Assert.Equal(0.5d, zoomedOut, precision: 12);
         Assert.Equal(FloorPlanPreviewControl.MinimumUserZoomFactor, clampedMinimum);
         Assert.Equal(FloorPlanPreviewControl.MaximumUserZoomFactor, clampedMaximum);
     }
 
     [Fact]
-    public void MaximumUserZoomFactor_allows_precise_zoom_up_to_eighty_x()
+    public void CalculateWheelZoomFactor_reaches_wall_inspection_zoom_with_few_wheel_ticks()
     {
-        Assert.Equal(80d, FloorPlanPreviewControl.MaximumUserZoomFactor);
+        var zoomAfterTenTicks = FloorPlanPreviewControl.CalculateWheelZoomFactor(1d, wheelDeltaY: 10d);
+
+        Assert.True(zoomAfterTenTicks > 1000d);
+    }
+
+    [Fact]
+    public void MaximumUserZoomFactor_allows_practically_unbounded_floor_plan_zoom()
+    {
+        Assert.Equal(1_000_000d, FloorPlanPreviewControl.MaximumUserZoomFactor);
     }
 
     [Fact]
@@ -1327,7 +1353,7 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
-    public void CadViewportContext_create_reports_world_units_per_pixel_and_denser_1_2_5_grid_spacing()
+    public void CadViewportContext_create_reports_world_units_per_pixel_and_default_1_2_5_grid_spacing()
     {
         var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
             new Rect(0, 0, 800, 600),

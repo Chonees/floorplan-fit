@@ -61,7 +61,32 @@ public sealed class SqliteFloorPlanLibraryReader : IFloorPlanLibraryReader
                            AND c.floorplan_version_id = v.id
                      ) THEN t.active_published_curation_id
                     ELSE NULL
-                END AS active_published_curation_id
+                END AS active_published_curation_id,
+                (
+                    SELECT c.curation_version
+                    FROM floorplan_curations c
+                    WHERE c.id = t.active_published_curation_id
+                      AND c.floorplan_version_id = v.id
+                    LIMIT 1
+                ) AS active_published_curation_version,
+                (
+                    SELECT COUNT(*)
+                    FROM floorplan_curations c
+                    WHERE c.floorplan_version_id = v.id
+                      AND c.status = {(int)FloorPlanCurationStatus.Published}
+                ) AS published_curation_count,
+                (
+                    SELECT MAX(c.curation_version)
+                    FROM floorplan_curations c
+                    WHERE c.floorplan_version_id = v.id
+                      AND c.status = {(int)FloorPlanCurationStatus.Published}
+                ) AS latest_published_curation_version,
+                (
+                    SELECT MAX(c.curation_version)
+                    FROM floorplan_curations c
+                    WHERE c.floorplan_version_id = v.id
+                      AND c.status = {(int)FloorPlanCurationStatus.Draft}
+                ) AS latest_draft_curation_version
             FROM floorplan_templates t
             JOIN floorplan_versions v ON v.floorplan_template_id = t.id
                 AND v.deleted_at_utc IS NULL
@@ -96,7 +121,11 @@ public sealed class SqliteFloorPlanLibraryReader : IFloorPlanLibraryReader
                 DateTime.Parse(reader.GetString(6), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                 sourceUnit.ToString().ToLowerInvariant(),
                 template.CurrentVersionId == versionId,
-                reader.IsDBNull(9) ? null : Guid.Parse(reader.GetString(9))));
+                reader.IsDBNull(9) ? null : Guid.Parse(reader.GetString(9)),
+                reader.IsDBNull(10) ? null : reader.GetInt32(10),
+                reader.GetInt32(11),
+                reader.IsDBNull(12) ? null : reader.GetInt32(12),
+                reader.IsDBNull(13) ? null : reader.GetInt32(13)));
         }
 
         var items = templates.Values

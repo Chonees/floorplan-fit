@@ -285,6 +285,19 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     public bool CanRemoveSelectedPinch => SelectedPinchMarker is not null;
 
+    public bool CanDeleteSelectedItem =>
+        CanRemoveSelectedPinch ||
+        CanRemoveSelectedPinchGroup ||
+        CanRemoveSelectedMeasurementNode ||
+        CanRemoveSelectedMeasurementCorridor ||
+        SelectedCuratedArtifact is not null ||
+        SelectedCandidate is not null ||
+        SelectedRoomLabel is not null ||
+        SelectedOpeningCandidate is not null ||
+        SelectedOpeningLabel is not null ||
+        SelectedFixedPlanComponent is not null ||
+        SelectedProtectedDetailAssembly is not null;
+
     public Guid? SelectedRoomLabelId => SelectedRoomLabel?.RoomLabelId;
 
     public Guid? SelectedOpeningLabelId => SelectedOpeningLabel?.OpeningLabelId;
@@ -1633,6 +1646,40 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             cancellationToken);
     }
 
+    public async Task DeleteSelectedItemAsync(CancellationToken cancellationToken)
+    {
+        if (!CanDeleteSelectedItem)
+        {
+            return;
+        }
+
+        if (SelectedPinchMarker is not null)
+        {
+            await RemoveSelectedPinchAsync(cancellationToken);
+            return;
+        }
+
+        if (SelectedPinchGroup is not null)
+        {
+            await RemoveSelectedPinchGroupAsync(cancellationToken);
+            return;
+        }
+
+        if (SelectedMeasurementNode is not null)
+        {
+            await RemoveSelectedMeasurementNodeAsync(cancellationToken);
+            return;
+        }
+
+        if (SelectedMeasurementCorridor is not null)
+        {
+            await RemoveSelectedMeasurementCorridorAsync(cancellationToken);
+            return;
+        }
+
+        await ExcludeSelectedArtifactAsync(cancellationToken);
+    }
+
     public async Task ExcludeSelectedArtifactAsync(CancellationToken cancellationToken)
     {
         if (SelectedCuratedArtifact is not null)
@@ -1733,6 +1780,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CanEditPublishedCuration));
         OnPropertyChanged(nameof(CanPublishCuration));
+        OnPropertyChanged(nameof(CanDeleteSelectedItem));
         OnPropertyChanged(nameof(CanRemoveSelectedPinchGroup));
         OnPropertyChanged(nameof(CanRemoveSelectedMeasurementCorridor));
         OnPropertyChanged(nameof(CanRemoveSelectedMeasurementNode));
@@ -1766,6 +1814,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         ApplySelectionPresentation(selectionCoordinator.ResolvePinchMarkerPresentation(value));
         OnPropertyChanged(nameof(CanRemoveSelectedPinch));
+        OnPropertyChanged(nameof(CanDeleteSelectedItem));
         OnPropertyChanged(nameof(SelectedPinchGroupMarkers));
         RaiseUxNotifications();
     }
@@ -1822,6 +1871,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedPinchGroupMarkers));
         OnPropertyChanged(nameof(CanRemoveSelectedPinchGroup));
         OnPropertyChanged(nameof(CanRenameSelectedPinchGroup));
+        OnPropertyChanged(nameof(CanDeleteSelectedItem));
         OnPropertyChanged(nameof(SelectedPinchGroupImpactSummary));
         RaiseUxNotifications();
     }
@@ -1899,6 +1949,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedMeasurementCorridorId));
         OnPropertyChanged(nameof(HasSelectedMeasurementCorridor));
         OnPropertyChanged(nameof(CanRemoveSelectedMeasurementCorridor));
+        OnPropertyChanged(nameof(CanDeleteSelectedItem));
         OnPropertyChanged(nameof(CanChangeSelectedMeasurementCorridorAxis));
         OnPropertyChanged(nameof(SelectedMeasurementCorridorNodes));
         OnPropertyChanged(nameof(SelectedMeasurementNodeGroupOption));
@@ -1919,6 +1970,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedMeasurementNodeId));
         OnPropertyChanged(nameof(SelectedMeasurementGroupNodeOption));
         OnPropertyChanged(nameof(CanRemoveSelectedMeasurementNode));
+        OnPropertyChanged(nameof(CanDeleteSelectedItem));
     }
 
     partial void OnSelectedMeasurementStartNodeChanged(MeasurementNodeDto? value)

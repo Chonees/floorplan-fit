@@ -25,6 +25,7 @@ The previous behavior opened Loop 1 Edit and Loop 2 Adjust as modal windows via 
 - `MainWindow.axaml` embeds both controls and switches visibility through `LibraryViewModel`.
 - `MainWindow.axaml.cs` no longer creates `ReviewFloorPlanWindow` / `SitePlanAdjustmentWindow` instances or calls `ShowDialog(this)` for the main product screens.
 - Small dialogs remain dialogs: file picker, export picker, and pinch-group naming.
+- Follow-up correction: `RequestedThemeVariant="Dark"` was removed from the embedded `UserControl` roots after Avalonia reported `AVLN2000`; the theme remains on the top-level `MainWindow`.
 
 ## Product scope
 
@@ -41,4 +42,3 @@ Source-level checks verified:
 - `MainWindow.axaml.cs` no longer opens the main screens with modal dialogs.
 - Review and Adjust roots are `UserControl`.
 - `git diff --check` passed for the touched files, with CRLF warnings only.
-

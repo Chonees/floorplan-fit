@@ -8,6 +8,8 @@ namespace FloorplanFit.Desktop.Controls.Preview;
 internal static class CadTextPreviewLayerRenderer
 {
     private const double FallbackFontSize = 11d;
+    internal const double MaxPreviewFontSize = 512d;
+    private const double MaxRenderableCoordinate = 1_000_000d;
 
     public static void RenderRoomLabels(
         DrawingContext context,
@@ -101,9 +103,7 @@ internal static class CadTextPreviewLayerRenderer
         FloorPlanPreviewGeometry.PreviewViewport viewport,
         bool isSelected = false)
     {
-        var fontSize = roomLabel.TextHeight is > 0m
-            ? Math.Max(1d, (double)roomLabel.TextHeight.Value * viewport.Scale)
-            : FallbackFontSize;
+        var fontSize = ResolvePreviewFontSize(roomLabel.TextHeight, viewport.Scale);
 
         return new TextRenderPlan(
             roomLabel.Text,
@@ -129,9 +129,7 @@ internal static class CadTextPreviewLayerRenderer
         FloorPlanPreviewGeometry.PreviewViewport viewport,
         bool isSelected = false)
     {
-        var fontSize = openingLabel.TextHeight is > 0m
-            ? Math.Max(1d, (double)openingLabel.TextHeight.Value * viewport.Scale)
-            : FallbackFontSize;
+        var fontSize = ResolvePreviewFontSize(openingLabel.TextHeight, viewport.Scale);
 
         return new TextRenderPlan(
             openingLabel.Text,
@@ -160,9 +158,7 @@ internal static class CadTextPreviewLayerRenderer
         bool hasChangedNumber = false)
     {
         var anchor = ResolveDimensionTextAnchor(dimension);
-        var fontSize = dimension.RenderTextHeight is > 0m
-            ? Math.Max(1d, (double)dimension.RenderTextHeight.Value * viewport.Scale)
-            : FallbackFontSize;
+        var fontSize = ResolvePreviewFontSize(dimension.RenderTextHeight, viewport.Scale);
         return new TextRenderPlan(
             dimension.DisplayText,
             viewport.Project((decimal)anchor.X, (decimal)anchor.Y),
@@ -205,12 +201,43 @@ internal static class CadTextPreviewLayerRenderer
 
     private static void RenderText(DrawingContext context, TextRenderPlan plan, string? textStyleName)
     {
+        if (!CanRenderText(plan.Anchor, plan.FontSize))
+        {
+            return;
+        }
+
         var textBrush = CreateBrush(plan.ColorArgb);
         var text = CreateFormattedText(plan, textStyleName, textBrush);
         var origin = ResolveTextOrigin(text, plan);
 
         using var _ = context.PushTransform(Matrix.CreateRotation(plan.RotationDegrees * Math.PI / 180d, plan.Anchor));
         context.DrawText(text, origin);
+    }
+
+    internal static double ResolvePreviewFontSize(decimal? textHeight, double viewportScale)
+    {
+        if (textHeight is not > 0m || !double.IsFinite(viewportScale) || viewportScale <= double.Epsilon)
+        {
+            return FallbackFontSize;
+        }
+
+        var requested = (double)textHeight.Value * viewportScale;
+        if (!double.IsFinite(requested))
+        {
+            return MaxPreviewFontSize;
+        }
+
+        return Math.Clamp(requested, 1d, MaxPreviewFontSize);
+    }
+
+    internal static bool CanRenderText(Point anchor, double fontSize)
+    {
+        return double.IsFinite(anchor.X) &&
+               double.IsFinite(anchor.Y) &&
+               Math.Abs(anchor.X) <= MaxRenderableCoordinate &&
+               Math.Abs(anchor.Y) <= MaxRenderableCoordinate &&
+               double.IsFinite(fontSize) &&
+               fontSize is > 0d and <= MaxPreviewFontSize;
     }
 
     internal static Rect GetTextBounds(TextRenderPlan plan, string? textStyleName)

@@ -22,6 +22,10 @@ Thumbs.db
 # Runtime workspace if ever materialized outside bin
 workspace/
 
+# Generated local training dataset exports
+artifacts/training-datasets/
+artifacts/db-backups/
+
 # Local git worktrees for isolated feature execution
 .worktrees/
 

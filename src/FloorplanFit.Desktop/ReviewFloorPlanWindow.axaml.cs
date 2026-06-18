@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using FloorplanFit.Desktop.Controls;
 using FloorplanFit.Desktop.ViewModels;
@@ -10,6 +11,32 @@ public partial class ReviewFloorPlanWindow : UserControl
     public ReviewFloorPlanWindow()
     {
         InitializeComponent();
+    }
+
+    private async void ReviewFloorPlanWindow_OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Delete || e.Source is TextBox)
+        {
+            return;
+        }
+
+        if (DataContext is not FloorPlanReviewViewModel viewModel || !viewModel.CanDeleteSelectedItem)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await viewModel.DeleteSelectedItemAsync(CancellationToken.None);
+    }
+
+    private async void DeleteSelectedItemButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.DeleteSelectedItemAsync(CancellationToken.None);
     }
 
     private async void ExcludeSelectedArtifactButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

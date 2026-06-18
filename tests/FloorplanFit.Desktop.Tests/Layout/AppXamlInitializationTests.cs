@@ -57,6 +57,8 @@ public sealed class AppXamlInitializationTests
         Assert.Contains("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", mainXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", reviewXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", sitePlanAdjustmentXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("RequestedThemeVariant=\"Dark\"", reviewXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("RequestedThemeVariant=\"Dark\"", sitePlanAdjustmentXaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -68,9 +70,10 @@ public sealed class AppXamlInitializationTests
         var xaml = File.ReadAllText(mainXamlPath);
         var codeBehind = File.ReadAllText(mainCodeBehindPath);
 
-        Assert.Contains("Content=\"Edit Selected Review\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Content=\"Edit\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Content=\"Adjust to Site Plan\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Delete\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding CurationHistoryLabel}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsEnabled=\"{Binding CanAdjustToSitePlan}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"AdjustVersionToSitePlanButton_OnClick\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AdjustVersionToSitePlanButton_OnClick", codeBehind, StringComparison.Ordinal);
@@ -78,8 +81,16 @@ public sealed class AppXamlInitializationTests
         Assert.Contains("<views:ReviewFloorPlanWindow", xaml, StringComparison.Ordinal);
         Assert.Contains("<views:SitePlanAdjustmentWindow", xaml, StringComparison.Ordinal);
         Assert.Contains("BackToLibraryButton_OnClick", xaml, StringComparison.Ordinal);
-        Assert.Contains("ShowSelectedReviewAsync", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ShowVersionReviewAsync", codeBehind, StringComparison.Ordinal);
         Assert.Contains("ShowVersionSitePlanAdjustmentAsync", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Extract Selected Version\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Edit Selected Review\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Delete Selected Version\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Select\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ExtractButton_OnClick", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReviewButton_OnClick", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("DeleteSelectedVersionButton_OnClick", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("SelectVersionButton_OnClick", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("ShowDialog(this)", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("new ReviewFloorPlanWindow", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("new SitePlanAdjustmentWindow", codeBehind, StringComparison.Ordinal);

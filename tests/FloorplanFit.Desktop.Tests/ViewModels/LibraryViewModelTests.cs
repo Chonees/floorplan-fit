@@ -17,7 +17,11 @@ public sealed class LibraryViewModelTests
         Guid templateId,
         Guid versionId,
         string status,
-        Guid? activePublishedCurationId = null)
+        Guid? activePublishedCurationId = null,
+        int? activePublishedCurationVersion = null,
+        int publishedCurationCount = 0,
+        int? latestPublishedCurationVersion = null,
+        int? latestDraftCurationVersion = null)
     {
         return new FloorPlanLibraryItemDto(
             templateId,
@@ -35,7 +39,11 @@ public sealed class LibraryViewModelTests
                     new DateTime(2026, 4, 30, 18, 0, 0, DateTimeKind.Utc),
                     "inch",
                     IsCurrent: true,
-                    activePublishedCurationId)
+                    activePublishedCurationId,
+                    activePublishedCurationVersion,
+                    publishedCurationCount,
+                    latestPublishedCurationVersion,
+                    latestDraftCurationVersion)
             ]);
     }
 
@@ -60,6 +68,26 @@ public sealed class LibraryViewModelTests
 
         Assert.True(published.CanAdjustToSitePlan);
         Assert.False(draft.CanAdjustToSitePlan);
+    }
+
+    [Fact]
+    public void FloorPlanLibraryVersionDto_surfaces_curation_history_and_blocks_reextract()
+    {
+        var version = new FloorPlanLibraryVersionDto(
+            Guid.NewGuid(),
+            VersionNumber: 1,
+            Status: "Curated Draft",
+            new DateTime(2026, 6, 18, 12, 0, 0, DateTimeKind.Utc),
+            "inch",
+            IsCurrent: true,
+            ActivePublishedCurationId: Guid.NewGuid(),
+            ActivePublishedCurationVersion: 11,
+            PublishedCurationCount: 11,
+            LatestPublishedCurationVersion: 11,
+            LatestDraftCurationVersion: 12);
+
+        Assert.Equal("Published v11 · Draft v12 · 11 published total", version.CurationHistoryLabel);
+        Assert.False(version.CanExtract);
     }
 
     [Fact]
@@ -174,6 +202,33 @@ public sealed class LibraryViewModelTests
         Assert.Single(dimensionRepository.Items);
         Assert.Single(viewModel.Items);
         Assert.Equal("Extracted", viewModel.Items[0].Status);
+    }
+
+    [Fact]
+    public async Task ExtractSelectedAsync_blocks_reextract_when_selected_version_has_curation_history()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var services = new ServiceCollection();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
+        {
+            SelectedItem = CreateLibraryItem(
+                templateId,
+                versionId,
+                "Curated Draft",
+                activePublishedCurationId: Guid.NewGuid(),
+                activePublishedCurationVersion: 11,
+                publishedCurationCount: 11,
+                latestPublishedCurationVersion: 11,
+                latestDraftCurationVersion: 12)
+        };
+
+        await viewModel.ExtractSelectedAsync(CancellationToken.None);
+
+        Assert.StartsWith("Re-extract blocked", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("Published v11 · Draft v12", viewModel.StatusMessage, StringComparison.Ordinal);
     }
 
     private sealed class FakeRoomLabelExtractor : IRoomLabelExtractor
@@ -481,7 +536,7 @@ public sealed class LibraryViewModelTests
     }
 
     [Fact]
-    public async Task DeleteSelectedVersionAsync_removes_the_selected_version_and_refreshes_the_library()
+    public async Task DeleteVersionAsync_removes_the_selected_version_and_refreshes_the_library()
     {
         var templateId = Guid.NewGuid();
         var versionOneId = Guid.NewGuid();
@@ -517,7 +572,7 @@ public sealed class LibraryViewModelTests
 
         Assert.Equal("Selected: santa-barbara v2", viewModel.SelectedVersionLabel);
 
-        await viewModel.DeleteSelectedVersionAsync(CancellationToken.None);
+        await viewModel.DeleteVersionAsync(viewModel.SelectedVersion!, CancellationToken.None);
 
         Assert.All(versionRepository.Items, item => Assert.NotEqual(versionTwoId, item.Id));
         Assert.True(unitOfWork.SaveChangesCalled);

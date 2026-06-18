@@ -471,6 +471,7 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
             SELECT id
             FROM wall_extraction_runs
             WHERE floorplan_version_id = $floorplan_version_id
+              AND status = 'Completed'
             ORDER BY started_at_utc DESC, id DESC
             LIMIT 1
             """);

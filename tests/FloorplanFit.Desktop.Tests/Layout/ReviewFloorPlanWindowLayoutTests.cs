@@ -5,14 +5,14 @@ namespace FloorplanFit.Desktop.Tests.Layout;
 public sealed class ReviewFloorPlanWindowLayoutTests
 {
     [Fact]
-    public void Review_xaml_uses_minimal_review_queue_and_contextual_inspector_layout()
+    public void Review_xaml_uses_preview_first_layout_without_review_queue_column()
     {
         var solutionRoot = FindSolutionRoot();
         var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
         var xaml = File.ReadAllText(xamlPath);
 
         Assert.Contains("<UserControl", xaml, StringComparison.Ordinal);
-        Assert.Contains("RequestedThemeVariant=\"Dark\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("RequestedThemeVariant=\"Dark\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("WindowState=\"Maximized\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Width=\"1450\"", xaml, StringComparison.Ordinal);
@@ -20,23 +20,24 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.DoesNotContain("FloorPlanPreviewControl Height=\"700\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("<ListBox Height=\"180\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ClipToBounds=\"True\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ColumnDefinitions=\"*,440,64\"", xaml, StringComparison.Ordinal);
         Assert.Contains("<controls:FloorPlanPreviewControl", xaml, StringComparison.Ordinal);
-        Assert.Contains("Review Queue", xaml, StringComparison.Ordinal);
-        Assert.Contains("ReviewQueueSearchText", xaml, StringComparison.Ordinal);
-        Assert.Contains("SelectedReviewQueueFilter", xaml, StringComparison.Ordinal);
-        Assert.Contains("VisibleWallCandidates", xaml, StringComparison.Ordinal);
-        Assert.Contains("VisibleRoomLabels", xaml, StringComparison.Ordinal);
-        Assert.Contains("VisibleOpeningLabels", xaml, StringComparison.Ordinal);
-        Assert.Contains("VisibleDimensions", xaml, StringComparison.Ordinal);
-        Assert.Contains("Preview", xaml, StringComparison.Ordinal);
-        Assert.Contains("Inspector", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Review Queue\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReviewQueueSearchText", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("SelectedReviewQueueFilter", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("VisibleWallCandidates", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("VisibleRoomLabels", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("VisibleOpeningLabels", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("VisibleDimensions", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Preview\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Inspector\"", xaml, StringComparison.Ordinal);
         Assert.Contains("InspectorToolBar", xaml, StringComparison.Ordinal);
         Assert.Contains("Classes.tool-active", xaml, StringComparison.Ordinal);
         Assert.Contains("Eje", xaml, StringComparison.Ordinal);
         Assert.Contains("Agregar ajuste", xaml, StringComparison.Ordinal);
         Assert.Contains("Quitar ajuste", xaml, StringComparison.Ordinal);
         Assert.Contains("Excluir del curado", xaml, StringComparison.Ordinal);
-        Assert.Contains("CuratedObjectsSectionTitle", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("CuratedObjectsSectionTitle", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedCuratedArtifact", xaml, StringComparison.Ordinal);
         Assert.Contains("CuratedPlanArtifacts=\"{Binding VisibleCuratedPlanArtifacts}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Save Classification", xaml, StringComparison.Ordinal);
@@ -58,14 +59,14 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("FixedPlanComponents=\"{Binding FixedPlanComponents}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedRoomLabel", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedOpeningLabel", xaml, StringComparison.Ordinal);
-        Assert.Contains("Quick Filters", xaml, StringComparison.Ordinal);
-        Assert.Contains("QueueSummary", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Quick Filters", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("QueueSummary", xaml, StringComparison.Ordinal);
         Assert.Contains("Acciones de selección", xaml, StringComparison.Ordinal);
-        Assert.Contains("IsStructureQueueExpanded", xaml, StringComparison.Ordinal);
-        Assert.Contains("IsRoomNamesQueueExpanded", xaml, StringComparison.Ordinal);
-        Assert.Contains("IsOpeningCodesQueueExpanded", xaml, StringComparison.Ordinal);
-        Assert.Contains("IsDimensionsQueueExpanded", xaml, StringComparison.Ordinal);
-        Assert.Contains("IsCuratedObjectsQueueExpanded", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsStructureQueueExpanded", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsRoomNamesQueueExpanded", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsOpeningCodesQueueExpanded", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsDimensionsQueueExpanded", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsCuratedObjectsQueueExpanded", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Accept Candidate", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Save Metadata", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Reject Selected Line", xaml, StringComparison.Ordinal);
@@ -89,16 +90,16 @@ public sealed class ReviewFloorPlanWindowLayoutTests
     }
 
     [Fact]
-    public void Review_queue_uses_custom_folder_buttons_and_a_bounded_shared_content_region()
+    public void Review_queue_column_is_removed_from_edit_layout()
     {
         var solutionRoot = FindSolutionRoot();
         var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
         var xaml = File.ReadAllText(xamlPath);
 
-        Assert.Contains("ReviewQueueContentHost", xaml, StringComparison.Ordinal);
-        Assert.Contains("Classes=\"folder-toggle\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Grid.Row=\"8\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("RowDefinitions=\"Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReviewQueueContentHost", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Classes=\"folder-toggle\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("RowDefinitions=\"Auto,Auto,Auto,Auto,Auto,Auto,*\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ColumnDefinitions=\"*,440,64\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ClipToBounds=\"True\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("<Expander", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("MaxHeight=\"420\"", xaml, StringComparison.Ordinal);
@@ -144,6 +145,9 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.True(
             xaml.IndexOf("Content=\"Editar\"", StringComparison.Ordinal) <
             xaml.IndexOf("Content=\"Publish Curation\"", StringComparison.Ordinal));
+        Assert.True(
+            xaml.IndexOf("Content=\"Publish Curation\"", StringComparison.Ordinal) <
+            xaml.IndexOf("Content=\"Exportar DXF\"", StringComparison.Ordinal));
         Assert.Contains("StartEditingPublishedCurationAsync", codeBehind, StringComparison.Ordinal);
     }
 
@@ -264,6 +268,38 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("AddPinchGroupAsync(groupName", codeBehind, StringComparison.Ordinal);
         Assert.Contains("RenamePinchGroupButton_OnClick", codeBehind, StringComparison.Ordinal);
         Assert.Contains("RenameSelectedPinchGroupAsync(groupName", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Review_screen_wires_a_global_delete_selected_action()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
+        var codeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml.cs");
+        var viewModelPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ViewModels", "FloorPlanReviewViewModel.cs");
+        var xaml = File.ReadAllText(xamlPath);
+        var codeBehind = File.ReadAllText(codeBehindPath);
+        var viewModel = File.ReadAllText(viewModelPath);
+
+        Assert.DoesNotContain("Content=\"Eliminar seleccionado\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Classes=\"tool danger\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ToolTip.Tip=\"Eliminar seleccionado (Supr)\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanDeleteSelectedItem}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"DeleteSelectedItemButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("KeyDown=\"ReviewFloorPlanWindow_OnKeyDown\"", xaml, StringComparison.Ordinal);
+
+        Assert.Contains("ReviewFloorPlanWindow_OnKeyDown", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Key.Delete", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("DeleteSelectedItemButton_OnClick", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("await viewModel.DeleteSelectedItemAsync(CancellationToken.None);", codeBehind, StringComparison.Ordinal);
+
+        Assert.Contains("public bool CanDeleteSelectedItem =>", viewModel, StringComparison.Ordinal);
+        Assert.Contains("public async Task DeleteSelectedItemAsync(CancellationToken cancellationToken)", viewModel, StringComparison.Ordinal);
+        Assert.Contains("await RemoveSelectedPinchAsync(cancellationToken);", viewModel, StringComparison.Ordinal);
+        Assert.Contains("await RemoveSelectedPinchGroupAsync(cancellationToken);", viewModel, StringComparison.Ordinal);
+        Assert.Contains("await RemoveSelectedMeasurementNodeAsync(cancellationToken);", viewModel, StringComparison.Ordinal);
+        Assert.Contains("await RemoveSelectedMeasurementCorridorAsync(cancellationToken);", viewModel, StringComparison.Ordinal);
+        Assert.Contains("await ExcludeSelectedArtifactAsync(cancellationToken);", viewModel, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -15,12 +15,11 @@ public sealed class FloorPlanPreviewControl : Control
 {
     private const double PreviewPadding = 48d;
     private const double HitTestTolerance = 8d;
-    private const double UserZoomStep = 1.12d;
     private static readonly TimeSpan ChangePreviewAnimationDuration = TimeSpan.FromMilliseconds(260);
     internal const decimal MovementPersistenceEpsilon = 0.001m;
     private const double DimensionHandleHitTolerance = 10d;
     internal const double MinimumUserZoomFactor = 0.35d;
-    internal const double MaximumUserZoomFactor = 80d;
+    internal const double MaximumUserZoomFactor = 1_000_000d;
     private readonly PreviewCollectionObserverHub collectionObserverHub;
     private FloorPlanPreviewGeometry.PreviewCompressionEdge? activeDragEdge;
     private PreviewArtifactMoveState? activeArtifactMove;

@@ -140,6 +140,53 @@ public sealed class FloorPlanLibraryReaderIntegrationTests
 
             Assert.Equal("Published", item.Status);
             Assert.NotNull(item.ActivePublishedCurationId);
+            var version = Assert.Single(item.Versions);
+            Assert.Equal(1, version.ActivePublishedCurationVersion);
+            Assert.Equal(1, version.PublishedCurationCount);
+            Assert.Equal(1, version.LatestPublishedCurationVersion);
+            Assert.Null(version.LatestDraftCurationVersion);
+            Assert.Equal("Published v1", version.CurationHistoryLabel);
+            Assert.False(version.CanExtract);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ListAsync_surfaces_latest_published_and_draft_curation_versions()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-library-reader-{Guid.NewGuid():N}");
+        var solutionRoot = RepositoryPaths.FindSolutionRoot();
+        var sourcePath = Path.Combine(solutionRoot, "PLANS", "originalFloorPlans", "SANTA-BARBARA.dxf");
+        var now = new DateTime(2026, 6, 18, 14, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            await ExecuteImportAsync(workspace, sourcePath, now);
+            await SeedPublishedCurationAsync(workspace, now.AddMinutes(5));
+            await SeedDraftCurationAsync(workspace, now.AddMinutes(10));
+
+            var item = await ReadSingleLibraryItemAsync(workspace);
+            var version = Assert.Single(item.Versions);
+
+            Assert.Equal("Curated Draft", version.Status);
+            Assert.Equal(1, version.ActivePublishedCurationVersion);
+            Assert.Equal(1, version.PublishedCurationCount);
+            Assert.Equal(1, version.LatestPublishedCurationVersion);
+            Assert.Equal(2, version.LatestDraftCurationVersion);
+            Assert.Equal("Published v1 · Draft v2", version.CurationHistoryLabel);
+            Assert.False(version.CanExtract);
         }
         finally
         {
@@ -226,13 +273,15 @@ public sealed class FloorPlanLibraryReaderIntegrationTests
             ?? throw new InvalidOperationException("Expected imported template.");
         var versionId = template.CurrentVersionId ?? throw new InvalidOperationException("Expected current version id.");
 
-        await new SqliteFloorPlanCurationRepository(session).AddAsync(
+        var curationRepository = new SqliteFloorPlanCurationRepository(session);
+        var nextVersion = await curationRepository.GetNextCurationVersionAsync(versionId, CancellationToken.None);
+        await curationRepository.AddAsync(
             new FloorPlanCuration(
                 Guid.NewGuid(),
                 versionId,
-                curationVersion: 1,
+                nextVersion,
                 FloorPlanCurationStatus.Draft,
-                basedOnCurationId: null,
+                template.ActivePublishedCurationId,
                 notes: "draft",
                 createdAtUtc: now,
                 publishedAtUtc: null),

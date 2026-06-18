@@ -241,6 +241,14 @@ public sealed class PreviewRenderComposerTests
         Assert.Equal(PreviewSemanticPalette.DimensionNodeBoundArgb, plan.ColorArgb);
     }
 
+    [Fact]
+    public void ResolvePreviewRadius_clamps_extreme_zoom_dimension_primitives_to_safe_render_size()
+    {
+        var radius = DimensionPreviewLayerRenderer.ResolvePreviewRadius(3.5m, viewportScale: 1_000_000d);
+
+        Assert.Equal(DimensionPreviewLayerRenderer.MaxPreviewPrimitiveRadius, radius);
+    }
+
     private static PreviewRenderScene CreateScene(
         IReadOnlyList<CuratedPlanArtifactDto>? curatedPlanArtifacts = null,
         IReadOnlyList<DimensionDto>? dimensions = null,

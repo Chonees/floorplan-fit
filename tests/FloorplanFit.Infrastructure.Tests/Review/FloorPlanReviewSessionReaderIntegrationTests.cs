@@ -153,6 +153,47 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task GetByTemplateAsync_ignores_newer_non_completed_extraction_runs()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-review-reader-{Guid.NewGuid():N}");
+        var solutionRoot = RepositoryPaths.FindSolutionRoot();
+        var sourcePath = Path.Combine(solutionRoot, "PLANS", "originalFloorPlans", "SANTA-BARBARA.dxf");
+        var now = new DateTime(2026, 6, 18, 16, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            var import = await ExecuteImportAsync(workspace, sourcePath, now);
+            await SeedExtractionAndDraftAsync(workspace, now.AddMinutes(5));
+            await SeedIgnoredExtractionAsync(workspace, now.AddMinutes(10));
+
+            await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+            var reader = new SqliteFloorPlanReviewSessionReader(session);
+
+            var reviewSession = await reader.GetByTemplateAsync(import.Item.TemplateId, CancellationToken.None);
+
+            Assert.NotNull(reviewSession);
+            Assert.Contains(reviewSession.WallCandidates, item => item.SourceEntityRef == "LINE:1");
+            Assert.DoesNotContain(reviewSession.WallCandidates, item => item.SourceEntityRef == "LINE:IGNORED");
+            Assert.Equal(
+                reviewSession.WallCandidates.Single(item => item.SourceEntityRef == "LINE:1").CandidateId,
+                Assert.Single(reviewSession.PinchMarkers).SourceCandidateId);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static async Task<ImportFloorPlanResponse> ExecuteImportAsync(
         AppWorkspace workspace,
         string sourcePath,
@@ -746,6 +787,51 @@ public sealed class FloorPlanReviewSessionReaderIntegrationTests
 
         await session.CommitAsync(CancellationToken.None);
         return rejectedGeometryPathId;
+    }
+
+    private static async Task SeedIgnoredExtractionAsync(AppWorkspace workspace, DateTime now)
+    {
+        await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+        var template = await new SqliteFloorPlanTemplateRepository(session).GetByCodeAsync("santa-barbara", CancellationToken.None)
+            ?? throw new InvalidOperationException("Expected imported template.");
+        var versionId = template.CurrentVersionId ?? throw new InvalidOperationException("Expected current version id.");
+
+        var ignoredRun = new WallExtractionRun(
+            Guid.NewGuid(),
+            versionId,
+            "IgnoredRecovery",
+            now,
+            now,
+            "ixmilia-wall-layer-v1",
+            "Ignored recovery run");
+
+        await new SqliteWallExtractionRunRepository(session).AddAsync(ignoredRun, CancellationToken.None);
+        await new SqliteExtractedWallCandidateRepository(session).AddRangeAsync(
+        [
+            new ExtractedWallCandidate(
+                Guid.NewGuid(),
+                ignoredRun.Id,
+                "LINE:IGNORED",
+                "WALLS",
+                Guid.Empty,
+                null,
+                0.95m,
+                null,
+                ExtractedWallCandidateStatus.Accepted,
+                1)
+        ],
+        [
+            new DetectedWallCandidate(
+                "LINE:IGNORED",
+                "WALLS",
+                [new GeometryPoint(900m, 0m), new GeometryPoint(960m, 0m)],
+                null,
+                0.95m,
+                null)
+        ],
+        CancellationToken.None);
+
+        await session.CommitAsync(CancellationToken.None);
     }
 
     private sealed class FixedClock : IClock

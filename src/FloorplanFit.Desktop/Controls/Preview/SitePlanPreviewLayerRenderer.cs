@@ -87,7 +87,12 @@ internal static class SitePlanPreviewLayerRenderer
         SitePlanTextDto sitePlanText)
     {
         var anchor = viewport.Project(sitePlanText.X, sitePlanText.Y);
-        var fontSize = Math.Max(1d, (double)sitePlanText.Height * viewport.Scale);
+        var fontSize = CadTextPreviewLayerRenderer.ResolvePreviewFontSize(sitePlanText.Height, viewport.Scale);
+        if (!CadTextPreviewLayerRenderer.CanRenderText(anchor, fontSize))
+        {
+            return;
+        }
+
         var brush = new SolidColorBrush(ResolveColor(sitePlanText.ColorArgb, sitePlanText.IsSetback));
         var formatted = new FormattedText(
             sitePlanText.Text,

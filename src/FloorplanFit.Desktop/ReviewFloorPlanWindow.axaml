@@ -6,392 +6,31 @@
         x:Class="FloorplanFit.Desktop.ReviewFloorPlanWindow"
         x:DataType="viewModels:FloorPlanReviewViewModel"
         x:Name="Root"
-        RequestedThemeVariant="Dark">
-  <Grid RowDefinitions="Auto,*"
-        Margin="24">
-    <Grid ColumnDefinitions="*,Auto"
-          ColumnSpacing="16">
-      <StackPanel Spacing="8">
-        <TextBlock FontSize="30"
-                   FontWeight="Bold"
-                   Text="{Binding Name}" />
-        <TextBlock Classes="muted"
-                   Text="{Binding Code, StringFormat='Template {0}'}" />
-        <StackPanel Orientation="Horizontal"
-                    Spacing="8">
-          <Border Classes="metric-chip">
-            <TextBlock Text="{Binding QueueSummary}" />
-          </Border>
-          <Border Classes="metric-chip">
-            <TextBlock Text="{Binding QueueInsightsSummary}" />
-          </Border>
-        </StackPanel>
-        <TextBlock Classes="muted"
-                   Text="{Binding StatusMessage}"
-                   TextWrapping="Wrap" />
-      </StackPanel>
-
-      <StackPanel Grid.Column="1"
-                  Orientation="Horizontal"
-                  VerticalAlignment="Center"
-                  Spacing="8">
-        <Button Classes="accent"
-                Content="Editar"
-                IsEnabled="{Binding CanEditPublishedCuration}"
-                Click="EditPublishedButton_OnClick" />
-        <Button Classes="primary"
-                Content="Publish Curation"
-                IsEnabled="{Binding CanPublishCuration}"
-                Click="PublishButton_OnClick" />
-      </StackPanel>
-    </Grid>
-
-    <Grid Grid.Row="1"
-          ColumnDefinitions="340,*,320,72"
+        KeyDown="ReviewFloorPlanWindow_OnKeyDown">
+  <Grid RowDefinitions="*"
+        Margin="12">
+    <Grid ColumnDefinitions="*,440,64"
           ColumnSpacing="16"
-          Margin="0,20,0,0">
+          Margin="0">
       <Border Classes="panel-card"
               ClipToBounds="True">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*"
-              RowSpacing="10"
+        <Grid RowDefinitions="Auto,Auto,*"
+              RowSpacing="8"
               ClipToBounds="True">
-          <StackPanel Spacing="4">
-            <TextBlock FontSize="20"
-                       FontWeight="SemiBold"
-                       Text="Review Queue" />
-            <TextBlock Classes="muted"
-                       Text="Expandable folders keep navigation simple. Open one section, review it, then move on."
-                       TextWrapping="Wrap" />
-          </StackPanel>
-
-          <Grid Grid.Row="1"
-                ColumnDefinitions="*,170"
-                ColumnSpacing="10">
-            <StackPanel Spacing="6">
-              <TextBlock Classes="caption"
-                         Text="Search" />
-              <TextBox Text="{Binding ReviewQueueSearchText}"
-                       Watermark="Name, layer, code or entity ref" />
+          <Border Classes="metric-chip"
+                  HorizontalAlignment="Right">
+            <StackPanel Orientation="Horizontal"
+                        Spacing="10">
+              <TextBlock FontWeight="SemiBold"
+                         Text="Cotas"
+                         VerticalAlignment="Center" />
+              <ToggleSwitch Classes="preview-switch"
+                            IsChecked="{Binding ArePreviewDimensionsVisible}"
+                            OnContent="Visibles"
+                            OffContent="Ocultas"
+                            ToolTip.Tip="Mostr? u ocult? visualmente todas las cotas del preview." />
             </StackPanel>
-
-            <StackPanel Grid.Column="1"
-                        Spacing="6">
-              <TextBlock Classes="caption"
-                         Text="Quick Filters" />
-              <ComboBox ItemsSource="{Binding ReviewQueueFilterOptions}"
-                        SelectedItem="{Binding SelectedReviewQueueFilter}" />
-            </StackPanel>
-          </Grid>
-
-          <TextBlock Grid.Row="2"
-                     Classes="muted"
-                     x:Name="QueueSummary"
-                     Text="{Binding QueueSummary}" />
-
-          <ToggleButton Grid.Row="3"
-                        Classes="folder-toggle"
-                        IsVisible="{Binding HasVisibleWallCandidates}"
-                        IsChecked="{Binding IsStructureQueueExpanded}">
-            <Grid ColumnDefinitions="Auto,*,Auto"
-                  ColumnSpacing="10">
-              <Path Width="16"
-                    Height="16"
-                    Stretch="Uniform"
-                    Fill="{DynamicResource TextPrimaryBrush}"
-                    Data="M2,4 L8,4 9.6,6 H18 A2,2 0 0 1 20,8 V16 A2,2 0 0 1 18,18 H4 A2,2 0 0 1 2,16 Z" />
-              <TextBlock Grid.Column="1"
-                         FontWeight="SemiBold"
-                         Text="{Binding StructureSectionTitle}" />
-              <TextBlock Grid.Column="2"
-                         Classes="muted"
-                         FontSize="18"
-                         Text="⌄"
-                         VerticalAlignment="Center" />
-            </Grid>
-          </ToggleButton>
-
-          <ToggleButton Grid.Row="4"
-                        Classes="folder-toggle"
-                        IsVisible="{Binding HasVisibleRoomLabels}"
-                        IsChecked="{Binding IsRoomNamesQueueExpanded}">
-            <Grid ColumnDefinitions="Auto,*,Auto"
-                  ColumnSpacing="10">
-              <Path Width="16"
-                    Height="16"
-                    Stretch="Uniform"
-                    Fill="{DynamicResource TextPrimaryBrush}"
-                    Data="M4,3 H16 A2,2 0 0 1 18,5 V19 L14,16 H4 A2,2 0 0 1 2,14 V5 A2,2 0 0 1 4,3 Z" />
-              <TextBlock Grid.Column="1"
-                         FontWeight="SemiBold"
-                         Text="{Binding RoomNamesSectionTitle}" />
-              <TextBlock Grid.Column="2"
-                         Classes="muted"
-                         FontSize="18"
-                         Text="⌄"
-                         VerticalAlignment="Center" />
-            </Grid>
-          </ToggleButton>
-
-          <ToggleButton Grid.Row="5"
-                        Classes="folder-toggle"
-                        IsVisible="{Binding HasVisibleOpeningLabels}"
-                        IsChecked="{Binding IsOpeningCodesQueueExpanded}">
-            <Grid ColumnDefinitions="Auto,*,Auto"
-                  ColumnSpacing="10">
-              <Path Width="16"
-                    Height="16"
-                    Stretch="Uniform"
-                    Fill="{DynamicResource TextPrimaryBrush}"
-                    Data="M4,3 H16 A2,2 0 0 1 18,5 V19 H2 V5 A2,2 0 0 1 4,3 Z M5,7 H15 V9 H5 Z M5,11 H11 V13 H5 Z" />
-              <TextBlock Grid.Column="1"
-                         FontWeight="SemiBold"
-                         Text="{Binding OpeningCodesSectionTitle}" />
-              <TextBlock Grid.Column="2"
-                         Classes="muted"
-                         FontSize="18"
-                         Text="⌄"
-                         VerticalAlignment="Center" />
-            </Grid>
-          </ToggleButton>
-
-          <ToggleButton Grid.Row="6"
-                        Classes="folder-toggle"
-                        IsVisible="{Binding HasVisibleDimensions}"
-                        IsChecked="{Binding IsDimensionsQueueExpanded}">
-            <Grid ColumnDefinitions="Auto,*,Auto"
-                  ColumnSpacing="10">
-              <Path Width="16"
-                    Height="16"
-                    Stretch="Uniform"
-                    Fill="{DynamicResource TextPrimaryBrush}"
-                    Data="M4,3 H16 V5 H4 Z M4,8 H16 V10 H4 Z M4,13 H16 V15 H4 Z M4,18 H12 V20 H4 Z" />
-              <TextBlock Grid.Column="1"
-                         FontWeight="SemiBold"
-                         Text="{Binding DimensionsSectionTitle}" />
-              <TextBlock Grid.Column="2"
-                         Classes="muted"
-                         FontSize="18"
-                         Text="⌄"
-                         VerticalAlignment="Center" />
-            </Grid>
-          </ToggleButton>
-
-          <ToggleButton Grid.Row="7"
-                        Classes="folder-toggle"
-                        IsVisible="{Binding HasVisibleCuratedArtifactGroups}"
-                        IsChecked="{Binding IsCuratedObjectsQueueExpanded}">
-            <Grid ColumnDefinitions="Auto,*,Auto"
-                  ColumnSpacing="10">
-              <Path Width="16"
-                    Height="16"
-                    Stretch="Uniform"
-                    Fill="{DynamicResource TextPrimaryBrush}"
-                    Data="M3,4 H9 L10.5,6 H19 V8 H3 Z M3,10 H19 V18 H3 Z" />
-              <TextBlock Grid.Column="1"
-                         FontWeight="SemiBold"
-                         Text="{Binding CuratedObjectsSectionTitle}" />
-              <TextBlock Grid.Column="2"
-                         Classes="muted"
-                         FontSize="18"
-                         Text="⌄"
-                         VerticalAlignment="Center" />
-            </Grid>
-          </ToggleButton>
-
-          <Grid Grid.Row="8"
-                x:Name="ReviewQueueContentHost"
-                MinHeight="0"
-                ClipToBounds="True">
-            <ScrollViewer IsVisible="{Binding IsStructureQueueExpanded}"
-                          MinHeight="0"
-                          HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto">
-              <ListBox ItemsSource="{Binding VisibleWallCandidates}"
-                       SelectedItem="{Binding SelectedCandidate}">
-                <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="contracts:WallCandidateDto">
-                    <Border Classes="section-card"
-                            Margin="0,8,0,0">
-                      <StackPanel Spacing="4">
-                        <TextBlock FontWeight="SemiBold"
-                                   Text="{Binding SourceEntityRef}" />
-                        <TextBlock Classes="muted"
-                                   Text="{Binding SourceLayer}" />
-                        <TextBlock Classes="caption"
-                                   Text="{Binding AssemblyHint}" />
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
-            </ScrollViewer>
-
-            <ScrollViewer IsVisible="{Binding IsRoomNamesQueueExpanded}"
-                          MinHeight="0"
-                          HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto">
-              <ListBox ItemsSource="{Binding VisibleRoomLabels}"
-                       SelectedItem="{Binding SelectedRoomLabel}">
-                <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="contracts:RoomLabelDto">
-                    <Border Classes="section-card"
-                            Margin="0,8,0,0">
-                      <StackPanel Spacing="4">
-                        <TextBlock FontWeight="SemiBold"
-                                   Text="{Binding Text}" />
-                        <TextBlock Classes="muted"
-                                   Text="{Binding SourceLayer}" />
-                        <TextBlock Classes="caption"
-                                   Text="{Binding SourceEntityRef}" />
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
-            </ScrollViewer>
-
-            <ScrollViewer IsVisible="{Binding IsOpeningCodesQueueExpanded}"
-                          MinHeight="0"
-                          HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto">
-              <ListBox ItemsSource="{Binding VisibleOpeningLabels}"
-                       SelectedItem="{Binding SelectedOpeningLabel}">
-                <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="contracts:OpeningLabelDto">
-                    <Border Classes="section-card"
-                            Margin="0,8,0,0">
-                      <StackPanel Spacing="4">
-                        <TextBlock FontWeight="SemiBold"
-                                   Text="{Binding Text}" />
-                        <TextBlock Classes="muted"
-                                   Text="{Binding Kind}" />
-                        <TextBlock Classes="caption"
-                                   Text="{Binding SourceLayer}" />
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
-            </ScrollViewer>
-
-            <ScrollViewer IsVisible="{Binding IsDimensionsQueueExpanded}"
-                          MinHeight="0"
-                          HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto">
-              <ListBox ItemsSource="{Binding VisibleDimensions}"
-                       SelectedItem="{Binding SelectedDimension}">
-                <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="contracts:DimensionDto">
-                    <Border Classes="section-card"
-                            Margin="0,8,0,0">
-                      <StackPanel Spacing="4">
-                        <TextBlock FontWeight="SemiBold"
-                                   Text="{Binding DisplayText}" />
-                        <TextBlock Classes="muted"
-                                   Text="{Binding SourceLayer}" />
-                        <TextBlock Classes="caption"
-                                   Text="{Binding SourceEntityRef}" />
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
-            </ScrollViewer>
-
-            <ScrollViewer IsVisible="{Binding IsCuratedObjectsQueueExpanded}"
-                          MinHeight="0"
-                          HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto">
-              <ItemsControl ItemsSource="{Binding CuratedArtifactGroups}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="viewModels:CuratedArtifactGroupViewModel">
-                    <Border Classes="section-card"
-                            Margin="0,8,0,0">
-                      <StackPanel Spacing="8">
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="8">
-                          <Border Width="12"
-                                  Height="12"
-                                  CornerRadius="6"
-                                  Background="{Binding ColorArgb}" />
-                          <TextBlock FontWeight="SemiBold"
-                                     Text="{Binding Title}" />
-                          <TextBlock Classes="muted"
-                                     Text="{Binding Count, StringFormat='({0})'}" />
-                        </StackPanel>
-                        <TextBlock Classes="caption"
-                                   Text="{Binding Subtitle}"
-                                   TextWrapping="Wrap" />
-
-                        <ListBox ItemsSource="{Binding Items}"
-                                 SelectedItem="{Binding #Root.DataContext.SelectedCuratedArtifact}">
-                          <ListBox.ItemTemplate>
-                            <DataTemplate x:DataType="contracts:CuratedPlanArtifactDto">
-                              <Border Classes="section-card"
-                                      Margin="0,6,0,0">
-                                <StackPanel Spacing="4">
-                                  <StackPanel Orientation="Horizontal"
-                                              Spacing="8">
-                                    <Border Width="10"
-                                            Height="10"
-                                            CornerRadius="5"
-                                            Background="{Binding ResolvedColorArgb}" />
-                                    <TextBlock FontWeight="SemiBold"
-                                               Text="{Binding ResolvedType}" />
-                                    <TextBlock Classes="caption"
-                                               Text="{Binding DecisionState}" />
-                                  </StackPanel>
-                                  <TextBlock Text="{Binding SourceEntityRef}" />
-                                  <TextBlock Classes="muted"
-                                             Text="{Binding SourceLayer}" />
-                                </StackPanel>
-                              </Border>
-                            </DataTemplate>
-                          </ListBox.ItemTemplate>
-                        </ListBox>
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
-          </Grid>
-        </Grid>
-      </Border>
-
-      <Border Grid.Column="1"
-              Classes="panel-card"
-              ClipToBounds="True">
-        <Grid RowDefinitions="Auto,Auto,Auto,*"
-              RowSpacing="12"
-              ClipToBounds="True">
-          <Grid ColumnDefinitions="*,Auto"
-                ColumnSpacing="12">
-            <StackPanel Spacing="6">
-              <TextBlock FontSize="20"
-                         FontWeight="SemiBold"
-                         Text="Preview" />
-              <TextBlock Classes="muted"
-                         Text="{Binding PreviewSelectionLabel}"
-                         TextWrapping="Wrap" />
-            </StackPanel>
-
-            <Border Grid.Column="1"
-                    Classes="metric-chip"
-                    VerticalAlignment="Center">
-              <StackPanel Orientation="Horizontal"
-                          Spacing="10">
-                <TextBlock FontWeight="SemiBold"
-                           Text="Cotas"
-                           VerticalAlignment="Center" />
-                <ToggleSwitch Classes="preview-switch"
-                              IsChecked="{Binding ArePreviewDimensionsVisible}"
-                              OnContent="Visibles"
-                              OffContent="Ocultas"
-                              ToolTip.Tip="Mostrá u ocultá visualmente todas las cotas del preview." />
-              </StackPanel>
-            </Border>
-          </Grid>
+          </Border>
 
           <Border Grid.Row="1"
                   x:Name="FitToolPalette"
@@ -492,17 +131,21 @@
                         Fill="{DynamicResource TextPrimaryBrush}"
                         Data="M6,7 H18 M9,7 V5 H15 V7 M8,9 V19 H16 V9 M10,11 V17 M14,11 V17" />
                 </Button>
+                <Button Classes="tool danger"
+                        ToolTip.Tip="Eliminar seleccionado (Supr)"
+                        IsEnabled="{Binding CanDeleteSelectedItem}"
+                        Click="DeleteSelectedItemButton_OnClick">
+                  <Path Width="18"
+                        Height="18"
+                        Stretch="Uniform"
+                        Fill="{DynamicResource TextPrimaryBrush}"
+                        Data="M6,7 H18 M9,7 V5 H15 V7 M8,9 V19 H16 V9 M10,11 V17 M14,11 V17" />
+                </Button>
               </StackPanel>
             </Grid>
           </Border>
 
-          <Border Grid.Row="2"
-                  Classes="section-card">
-            <TextBlock Text="{Binding InteractionHint}"
-                       TextWrapping="Wrap" />
-          </Border>
-
-          <controls:FloorPlanPreviewControl Grid.Row="3"
+          <controls:FloorPlanPreviewControl Grid.Row="2"
                                             MinHeight="0"
                                             HorizontalAlignment="Stretch"
                                             VerticalAlignment="Stretch"
@@ -549,23 +192,11 @@
         </Grid>
       </Border>
 
-      <Border Grid.Column="2"
+      <Border Grid.Column="1"
               Classes="panel-card">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
-          <Grid RowDefinitions="Auto,*"
-                RowSpacing="12">
-            <StackPanel Spacing="4">
-              <TextBlock FontSize="20"
-                         FontWeight="SemiBold"
-                         Text="Inspector" />
-              <TextBlock Classes="muted"
-                         Text="Info contextual. Las herramientas Fit viven sobre el plano para no perder el foco."
-                         TextWrapping="Wrap" />
-            </StackPanel>
-
-            <StackPanel Grid.Row="1"
-                        Spacing="12">
+          <StackPanel Spacing="12">
               <Border x:Name="FitExistingPanel"
                       Classes="section-card"
                       IsVisible="{Binding IsFitToolSelected}">
@@ -882,6 +513,14 @@
                 <StackPanel Spacing="8">
                   <TextBlock FontWeight="SemiBold"
                              Text="Acciones de selección" />
+                  <Button Classes="accent"
+                          Content="Editar"
+                          IsEnabled="{Binding CanEditPublishedCuration}"
+                          Click="EditPublishedButton_OnClick" />
+                  <Button Classes="primary"
+                          Content="Publish Curation"
+                          IsEnabled="{Binding CanPublishCuration}"
+                          Click="PublishButton_OnClick" />
                   <Button Content="Exportar DXF"
                           Click="ExportAdjustedDxfButton_OnClick" />
                   <Button Classes="danger"
@@ -890,13 +529,13 @@
                           Click="ExcludeSelectedArtifactButton_OnClick" />
                 </StackPanel>
               </Border>
-            </StackPanel>
-          </Grid>
+          </StackPanel>
         </ScrollViewer>
       </Border>
 
-      <Border Grid.Column="3"
+      <Border Grid.Column="2"
               Classes="panel-card"
+              Padding="8"
               x:Name="InspectorToolBar">
         <StackPanel Spacing="10"
                     HorizontalAlignment="Center">

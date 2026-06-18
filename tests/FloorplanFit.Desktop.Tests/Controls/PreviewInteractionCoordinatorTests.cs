@@ -10,11 +10,11 @@ namespace FloorplanFit.Desktop.Tests.Controls;
 public sealed class PreviewInteractionCoordinatorTests
 {
     [Fact]
-    public void CalculateWheelZoomFactor_clamps_to_eighty_x_maximum()
+    public void CalculateWheelZoomFactor_clamps_to_practically_unbounded_maximum()
     {
-        var clampedMaximum = PreviewInteractionCoordinator.CalculateWheelZoomFactor(80d, wheelDeltaY: 10d);
+        var clampedMaximum = PreviewInteractionCoordinator.CalculateWheelZoomFactor(1_000_000d, wheelDeltaY: 10d);
 
-        Assert.Equal(80d, clampedMaximum);
+        Assert.Equal(1_000_000d, clampedMaximum);
     }
 
     [Fact]
@@ -23,12 +23,20 @@ public sealed class PreviewInteractionCoordinatorTests
         var zoomedIn = PreviewInteractionCoordinator.CalculateWheelZoomFactor(1d, wheelDeltaY: 1d);
         var zoomedOut = PreviewInteractionCoordinator.CalculateWheelZoomFactor(1d, wheelDeltaY: -1d);
         var clampedMinimum = PreviewInteractionCoordinator.CalculateWheelZoomFactor(0.2d, wheelDeltaY: -10d);
-        var clampedMaximum = PreviewInteractionCoordinator.CalculateWheelZoomFactor(100d, wheelDeltaY: 10d);
+        var clampedMaximum = PreviewInteractionCoordinator.CalculateWheelZoomFactor(100d, wheelDeltaY: 20d);
 
-        Assert.True(zoomedIn > 1d);
-        Assert.True(zoomedOut < 1d);
+        Assert.Equal(2d, zoomedIn);
+        Assert.Equal(0.5d, zoomedOut, precision: 12);
         Assert.Equal(FloorPlanPreviewControl.MinimumUserZoomFactor, clampedMinimum);
         Assert.Equal(FloorPlanPreviewControl.MaximumUserZoomFactor, clampedMaximum);
+    }
+
+    [Fact]
+    public void CalculateWheelZoomFactor_reaches_wall_inspection_zoom_with_few_wheel_ticks()
+    {
+        var zoomAfterTenTicks = PreviewInteractionCoordinator.CalculateWheelZoomFactor(1d, wheelDeltaY: 10d);
+
+        Assert.True(zoomAfterTenTicks > 1000d);
     }
 
     [Fact]

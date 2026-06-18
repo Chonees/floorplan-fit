@@ -3,8 +3,7 @@
         xmlns:viewModels="using:FloorplanFit.Desktop.ViewModels"
         xmlns:controls="using:FloorplanFit.Desktop.Controls"
         x:Class="FloorplanFit.Desktop.SitePlanAdjustmentWindow"
-        x:DataType="viewModels:SitePlanAdjustmentViewModel"
-        RequestedThemeVariant="Dark">
+        x:DataType="viewModels:SitePlanAdjustmentViewModel">
   <UserControl.Styles>
     <Style Selector="Border.fit-option-card">
       <Setter Property="Background" Value="{DynamicResource SectionBrush}" />

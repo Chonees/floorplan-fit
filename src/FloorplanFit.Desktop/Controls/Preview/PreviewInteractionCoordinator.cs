@@ -6,7 +6,7 @@ namespace FloorplanFit.Desktop.Controls.Preview;
 
 internal static class PreviewInteractionCoordinator
 {
-    private const double UserZoomStep = 1.12d;
+    private const double UserZoomStep = 2d;
     private const double DimensionBodyDragThresholdPixels = 4d;
 
     internal readonly record struct MiddleButtonPanStartRequest(
@@ -118,11 +118,14 @@ internal static class PreviewInteractionCoordinator
         var safeCurrentZoom = double.IsFinite(currentZoomFactor)
             ? currentZoomFactor
             : 1d;
-        var requestedZoom = safeCurrentZoom * Math.Pow(UserZoomStep, wheelDeltaY);
+        var zoomStep = UserZoomStep;
+        var requestedZoom = safeCurrentZoom * Math.Pow(zoomStep, wheelDeltaY);
+        var minimumZoom = FloorPlanPreviewControl.MinimumUserZoomFactor;
+        var maximumZoom = FloorPlanPreviewControl.MaximumUserZoomFactor;
         return Math.Clamp(
             requestedZoom,
-            FloorPlanPreviewControl.MinimumUserZoomFactor,
-            FloorPlanPreviewControl.MaximumUserZoomFactor);
+            minimumZoom,
+            maximumZoom);
     }
 
     public static FloorPlanPreviewControl.PreviewZoomState ResolveZoomStateForWheel(

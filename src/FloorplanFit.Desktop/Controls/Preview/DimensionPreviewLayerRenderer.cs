@@ -9,6 +9,7 @@ internal static class DimensionPreviewLayerRenderer
 {
     private const double DefaultTerminalRadius = 4d;
     private const double HandleRadius = 5d;
+    internal const double MaxPreviewPrimitiveRadius = 512d;
 
     public static void Render(
         DrawingContext context,
@@ -134,7 +135,7 @@ internal static class DimensionPreviewLayerRenderer
         foreach (var circle in dimension.CirclePrimitives)
         {
             var center = viewport.Project(circle.CenterX, circle.CenterY);
-            var radius = Math.Max(1d, (double)circle.Radius * viewport.Scale);
+            var radius = ResolvePreviewRadius(circle.Radius, viewport.Scale);
             context.DrawEllipse(null, pen, center, radius, radius);
         }
     }
@@ -144,7 +145,7 @@ internal static class DimensionPreviewLayerRenderer
         foreach (var arc in dimension.ArcPrimitives)
         {
             var center = viewport.Project(arc.CenterX, arc.CenterY);
-            var radius = Math.Max(1d, (double)arc.Radius * viewport.Scale);
+            var radius = ResolvePreviewRadius(arc.Radius, viewport.Scale);
             var geometry = new StreamGeometry();
             using var stream = geometry.Open();
             var startRadians = (double)arc.StartAngleDegrees * Math.PI / 180d;
@@ -198,6 +199,22 @@ internal static class DimensionPreviewLayerRenderer
         return isNodeBound
             ? PreviewSemanticPalette.DimensionNodeBound
             : Colors.Black;
+    }
+
+    internal static double ResolvePreviewRadius(decimal radius, double viewportScale)
+    {
+        if (!double.IsFinite(viewportScale) || viewportScale <= double.Epsilon)
+        {
+            return 1d;
+        }
+
+        var requested = (double)radius * viewportScale;
+        if (!double.IsFinite(requested))
+        {
+            return MaxPreviewPrimitiveRadius;
+        }
+
+        return Math.Clamp(requested, 1d, MaxPreviewPrimitiveRadius);
     }
 
     private static decimal RoundKey(decimal value) => decimal.Round(value, 3, MidpointRounding.AwayFromZero);

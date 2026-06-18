@@ -30,6 +30,7 @@ internal sealed class FloorPlanReviewNotificationCoordinator
         nameof(FloorPlanReviewViewModel.InteractionHint),
         nameof(FloorPlanReviewViewModel.HasSelectedArtifact),
         nameof(FloorPlanReviewViewModel.HasSelectedCuratedArtifact),
+        nameof(FloorPlanReviewViewModel.CanDeleteSelectedItem),
         nameof(FloorPlanReviewViewModel.CanUsePositionTool),
         nameof(FloorPlanReviewViewModel.CanUseTextTool),
         nameof(FloorPlanReviewViewModel.CanUseClassificationTool),

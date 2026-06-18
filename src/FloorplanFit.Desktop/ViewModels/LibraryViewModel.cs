@@ -82,6 +82,12 @@ public sealed partial class LibraryViewModel : ObservableObject
             return;
         }
 
+        if (!SelectedVersion.CanExtract)
+        {
+            StatusMessage = $"Re-extract blocked for {SelectedItem.Code} v{SelectedVersion.VersionNumber}: {SelectedVersion.CurationHistoryLabel}";
+            return;
+        }
+
         var templateId = SelectedItem.TemplateId;
         var versionId = SelectedVersion.VersionId;
         StatusMessage = $"Extracting walls for {SelectedItem.Name} v{SelectedVersion.VersionNumber}...";
@@ -222,17 +228,6 @@ public sealed partial class LibraryViewModel : ObservableObject
         SelectedItem = item;
         SelectedVersion = version;
         StatusMessage = $"Selected {item.Code} v{version.VersionNumber}";
-    }
-
-    public async Task DeleteSelectedVersionAsync(CancellationToken cancellationToken)
-    {
-        if (SelectedVersion is null)
-        {
-            StatusMessage = "Select a version before deleting.";
-            return;
-        }
-
-        await DeleteVersionAsync(SelectedVersion, cancellationToken);
     }
 
     public async Task DeleteVersionAsync(FloorPlanLibraryVersionDto version, CancellationToken cancellationToken)
