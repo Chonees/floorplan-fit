@@ -265,6 +265,37 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
                 transform).ToArray();
         }
 
+        var centerDelta = ResolveAutoFitCenteringDelta(geometry);
+        if (centerDelta.X != 0m || centerDelta.Y != 0m)
+        {
+            var centeredProjection = SitePlanAdjustmentPreviewProjector.Translate(
+                geometry,
+                roomLabels,
+                openingLabels,
+                dimensions,
+                centerDelta.X,
+                centerDelta.Y);
+            var centeredBaselineProjection = SitePlanAdjustmentPreviewProjector.Translate(
+                autoFitBaselineGeometryPaths,
+                autoFitBaselineRoomLabels,
+                autoFitBaselineOpeningLabels,
+                autoFitBaselineDimensions,
+                centerDelta.X,
+                centerDelta.Y);
+
+            geometry = centeredProjection.FloorPlanGeometryPaths.ToArray();
+            roomLabels = centeredProjection.RoomLabels.ToArray();
+            openingLabels = centeredProjection.OpeningLabels.ToArray();
+            dimensions = centeredProjection.Dimensions.ToArray();
+            autoFitBaselineGeometryPaths = centeredBaselineProjection.FloorPlanGeometryPaths.ToArray();
+            autoFitBaselineRoomLabels = centeredBaselineProjection.RoomLabels.ToArray();
+            autoFitBaselineOpeningLabels = centeredBaselineProjection.OpeningLabels.ToArray();
+            autoFitBaselineDimensions = centeredBaselineProjection.Dimensions.ToArray();
+            ManualOffsetX = Round(ManualOffsetX + centerDelta.X);
+            ManualOffsetY = Round(ManualOffsetY + centerDelta.Y);
+            RefreshAutoFitFactsAfterManualMove(centerDelta.X, centerDelta.Y);
+        }
+
         ReplaceItems(FloorPlanGeometryPaths, geometry);
         ReplaceItems(RoomLabels, roomLabels);
         ReplaceItems(OpeningLabels, openingLabels);
@@ -284,9 +315,52 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
 
         AutoFitSuggestionStatus = $"Opción {option.OptionNumber} aplicada al preview.";
         AutoFitSuggestionSummary = option.Title;
-        AutoFitSuggestionPlanDetails = "La opción elegida queda marcada; el preview y sus cotas relacionadas se recalcularon.";
+        AutoFitSuggestionPlanDetails = "La opción elegida queda marcada; el preview se recentró y sus cotas relacionadas se recalcularon.";
     }
 
+    private (decimal X, decimal Y) ResolveAutoFitCenteringDelta(IReadOnlyList<GeometryPathDto> geometry)
+    {
+        if (autoFitFitContext is null)
+        {
+            return (0m, 0m);
+        }
+
+        var placementGeometry = SitePlanAdjustmentFitAnalyzer.ResolveFitGeometryPaths(
+            geometry,
+            autoFitFitContext.PlacementGeometryPathIds);
+        var structuralFootprint = StructuralFootprint.Resolve(placementGeometry);
+        var bounds = structuralFootprint is { } footprint
+            ? (MinX: footprint.MinX, MinY: footprint.MinY, MaxX: footprint.MaxX, MaxY: footprint.MaxY)
+            : ResolveBounds(placementGeometry);
+        if (bounds is null)
+        {
+            return (0m, 0m);
+        }
+
+        return (
+            Round(autoFitFitContext.BuildableArea.CenterX - ((bounds.Value.MinX + bounds.Value.MaxX) / 2m)),
+            Round(autoFitFitContext.BuildableArea.CenterY - ((bounds.Value.MinY + bounds.Value.MaxY) / 2m)));
+
+        static (decimal MinX, decimal MinY, decimal MaxX, decimal MaxY)? ResolveBounds(IEnumerable<GeometryPathDto> paths)
+        {
+            var points = paths
+                .SelectMany(path => path.Segments)
+                .SelectMany(segment => new[]
+                {
+                    (X: segment.StartX, Y: segment.StartY),
+                    (X: segment.EndX, Y: segment.EndY)
+                })
+                .ToArray();
+
+            return points.Length == 0
+                ? null
+                : (
+                    points.Min(point => point.X),
+                    points.Min(point => point.Y),
+                    points.Max(point => point.X),
+                    points.Max(point => point.Y));
+        }
+    }
     public void MoveFloorPlanBy(decimal deltaX, decimal deltaY)
     {
         if (deltaX == 0m && deltaY == 0m)

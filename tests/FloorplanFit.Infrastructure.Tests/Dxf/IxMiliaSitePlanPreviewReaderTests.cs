@@ -1,5 +1,6 @@
 using FloorplanFit.Infrastructure.Dxf;
 using FloorplanFit.Infrastructure.Tests.TestSupport;
+using IxMilia.Dxf;
 
 namespace FloorplanFit.Infrastructure.Tests.Dxf;
 
@@ -78,6 +79,47 @@ public sealed class IxMiliaSitePlanPreviewReaderTests
         {
             File.Delete(sourcePath);
         }
+    }
+
+    [Fact]
+    public async Task Synthetic_site_plan_uses_synth_layers_inches_and_requested_buildable_size()
+    {
+        var sourcePath = SyntheticSitePlanDxfWriter.WriteToTempFile(39m, 77.5m);
+        var reader = new IxMiliaSitePlanPreviewReader();
+
+        try
+        {
+            var preview = await reader.ReadAsync(sourcePath, CancellationToken.None);
+            var dxf = DxfFile.Load(sourcePath);
+            var layerNames = dxf.Layers.Select(layer => layer.Name).ToArray();
+
+            Assert.Contains("SETBACKS", layerNames);
+            Assert.Contains("2312-001-BM$0$C-PROP-SUBD", layerNames);
+            Assert.Contains("E", layerNames);
+            Assert.Contains("TEXT", layerNames);
+            Assert.Contains("0", layerNames);
+            Assert.Equal("inch", preview.SourceUnit);
+            Assert.Equal(25.4m, preview.ToMillimetersFactor);
+            Assert.Equal(39m * 12m, preview.BuildableArea.MaxX - preview.BuildableArea.MinX);
+            Assert.Equal(77.5m * 12m, preview.BuildableArea.MaxY - preview.BuildableArea.MinY);
+            Assert.Contains(preview.RenderPaths, path => path.SourceLayer == "SETBACKS" && path.IsSetback);
+            Assert.Contains(preview.RenderPaths, path => path.SourceLayer == "2312-001-BM$0$C-PROP-SUBD" && !path.IsSetback);
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+        }
+    }
+
+    [Theory]
+    [InlineData(0, 10)]
+    [InlineData(10, 0)]
+    [InlineData(-1, 10)]
+    [InlineData(10, -1)]
+    public void Synthetic_site_plan_rejects_non_positive_dimensions(decimal widthFeet, decimal heightFeet)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            SyntheticSitePlanDxfWriter.WriteToTempFile(widthFeet, heightFeet));
     }
 
     private static string CreateSetbackWithCollapsedOutlierFixture()

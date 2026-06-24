@@ -1,11 +1,73 @@
 # Current State
 
+## 2026-06-24 - Seminole footprint and patio-excluded length verified
+- Current DB verification for `seminole2000` v1 / run `c2496c35-ad07-4846-a68c-6bcc34027d69`: full accepted wall bbox is about `483.786" x 930.000"` (`40.315 ft x 77.5 ft`) because a small left protrusion reaches x?`78.789`.
+- The main footprint width used by the SEMINOLE synthetic fixtures is `468"` (`39 ft`), from the main left wall x?`94.574` to right wall x?`562.574`.
+- SEMINOLE patio label sits at the rear/top; patio depth is about `96"` (`8 ft`), from y?`929.379` to y?`1025.379`.
+- Therefore SEMINOLE main long dimension **excluding patio** is `834"` = `69'6"` (`69.5 ft`), while full long dimension including patio is `930"` = `77'6"` (`77.5 ft`).
+- For synthetic testing excluding patio and missing `2"` per side, use `464" x 830"` = `38.6667 ft x 69.1667 ft`.
+
+## 2026-06-23 - Santa Barbara current footprint verified
+- Current DB verification for `santa-barbara` v1 / run `fb5fe230-879d-40bf-b5e9-b293f9aca59f`: accepted/non-rejected wall footprint is `456" x 791"` = `38'0" x 65'11"`.
+- The rejected-outlier-inclusive footprint is still about `1633.656" x 1080"`, which explains any huge overflow symptom if raw/rejected geometry leaks into Adjust.
+- For synthetic Adjust testing, a site that is **2 inches short per side** should subtract `4"` total per axis: `452" x 787"` = `37.6667 ft x 65.5833 ft`. A site that is **2 inches short total** should be `454" x 789"` = `37.8333 ft x 65.75 ft`.
+
+## 2026-06-22 - Adjust entry now imports or simulates site plans
+- Current Desktop truth: clicking **Adjust to Site Plan** opens an Adjust setup dialog first, not the DXF picker directly.
+- The dialog has **Importar DXF** for the existing imported site-plan flow and **Simular site plan** for direct width/height input in feet.
+- Simulation writes a real temporary DXF in inches (`$INSUNITS=1`) with layers `SETBACKS`, `2312-001-BM$0$C-PROP-SUBD`, `E`, `TEXT`, and `0`, then sends it through the same `ISitePlanPreviewReader` path as imports.
+- The `SETBACKS` rectangle is the buildable envelope, so Adjust deficits are measured against the explicit user-entered buildable size, not SEMINOLE-specific synthetic fixtures.
+- Verification: focused Infrastructure synthetic tests passed `5/5`, focused Desktop source-flow test passed `1/1` using a separate output folder because the running desktop app locks the normal bin output; `git diff --check` exited `0` with CRLF warnings only. No `dotnet build` command was run.
+- See implementation note: `Implementation/2026-06-22 - Adjust site plan import or simulate setup.md`.
+
+## 2026-06-22 - Adjust entry should offer import or simulation
+- Product direction: clicking **Adjust to Site Plan** should enter a setup choice instead of immediately opening a DXF picker.
+- Required options: **Importar site plan** (existing DXF picker path) and **Simular site plan** (create synthetic site plan directly in the Adjust flow).
+- Simulated site plans should preserve the current synth layer vocabulary: `SETBACKS`, `2312-001-BM$0$C-PROP-SUBD`, `E`, `TEXT`, and `0`.
+- Design boundary: simulation must work for any selected floor plan by using explicit units and real footprint/buildable diagnostics, not SEMINOLE-specific hardcoded dimensions.
+- See inbox note: `Inbox/2026-06-22 - Adjust entry should import or simulate site plan.md`.
+
+## 2026-06-22 - Synthetic site plans are calibrated to SEMINOLE2000
+- Correction to prior Dawson investigation: the real Dawson/site-plan picker library and generated synth site plans are inch drawings (`$INSUNITS=1`); the earlier foot finding referred to a mistakenly imported `SitePlanDawson.dxf` floor-plan DB row.
+- `generate_synthetic_siteplans.py` hardcodes SEMINOLE2000 extraction run `c2496c35-ad07-4846-a68c-6bcc34027d69` and generates exact setbacks around SEMINOLE's structural footprint: about `468" x 930.000286"`.
+- Current expected behavior: SEMINOLE2000 has `1/2"` deficits against those synths; SANTA-BARBARA's current non-rejected footprint is about `456" x 791"` and should have slack, not overflow.
+- If SANTA-BARBARA visibly overflows synth site plans by a lot, the likely bug is uncurated/raw extraction geometry or stale session data being used. Evidence: all Santa wall candidates including rejected outliers measure about `1633.656" x 1080"` (`136.1 ft x 90 ft`), which would produce the "sobre muchísimo" symptom.
+- See investigation note: `Bugs/2026-06-22 - Synthetic site plans are Seminole-calibrated.md`.
+
+## 2026-06-22 - Dawson/Santa fit scale truth
+- Unit truth: Santa Barbara and Seminole floor plans are inch drawings (`$INSUNITS=1`, factor `25.4`); `SitePlanDawson.dxf` is a foot site plan (`$INSUNITS=2`, factor `304.8`).
+- Fit projection truth: floor-plan inches projected into site-plan feet use scale `25.4 / 304.8 = 1/12`; the reverse `12` only applies when converting site feet back to floor-plan inches.
+- Current usable footprints after rejected wall candidates are excluded: Santa Barbara is about `38.0 x 65.6 ft`, Seminole about `39.0 x 77.5 ft`; Dawson setback/buildable area is about `63.8 x 78.3 ft`, so those can fit.
+- Data gotcha: importing `SitePlanDawson.dxf` as a floor plan is wrong because its header says feet while embedded floor-plan-looking dimensions have inch-style geometry/text; `66'-0"` appears as `792` source units and would be treated as `792 ft`.
+- See bug/discovery note: `Bugs/2026-06-22 - SitePlanDawson unit context is site-plan feet not floor-plan inches.md`.
+
+## 2026-06-22 - Floor-plan measurement franjas are max two nodes
+- Product rule: in Loop 1 floor-plan curation, a measurement corridor/franja represents one interval and must have at most two measurement nodes.
+- Verified current source gap: `AddMeasurementNodeHandler` currently assigns `SortOrder = existing.Count + 1`, so the Application layer does not yet enforce the two-node ceiling.
+- Preferred fix shape: enforce in Application and add a small Desktop guard/message for immediate UX feedback.
+- See decision note: `Decisions/2026-06-22 - Measurement corridors are two-node spans.md`.
+
+## 2026-06-21 - Edit publish actions live in the shell header
+- Current Desktop truth: Loop 1 Edit shows `Editar` and `Publish Curation` on the same top shell row as `← Library`, right-aligned after the status text.
+- Published/edit flow: published curations stay read-only until the user clicks `Editar`; after a draft exists, `Publish Curation` is enabled for publishing the new changes.
+- UI lock: the Fit toolbar and `Crear grupo de pinches` are disabled while no draft is open, so published state does not look editable.
+- Removed duplicate placement: `Editar` and `Publish Curation` no longer live in the right-side Actions panel.
+- Verification: no .NET build was run per repo rule; RED/GREEN source checks and `git diff --check` passed.
+- See implementation note: `Implementation/2026-06-21 - Edit publish actions moved to shell header.md`.
+
+## 2026-06-18 - Applied site-plan suggestions recenter adjusted floor plan
+- Current Desktop truth: Loop 2 Adjust-to-Site-Plan recenters the adjusted floor-plan preview inside the buildable area immediately after applying an auto-fit suggestion.
+- Root cause: the initial projection centered the original footprint, but one-sided compression changed the adjusted footprint center; the user then had to manually move the now-fitting plan.
+- Fix: `ApplyAutoFitPlan(...)` computes the adjusted structural footprint, translates preview geometry/labels/dimensions and the auto-fit baseline by the centering delta, and updates `ManualOffsetX/Y` so export placement matches the preview.
+- Export guard: compression step markers are still recorded in floor-source coordinates before the recenter translation, so exported cuts stay at the real authored coordinates.
+- Verification: no .NET build was run per repo rule; source checks and `git diff --check` passed.
+- See bug note: `Bugs/2026-06-18 - Applied site-plan suggestion did not recenter.md`.
 ## 2026-06-18 - Edit screen is preview-first
 - Current Desktop truth: Loop 1 Edit/Review no longer shows the left review-queue column at all; Search, Quick Filters, folder toggles, and list cards were removed from the visual layout.
 - Layout truth: the edit screen now uses three columns: preview `*`, inspector `440`, toolbar `64`, with compact root margin `12`.
 - Preview truth: the preview is now the first/primary column and receives the space formerly used by the review queue.
 - Inspector truth: the right inspector is wider (`440px`) and remains beside the preview; the icon toolbar remains fitted with `Padding=8`.
-- Actions truth: `Editar` and `Publish Curation` stay in the right-side Actions panel before `Exportar DXF`.
+- Superseded action placement: `Editar` and `Publish Curation` were moved out of the right-side Actions panel on 2026-06-21; they now live on the shell row beside `← Library`.
 - Verification: no .NET build was run per repo rule; source checks, XML parse, layout-test source checks, and `git diff --check` passed.
 - See implementation note: `Implementation/2026-06-18 - Edit screen chrome cleanup.md`.
 ## 2026-06-18 - Library toolbar is import-only
@@ -108,6 +170,7 @@
 
 ## 2026-06-16 - Ponytail installed as personal Codex plugin
 - Current environment truth: `DietrichGebert/ponytail` is installed as a personal Codex plugin from `C:\Users\lucas\plugins\ponytail`.
+- Verified 2026-06-22: `C:\Users\lucas\plugins\ponytail` is the installed plugin folder, but it is not itself a Git checkout; its plugin manifest points to `https://github.com/DietrichGebert/ponytail`.
 - Codex marketplace truth: `C:\Users\lucas\.agents\plugins\marketplace.json` defines marketplace `personal` and entry `ponytail`; the file must be UTF-8 without BOM or Codex rejects it with `expected value at line 1 column 1`.
 - Codex config truth: `C:\Users\lucas\.codex\config.toml` now contains `[plugins."ponytail@personal"] enabled = true`.
 - Verification: `validate_plugin.py` passed; `codex plugin add ponytail@personal` succeeded; `codex plugin list` shows `ponytail@personal installed, enabled 4.7.0`; installed skill folders include `ponytail`, `ponytail-audit`, `ponytail-debt`, `ponytail-help`, and `ponytail-review`.

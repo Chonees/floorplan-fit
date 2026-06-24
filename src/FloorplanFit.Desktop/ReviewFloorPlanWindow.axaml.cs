@@ -49,26 +49,6 @@ public partial class ReviewFloorPlanWindow : UserControl
         await viewModel.ExcludeSelectedArtifactAsync(CancellationToken.None);
     }
 
-    private async void PublishButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is not FloorPlanReviewViewModel viewModel)
-        {
-            return;
-        }
-
-        await viewModel.PublishAsync(CancellationToken.None);
-    }
-
-    private async void EditPublishedButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is not FloorPlanReviewViewModel viewModel)
-        {
-            return;
-        }
-
-        await viewModel.StartEditingPublishedCurationAsync(CancellationToken.None);
-    }
-
     private void AddPinchButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is not FloorPlanReviewViewModel viewModel)

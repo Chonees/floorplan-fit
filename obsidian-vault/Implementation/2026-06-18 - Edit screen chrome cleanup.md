@@ -1,5 +1,8 @@
 # 2026-06-18 - Edit screen chrome cleanup
 
+> superseded_partially: `Editar` / `Publish Curation` placement was moved out of the right-side Actions panel on 2026-06-21.
+> replaced_by: [[2026-06-21 - Edit publish actions moved to shell header]]
+
 ## Type
 Implementation
 

@@ -130,25 +130,57 @@ public sealed class ReviewFloorPlanWindowLayoutTests
     }
 
     [Fact]
-    public void Published_review_header_exposes_explicit_edit_action_before_publish_action()
+    public void Main_review_header_exposes_edit_and_publish_on_library_back_row()
     {
         var solutionRoot = FindSolutionRoot();
+        var mainXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml");
+        var mainCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml.cs");
         var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
-        var codeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml.cs");
+        var mainXaml = File.ReadAllText(mainXamlPath);
+        var mainCodeBehind = File.ReadAllText(mainCodeBehindPath);
         var xaml = File.ReadAllText(xamlPath);
-        var codeBehind = File.ReadAllText(codeBehindPath);
 
-        Assert.Contains("Content=\"Editar\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("IsEnabled=\"{Binding CanEditPublishedCuration}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Click=\"EditPublishedButton_OnClick\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("IsEnabled=\"{Binding CanPublishCuration}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ColumnDefinitions=\"Auto,*,Auto,Auto\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Editar\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding ActiveReviewViewModel.CanEditPublishedCuration}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"EditPublishedButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Publish Curation\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding ActiveReviewViewModel.CanPublishCuration}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"PublishButton_OnClick\"", mainXaml, StringComparison.Ordinal);
         Assert.True(
-            xaml.IndexOf("Content=\"Editar\"", StringComparison.Ordinal) <
-            xaml.IndexOf("Content=\"Publish Curation\"", StringComparison.Ordinal));
+            mainXaml.IndexOf("BackToLibraryButton_OnClick", StringComparison.Ordinal) <
+            mainXaml.IndexOf("Content=\"Editar\"", StringComparison.Ordinal));
         Assert.True(
-            xaml.IndexOf("Content=\"Publish Curation\"", StringComparison.Ordinal) <
-            xaml.IndexOf("Content=\"Exportar DXF\"", StringComparison.Ordinal));
-        Assert.Contains("StartEditingPublishedCurationAsync", codeBehind, StringComparison.Ordinal);
+            mainXaml.IndexOf("Content=\"Editar\"", StringComparison.Ordinal) <
+            mainXaml.IndexOf("Content=\"Publish Curation\"", StringComparison.Ordinal));
+        Assert.DoesNotContain("Content=\"Editar\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Publish Curation\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("StartEditingPublishedCurationAsync", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("PublishAsync", mainCodeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Adjust_to_site_plan_entry_offers_import_or_simulate_paths()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var mainCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml.cs");
+        var dialogXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "AdjustSitePlanSetupDialog.axaml");
+        var dialogCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "AdjustSitePlanSetupDialog.axaml.cs");
+        var mainCodeBehind = File.ReadAllText(mainCodeBehindPath);
+        var dialogXaml = File.ReadAllText(dialogXamlPath);
+        var dialogCodeBehind = File.ReadAllText(dialogCodeBehindPath);
+
+        Assert.Contains("AdjustSitePlanSetupDialog", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("ShowDialog<AdjustSitePlanSetupResult?>", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("OpenSitePlanPickerAsync", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("SyntheticSitePlanDxfWriter.WriteToTempFile", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("Importar DXF", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("Simular site plan", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"BuildableWidthFeetTextBox\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"BuildableHeightFeetTextBox\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("AdjustSitePlanSetupMode.Import", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("AdjustSitePlanSetupMode.Simulate", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("TryParsePositiveFeet", dialogCodeBehind, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -160,6 +192,7 @@ public sealed class ReviewFloorPlanWindowLayoutTests
 
         Assert.Contains("x:Name=\"FitToolPalette\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"FitToolbarCommands\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding CanPublishCuration}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"FitExistingPanel\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsVisible=\"{Binding IsFitToolSelected}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ToolTip.Tip=\"Marcar pinch\"", xaml, StringComparison.Ordinal);

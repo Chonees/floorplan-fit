@@ -751,6 +751,53 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
     }
 
     [Fact]
+    public void ApplyAutoFitPlan_recenters_adjusted_floor_plan_inside_buildable_area()
+    {
+        var pathId = Guid.NewGuid();
+        var rightGroupId = Guid.NewGuid();
+        var facts = new AutoFitSuggestionFacts(
+            new AutoFitEnvelopeDeficitDto(1m, 0m, 0m, 1m, 0m, 0m),
+            [new AutoFitCandidateGroupDto(rightGroupId, "Ajuste derecha", "Width", 1m, 0m, 0m, 0)],
+            []);
+        var plan = new AutoFitSuggestionPlan(
+            "Trim right.",
+            [new AutoFitSuggestionStep("Ajuste derecha", "Width", 1m, "Right side trim.")],
+            "Adjusted preview should be centered after trimming.");
+        var viewModel = new SitePlanAdjustmentViewModel(
+            "Adjust",
+            "Subtitle",
+            "Selection",
+            "Status",
+            sitePlanGeometryPaths: [],
+            sitePlanRenderPaths: [],
+            sitePlanTexts: [],
+            floorPlanGeometryPaths: [CreateRectangle(pathId, minX: 0m, minY: 0m, maxX: 100m, maxY: 100m)],
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            autoFitSuggestionFacts: facts,
+            autoFitPlanSuggester: null,
+            sitePlanToMillimetersFactor: 25.4m,
+            pinchMarkers:
+            [
+                new PinchMarkerDto(Guid.NewGuid(), rightGroupId, "Ajuste derecha", Guid.NewGuid(), pathId, "Width", 0.20m, 25.4m, 1)
+            ],
+            autoFitBuildableArea: new SitePlanBuildableAreaDto(0m, 0m, 100m, 100m));
+        var option = new AutoFitSuggestionOptionViewModel(1, plan);
+
+        viewModel.ApplyAutoFitPlan(option);
+
+        var bounds = BoundsOf(viewModel.FloorPlanGeometryPaths);
+        var placement = viewModel.BuildAdjustedSitePlanPlacement();
+        var marker = Assert.Single(Assert.Single(placement.CompressionSteps).Markers);
+        Assert.Equal(0.5m, bounds.MinX);
+        Assert.Equal(99.5m, bounds.MaxX);
+        Assert.Equal(0.5m, viewModel.ManualOffsetX);
+        Assert.Equal(0.5m, placement.SiteOffsetX);
+        Assert.Equal(80m, marker.Coordinate);
+    }
+
+    [Fact]
     public void ApplyAutoFitPlan_respects_split_option_groups_on_opposite_sides()
     {
         var pathId = Guid.NewGuid();

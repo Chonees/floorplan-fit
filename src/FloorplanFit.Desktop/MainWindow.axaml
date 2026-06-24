@@ -114,7 +114,7 @@
 
     <Grid RowDefinitions="Auto,*"
           IsVisible="{Binding IsReviewScreenVisible}">
-      <Grid ColumnDefinitions="Auto,*"
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto"
             Margin="16,12,16,0"
             ColumnSpacing="12">
         <Button Content="← Library"
@@ -123,6 +123,16 @@
                    VerticalAlignment="Center"
                    Classes="muted"
                    Text="{Binding StatusMessage}" />
+        <Button Grid.Column="2"
+                Classes="accent"
+                Content="Editar"
+                IsEnabled="{Binding ActiveReviewViewModel.CanEditPublishedCuration}"
+                Click="EditPublishedButton_OnClick" />
+        <Button Grid.Column="3"
+                Classes="primary"
+                Content="Publish Curation"
+                IsEnabled="{Binding ActiveReviewViewModel.CanPublishCuration}"
+                Click="PublishButton_OnClick" />
       </Grid>
       <views:ReviewFloorPlanWindow Grid.Row="1"
                                    DataContext="{Binding ActiveReviewViewModel}" />

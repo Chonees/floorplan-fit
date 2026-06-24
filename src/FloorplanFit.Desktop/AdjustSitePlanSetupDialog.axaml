@@ -1,0 +1,72 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="FloorplanFit.Desktop.AdjustSitePlanSetupDialog"
+        RequestedThemeVariant="Dark"
+        Width="520"
+        Height="360"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Title="Adjust to Site Plan">
+  <Border Classes="panel-card"
+          Margin="16">
+    <StackPanel Spacing="14">
+      <StackPanel Spacing="4">
+        <TextBlock FontSize="20"
+                   FontWeight="SemiBold"
+                   Text="Adjust site plan" />
+        <TextBlock Classes="muted"
+                   Text="Importa un DXF real o simula un site plan con los mismos layers que los SYNTH."
+                   TextWrapping="Wrap" />
+      </StackPanel>
+
+      <Button Classes="primary"
+              HorizontalAlignment="Stretch"
+              Content="Importar DXF"
+              Click="ImportButton_OnClick" />
+
+      <Border Height="1"
+              Background="{DynamicResource BorderBrushMuted}" />
+
+      <StackPanel Spacing="10">
+        <TextBlock FontWeight="SemiBold"
+                   Text="Simular site plan" />
+        <TextBlock Classes="muted"
+                   Text="Medidas del area buildable en feet. El DXF se escribe en inches, igual que los synth actuales."
+                   TextWrapping="Wrap" />
+
+        <Grid ColumnDefinitions="*,*"
+              ColumnSpacing="10">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption"
+                       Text="Ancho buildable (ft)" />
+            <TextBox x:Name="BuildableWidthFeetTextBox"
+                     Watermark="39" />
+          </StackPanel>
+          <StackPanel Grid.Column="1"
+                      Spacing="4">
+            <TextBlock Classes="caption"
+                       Text="Alto buildable (ft)" />
+            <TextBox x:Name="BuildableHeightFeetTextBox"
+                     Watermark="77.5" />
+          </StackPanel>
+        </Grid>
+
+        <TextBlock x:Name="ValidationText"
+                   Foreground="#FFFF6B6B"
+                   IsVisible="False"
+                   Text="Ingresa ancho y alto positivos en feet." />
+
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8">
+          <Button Classes="subtle"
+                  Content="Cancelar"
+                  Click="CancelButton_OnClick" />
+          <Button Classes="primary"
+                  Content="Simular site plan"
+                  Click="SimulateButton_OnClick" />
+        </StackPanel>
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>
