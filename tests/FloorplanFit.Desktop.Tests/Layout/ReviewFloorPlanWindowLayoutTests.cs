@@ -184,6 +184,17 @@ public sealed class ReviewFloorPlanWindowLayoutTests
     }
 
     [Fact]
+    public void Adjust_to_site_plan_setup_dialog_sizes_to_fit_its_content()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var dialogXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "AdjustSitePlanSetupDialog.axaml");
+        var dialogXaml = File.ReadAllText(dialogXamlPath);
+
+        Assert.Contains("SizeToContent=\"Height\"", dialogXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Height=\"360\"", dialogXaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Fit_tool_uses_a_canvas_first_icon_palette_instead_of_a_workbench_column()
     {
         var solutionRoot = FindSolutionRoot();

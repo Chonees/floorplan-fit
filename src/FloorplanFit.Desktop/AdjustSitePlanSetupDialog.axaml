@@ -2,8 +2,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="FloorplanFit.Desktop.AdjustSitePlanSetupDialog"
         RequestedThemeVariant="Dark"
-        Width="520"
-        Height="360"
+        Width="640"
+        SizeToContent="Height"
         CanResize="False"
         WindowStartupLocation="CenterOwner"
         Title="Adjust to Site Plan">

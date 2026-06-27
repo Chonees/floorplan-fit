@@ -154,6 +154,8 @@ public sealed class FloorPlanPreviewControl : Control
             control.OnCuratedPlanArtifactsChanged(
                 args.GetOldValue<IReadOnlyList<CuratedPlanArtifactDto>?>(),
                 args.GetNewValue<IReadOnlyList<CuratedPlanArtifactDto>?>()));
+        BoundsProperty.Changed.AddClassHandler<FloorPlanPreviewControl>((control, args) =>
+            control.OnBoundsChanged(args.GetOldValue<Rect>(), args.GetNewValue<Rect>()));
     }
 
     public FloorPlanPreviewControl()
@@ -1013,6 +1015,10 @@ public sealed class FloorPlanPreviewControl : Control
         => slot == PreviewCollectionObserverHub.PreviewObservedCollectionSlot.GeometryPaths &&
            !hasActiveFloorPlanMove;
 
+    internal static bool ShouldPreserveViewportOnBoundsChange(Rect oldBounds, Rect newBounds)
+        => Math.Abs(oldBounds.Width - newBounds.Width) > 0.001d ||
+           Math.Abs(oldBounds.Height - newBounds.Height) > 0.001d;
+
     private IReadOnlyList<GeometryPathDto> BuildPreviewGeometry(PinchAxisTag? axisTag)
     {
         return BuildPreviewGeometry(axisTag, GeometryPaths);
@@ -1739,6 +1745,14 @@ public sealed class FloorPlanPreviewControl : Control
         }
 
         InvalidateVisual();
+    }
+
+    private void OnBoundsChanged(Rect oldBounds, Rect newBounds)
+    {
+        if (ShouldPreserveViewportOnBoundsChange(oldBounds, newBounds))
+        {
+            preserveViewportOnNextRender = true;
+        }
     }
 
     private double ResolveChangePreviewGhostOpacity(DateTimeOffset now)

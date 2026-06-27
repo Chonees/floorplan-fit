@@ -1363,6 +1363,18 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void ShouldPreserveViewportOnBoundsChange_only_when_render_size_changes()
+    {
+        var original = new Rect(0, 0, 1200, 700);
+        var movedOnly = new Rect(10, 20, 1200, 700);
+        var resized = new Rect(0, 0, 1200, 640);
+
+        Assert.False(FloorPlanPreviewControl.ShouldPreserveViewportOnBoundsChange(original, original));
+        Assert.False(FloorPlanPreviewControl.ShouldPreserveViewportOnBoundsChange(original, movedOnly));
+        Assert.True(FloorPlanPreviewControl.ShouldPreserveViewportOnBoundsChange(original, resized));
+    }
+
+    [Fact]
     public void CalculateChangePreviewGhostOpacity_fades_old_geometry_out()
     {
         var duration = TimeSpan.FromMilliseconds(260);
