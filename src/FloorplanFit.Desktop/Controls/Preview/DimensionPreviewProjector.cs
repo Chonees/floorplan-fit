@@ -85,7 +85,7 @@ internal static class DimensionPreviewProjector
         => Math.Abs(current - original) >= FloorPlanPreviewControl.MovementPersistenceEpsilon;
 
     private static decimal RoundModelValue(decimal value)
-        => decimal.Round(value, 3, MidpointRounding.AwayFromZero);
+        => decimal.Round(value, 6, MidpointRounding.AwayFromZero);
 
     internal readonly record struct DimensionPreviewEditRequest(
         Guid DimensionId,

@@ -247,6 +247,39 @@ public sealed class PreviewInteractionCoordinatorTests
         Assert.Equal(-4m, outcome.CommittedArtifactMove.TranslationDy);
     }
 
+    [Fact]
+    public void HandlePointerReleased_commits_high_zoom_translation_precision()
+    {
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0d, 0d, 200d, 200d),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 10_000_000d,
+            OffsetX: 0d,
+            OffsetY: 0d);
+        var move = FloorPlanPreviewControl.PreviewArtifactMoveState.ForTranslation(
+            FloorPlanArtifactSourceKinds.OpeningCandidate,
+            Guid.NewGuid(),
+            new Point(20d, 120d),
+            baseDx: 0m,
+            baseDy: 0m);
+        var state = PreviewInteractionCoordinator.InteractionState.ForArtifactMove(
+            FloorPlanPreviewControl.PreviewZoomState.Default,
+            move);
+
+        var outcome = PreviewInteractionCoordinator.HandlePointerReleased(
+            new PreviewInteractionCoordinator.PointerReleasedRequest(
+                CurrentState: state,
+                PointerPosition: new Point(30d, 110d),
+                Viewport: viewport,
+                BuildDimensionEditedEventArgs: null));
+
+        Assert.True(outcome.Handled);
+        Assert.NotNull(outcome.CommittedArtifactMove);
+        Assert.Equal(0.000001m, outcome.CommittedArtifactMove!.TranslationDx);
+        Assert.Equal(0.000001m, outcome.CommittedArtifactMove.TranslationDy);
+    }
+
     private static DimensionDto CreateDimension(string sourceKey)
         => new(
             Guid.NewGuid(),

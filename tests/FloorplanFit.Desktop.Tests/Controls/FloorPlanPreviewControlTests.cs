@@ -249,6 +249,57 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void CalculateFloorPlanMoveDelta_preserves_high_zoom_precision()
+    {
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0d, 0d, 200d, 200d),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 10_000_000d,
+            OffsetX: 0d,
+            OffsetY: 0d);
+
+        var delta = FloorPlanPreviewControl.CalculateFloorPlanMoveDelta(
+            viewport,
+            previousPointerPosition: new Point(20d, 120d),
+            currentPointerPosition: new Point(25d, 115d));
+
+        Assert.Equal(0.000001m, delta.DeltaX);
+        Assert.Equal(0.000001m, delta.DeltaY);
+    }
+
+    [Fact]
+    public void CalculateFloorPlanMoveDispatchDelta_accumulates_high_zoom_pointer_movement_from_drag_start()
+    {
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0d, 0d, 200d, 200d),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 10_000_000d,
+            OffsetX: 0d,
+            OffsetY: 0d);
+        var start = new Point(20d, 120d);
+
+        var firstPixel = FloorPlanPreviewControl.CalculateFloorPlanMoveDispatchDelta(
+            viewport,
+            dragStartPointerPosition: start,
+            currentPointerPosition: new Point(21d, 119d),
+            appliedDeltaX: 0m,
+            appliedDeltaY: 0m);
+        var accumulatedPixels = FloorPlanPreviewControl.CalculateFloorPlanMoveDispatchDelta(
+            viewport,
+            dragStartPointerPosition: start,
+            currentPointerPosition: new Point(25d, 115d),
+            appliedDeltaX: firstPixel.DeltaX,
+            appliedDeltaY: firstPixel.DeltaY);
+
+        Assert.Equal(0m, firstPixel.DeltaX);
+        Assert.Equal(0m, firstPixel.DeltaY);
+        Assert.Equal(0.000001m, accumulatedPixels.DeltaX);
+        Assert.Equal(0.000001m, accumulatedPixels.DeltaY);
+    }
+
+    [Fact]
     public void Preview_control_exposes_fixed_plan_components_for_canvas_overlay()
     {
         var pathId = Guid.NewGuid();

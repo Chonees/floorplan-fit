@@ -1298,6 +1298,7 @@ internal static class SitePlanAdjustmentPreviewProjector
         IAdjustedSitePlanExporter? adjustedSitePlanExporter = null)
     {
         var floorPlanPlacementGeometryPathIds = reviewViewModel.WallCandidates
+            .Where(candidate => string.Equals(candidate.Status, "Accepted", StringComparison.OrdinalIgnoreCase))
             .Select(candidate => candidate.GeometryPathId)
             .Where(id => id.HasValue)
             .Select(id => id!.Value)

@@ -569,6 +569,6 @@ internal static class PreviewInteractionCoordinator
 
     private static decimal RoundModelValue(decimal value)
     {
-        return decimal.Round(value, 3, MidpointRounding.AwayFromZero);
+        return decimal.Round(value, 6, MidpointRounding.AwayFromZero);
     }
 }

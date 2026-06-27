@@ -292,6 +292,67 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
     }
 
     [Fact]
+    public void Build_ignores_rejected_wall_candidates_when_centering_floor_plan_on_site_plan()
+    {
+        var templateId = Guid.NewGuid();
+        var version = new FloorPlanLibraryVersionDto(
+            Guid.NewGuid(),
+            1,
+            "Published",
+            DateTime.UtcNow,
+            "inch",
+            IsCurrent: true,
+            ActivePublishedCurationId: Guid.NewGuid());
+        var libraryItem = new FloorPlanLibraryItemDto(
+            templateId,
+            "santa-barbara",
+            "Santa Barbara",
+            VersionCount: 1,
+            CurrentVersionId: version.VersionId,
+            CurrentVersionNumber: version.VersionNumber,
+            Versions: [version]);
+        using var provider = new ServiceCollection().BuildServiceProvider();
+        var reviewViewModel = new FloorPlanReviewViewModel(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            templateId);
+        var acceptedWallPathId = Guid.NewGuid();
+        var rejectedOutlierPathId = Guid.NewGuid();
+        reviewViewModel.GeometryPaths.Add(CreateRectangle(acceptedWallPathId, minX: 0m, minY: 0m, maxX: 100m, maxY: 100m));
+        reviewViewModel.GeometryPaths.Add(CreateRectangle(rejectedOutlierPathId, minX: 0m, minY: 1000m, maxX: 100m, maxY: 1300m));
+        reviewViewModel.WallCandidates.Add(WallCandidate(acceptedWallPathId, 1));
+        reviewViewModel.WallCandidates.Add(new WallCandidateDto(
+            Guid.NewGuid(),
+            "LINE:REJECTED:1",
+            "WALLS",
+            "Rejected",
+            0.2m,
+            null,
+            "Curated outlier",
+            rejectedOutlierPathId,
+            2));
+        reviewViewModel.MeasurementContext = new MeasurementContextDto("inch", 25.4m, 0.1m, 1m);
+        var sitePlan = new SitePlanPreviewDto(
+            "SYNTH ADJUST 8_3333333333333333333333333333x8_1666666666666666666666666667 FT.dxf",
+            "inch",
+            25.4m,
+            [CreateRectangle(Guid.NewGuid(), minX: 0m, minY: 0m, maxX: 148m, maxY: 146m)],
+            new SitePlanBuildableAreaDto(24m, 24m, 124m, 122m));
+
+        var viewModel = SitePlanAdjustmentPreviewProjector.Build(
+            libraryItem,
+            version,
+            reviewViewModel,
+            sitePlan);
+
+        var acceptedWallBounds = BoundsOf(viewModel.FloorPlanGeometryPaths.Where(path => path.Id == acceptedWallPathId).ToArray());
+
+        Assert.Equal(sitePlan.BuildableArea.CenterX, (acceptedWallBounds.MinX + acceptedWallBounds.MaxX) / 2m);
+        Assert.Equal(sitePlan.BuildableArea.CenterY, (acceptedWallBounds.MinY + acceptedWallBounds.MaxY) / 2m);
+        Assert.Contains("alto 2\"", viewModel.AutoFitCandidateSummary, StringComparison.Ordinal);
+        Assert.DoesNotContain("1202", viewModel.AutoFitCandidateSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Build_computes_auto_fit_deficit_from_structural_paths_not_visual_dimension_extents()
     {
         var templateId = Guid.NewGuid();

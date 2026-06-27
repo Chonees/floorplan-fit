@@ -110,13 +110,13 @@ public sealed class NativeDimensionPreviewControlTests
         Assert.Equal(dimension.MeasurementSourceUnits, edited.MeasurementSourceUnits);
         Assert.Equal(dimension.MeasurementMillimeters, edited.MeasurementMillimeters);
         Assert.Equal(dimension.DisplayText, edited.DisplayText);
-        AssertLineExists(edited.LinePrimitives, 357.574m, 183.379m, 442.377m, 183.379m);
-        AssertLineExists(edited.LinePrimitives, 363.245m, 177.379m, 442.377m, 177.379m);
-        AssertLineExists(edited.LinePrimitives, 438.377m, 186.879m, 438.377m, 190.379m);
-        AssertLineExists(edited.LinePrimitives, 438.377m, 173.879m, 438.377m, 170.379m);
-        Assert.Equal(438.377m, edited.InsertPrimitives[0].X);
-        Assert.Equal(438.377m, edited.InsertPrimitives[1].X);
-        Assert.Equal(433.016m, edited.TextPrimitives[0].X);
+        AssertLineExists(edited.LinePrimitives, 357.574189m, 183.378754m, 442.377243m, 183.378754m);
+        AssertLineExists(edited.LinePrimitives, 363.244655m, 177.378754m, 442.377243m, 177.378754m);
+        AssertLineExists(edited.LinePrimitives, 438.377243m, 186.878754m, 438.377243m, 190.378754m);
+        AssertLineExists(edited.LinePrimitives, 438.377243m, 173.878754m, 438.377243m, 170.378754m);
+        Assert.Equal(438.377243m, edited.InsertPrimitives[0].X);
+        Assert.Equal(438.377243m, edited.InsertPrimitives[1].X);
+        Assert.Equal(433.016422m, edited.TextPrimitives[0].X);
     }
 
     [Fact]
@@ -134,14 +134,14 @@ public sealed class NativeDimensionPreviewControlTests
         Assert.Equal(dimension.MeasurementSourceUnits, edited.MeasurementSourceUnits);
         Assert.Equal(dimension.MeasurementMillimeters, edited.MeasurementMillimeters);
         Assert.Equal(dimension.DisplayText, edited.DisplayText);
-        AssertLineExists(edited.LinePrimitives, 437.602m, 631.379m, 439.753m, 631.379m);
-        AssertLineExists(edited.LinePrimitives, 437.602m, 645.379m, 439.753m, 645.379m);
-        AssertLineExists(edited.LinePrimitives, 435.753m, 634.879m, 435.753m, 641.879m);
-        AssertLineExists(edited.LinePrimitives, 435.753m, 638.379m, 427.376m, 645.332m);
-        AssertLineExists(edited.LinePrimitives, 427.376m, 645.332m, 427.376m, 655.665m);
-        Assert.Equal(435.753m, edited.InsertPrimitives[0].X);
-        Assert.Equal(435.753m, edited.InsertPrimitives[1].X);
-        Assert.Equal(423.793m, edited.TextPrimitives[0].X);
+        AssertLineExists(edited.LinePrimitives, 437.602465m, 631.378754m, 439.753330m, 631.378754m);
+        AssertLineExists(edited.LinePrimitives, 437.602465m, 645.378754m, 439.753330m, 645.378754m);
+        AssertLineExists(edited.LinePrimitives, 435.753330m, 634.878754m, 435.753330m, 641.878754m);
+        AssertLineExists(edited.LinePrimitives, 435.753330m, 638.378754m, 427.375883m, 645.331944m);
+        AssertLineExists(edited.LinePrimitives, 427.375883m, 645.331944m, 427.375883m, 655.665277m);
+        Assert.Equal(435.753330m, edited.InsertPrimitives[0].X);
+        Assert.Equal(435.753330m, edited.InsertPrimitives[1].X);
+        Assert.Equal(423.792550m, edited.TextPrimitives[0].X);
     }
 
     [Fact]
@@ -334,6 +334,27 @@ public sealed class NativeDimensionPreviewControlTests
         Assert.Equal(224m, preserved.LinePrimitives[2].EndX);
         Assert.Equal(162m, preserved.TextPrimitives[0].X);
         Assert.Equal(100m, preserved.InsertPrimitives[0].X);
+    }
+
+    [Fact]
+    public void BuildRenderedDimensions_preserves_high_zoom_dimension_edit_precision()
+    {
+        var dimension = CreateDimension();
+
+        var rendered = DimensionPreviewProjector.BuildRenderedDimensions(
+            [dimension],
+            new DimensionPreviewProjector.DimensionPreviewEditRequest(
+                dimension.DimensionId,
+                dimension,
+                FloorPlanPreviewControl.DimensionHandleKind.SecondDefinitionPoint,
+                new Point(224d, 140d),
+                new Point(224.000001d, 140d)));
+
+        var edited = Assert.Single(rendered);
+        Assert.Equal(224.000001m, edited.DefPoint2X);
+        Assert.Equal(224.000001m, edited.LinePrimitives[1].StartX);
+        Assert.Equal(224.000001m, edited.InsertPrimitives[1].X);
+        Assert.Equal("10'-4\"", edited.DisplayText);
     }
 
     [Fact]

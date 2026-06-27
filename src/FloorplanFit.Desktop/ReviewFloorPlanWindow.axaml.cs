@@ -285,7 +285,7 @@ public partial class ReviewFloorPlanWindow : UserControl
     {
         if (DataContext is FloorPlanReviewViewModel viewModel)
         {
-            viewModel.SelectDimension(e.DimensionId);
+            viewModel.SelectDimension(e.DimensionId, selectSavedBinding: e.ClickCount >= 2);
         }
     }
 

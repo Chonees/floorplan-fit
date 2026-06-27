@@ -555,6 +555,6 @@ internal static class NativeDimensionEditor
 
     private static decimal RoundModelValue(decimal value)
     {
-        return decimal.Round(value, 3, MidpointRounding.AwayFromZero);
+        return decimal.Round(value, 6, MidpointRounding.AwayFromZero);
     }
 }

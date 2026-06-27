@@ -1,5 +1,34 @@
 # Current State
 
+## 2026-06-27 - Dimension click no longer jumps franjas
+- Current UX truth: in Loop 1 measurement binding, single-clicking a dimension/cota preserves the current selected franja so the user can select/move/rebind without losing context. Double-clicking the dimension navigates to the saved franja/nodes for that cota.
+- Evidence: single/double click regression tests passed 2/2; MeasurementBinding + DimensionEditing tests passed 29/29; git diff --check passed.
+- Note: [[2026-06-27 - Single-click dimension jumped to saved franja]]
+
+## 2026-06-27 - Measurement corridors are max-two-node intervals
+- Current product truth: a Loop 1 measurement corridor/franja can have at most two nodes, start and end. Desktop must not arm node placement for a selected corridor that already has two nodes, and Application rejects a third node even if called directly.
+- Evidence: focused max-two-node tests passed 2/2; MeasurementBindingFloorPlanReviewViewModelTests passed 22/22; git diff --check passed.
+- Note: [[2026-06-27 - Measurement corridor allowed more than two nodes]]
+
+## 2026-06-27 - High zoom dimension/object moves keep micro precision
+- Current Desktop truth: Loop 1 preview edit does not use generic 3-decimal rounding for moved objects or edited dimension geometry. Tiny high-zoom drags persist at 0.000001 source-unit precision, while measurement/display text stays rounded to 3 decimals.
+- Evidence: focused high-zoom artifact/dimension tests passed 2/2; relevant preview suites passed 33/33; full Desktop run still has 10 unrelated source-path architecture failures reading C:\Users\lucas\src.
+- Note: [[2026-06-27 - High zoom dimension and artifact move lost precision]]
+
+## 2026-06-26 - Adjust synthetic fit ignores rejected walls
+- Current Desktop truth: Loop 2 Adjust-to-Site-Plan synthetic site plans center and compute fit using accepted wall candidates only, not rejected/outlier wall candidates.
+- Root cause fixed: `SitePlanAdjustmentPreviewProjector.Build(...)` previously collected placement geometry ids from all `WallCandidates`, so rejected outliers could pull the structural footprint far from the real plan and inflate the reported deficit.
+- Fix shape: placement/fit ids now require `WallCandidateDto.Status == "Accepted"`; existing fallback still handles the no-accepted-wall edge case.
+- Verification: RED regression reproduced accepted center `-527` vs buildable center `73`; GREEN focused test passed `1/1`; `SitePlanAdjustmentPreviewProjectorTests` passed `32/32`; `git diff --check` passed with CRLF warnings only. No `dotnet build` was run.
+- See bug note: `Bugs/2026-06-26 - Adjust synthetic site plan used rejected walls for fit.md`.
+
+## 2026-06-24 - High-zoom Adjust manual move is precision-safe
+- Current Desktop truth: Loop 2 Adjust-to-Site-Plan manual floor-plan move no longer drops tiny pointer deltas when the preview is heavily zoomed.
+- Root cause fixed: `FloorPlanPreviewControl.CalculateFloorPlanMoveDelta(...)` previously rounded movement through the generic 3-decimal model rounder, so high-zoom drags became `0`; the handler also updated the previous pointer and lost residual movement.
+- Fix shape: manual move deltas use 6-decimal precision and are computed from drag-start minus already-applied cumulative delta, so small pointer events accumulate until they become model-visible.
+- Verification: focused high-zoom move tests passed `2/2`; broader `FloorPlanPreviewControlTests` minus source-path-only tests passed `61/61` in a separate output folder; `git diff --check` passed with CRLF warnings only. No `dotnet build` was run.
+- See bug note: `Bugs/2026-06-24 - High zoom manual floor-plan move stalled.md`.
+
 ## 2026-06-24 - Seminole footprint and patio-excluded length verified
 - Current DB verification for `seminole2000` v1 / run `c2496c35-ad07-4846-a68c-6bcc34027d69`: full accepted wall bbox is about `483.786" x 930.000"` (`40.315 ft x 77.5 ft`) because a small left protrusion reaches x?`78.789`.
 - The main footprint width used by the SEMINOLE synthetic fixtures is `468"` (`39 ft`), from the main left wall x?`94.574` to right wall x?`562.574`.

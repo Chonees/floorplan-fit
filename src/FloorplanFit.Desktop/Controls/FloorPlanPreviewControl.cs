@@ -16,7 +16,7 @@ public sealed class FloorPlanPreviewControl : Control
     private const double PreviewPadding = 48d;
     private const double HitTestTolerance = 8d;
     private static readonly TimeSpan ChangePreviewAnimationDuration = TimeSpan.FromMilliseconds(260);
-    internal const decimal MovementPersistenceEpsilon = 0.001m;
+    internal const decimal MovementPersistenceEpsilon = 0.000001m;
     private const double DimensionHandleHitTolerance = 10d;
     internal const double MinimumUserZoomFactor = 0.35d;
     internal const double MaximumUserZoomFactor = 1_000_000d;
@@ -507,12 +507,12 @@ public sealed class FloorPlanPreviewControl : Control
 
     internal static (decimal X, decimal Y) ApplyAbsolutePointDelta(decimal baseX, decimal baseY, decimal deltaX, decimal deltaY)
     {
-        return (RoundModelValue(baseX + deltaX), RoundModelValue(baseY + deltaY));
+        return (RoundMovementDelta(baseX + deltaX), RoundMovementDelta(baseY + deltaY));
     }
 
     internal static (decimal Dx, decimal Dy) ApplyTranslationDelta(decimal baseDx, decimal baseDy, decimal deltaX, decimal deltaY)
     {
-        return (RoundModelValue(baseDx + deltaX), RoundModelValue(baseDy + deltaY));
+        return (RoundMovementDelta(baseDx + deltaX), RoundMovementDelta(baseDy + deltaY));
     }
 
     internal static FloorPlanMoveDelta CalculateFloorPlanMoveDelta(
@@ -528,7 +528,24 @@ public sealed class FloorPlanPreviewControl : Control
         var deltaX = (decimal)((currentPointerPosition.X - previousPointerPosition.X) / viewport.Scale);
         var deltaY = (decimal)((previousPointerPosition.Y - currentPointerPosition.Y) / viewport.Scale);
 
-        return new FloorPlanMoveDelta(RoundModelValue(deltaX), RoundModelValue(deltaY));
+        return new FloorPlanMoveDelta(RoundMovementDelta(deltaX), RoundMovementDelta(deltaY));
+    }
+
+    internal static FloorPlanMoveDelta CalculateFloorPlanMoveDispatchDelta(
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Point dragStartPointerPosition,
+        Point currentPointerPosition,
+        decimal appliedDeltaX,
+        decimal appliedDeltaY)
+    {
+        var totalDelta = CalculateFloorPlanMoveDelta(
+            viewport,
+            dragStartPointerPosition,
+            currentPointerPosition);
+
+        return new FloorPlanMoveDelta(
+            RoundMovementDelta(totalDelta.DeltaX - appliedDeltaX),
+            RoundMovementDelta(totalDelta.DeltaY - appliedDeltaY));
     }
 
     internal static DimensionDto ApplyDimensionHandleDelta(
@@ -664,7 +681,7 @@ public sealed class FloorPlanPreviewControl : Control
 
         if (IsFloorPlanMoveToolActive)
         {
-            activeFloorPlanMove = new FloorPlanMoveDragState(viewport.Value, pointerPosition);
+            activeFloorPlanMove = new FloorPlanMoveDragState(viewport.Value, pointerPosition, 0m, 0m);
             activeDragEdge = null;
             activeArtifactMove = null;
             activePreviewTrimSourceUnits = 0m;
@@ -718,7 +735,7 @@ public sealed class FloorPlanPreviewControl : Control
 
         if (pressOutcome.DimensionClickedId is { } dimensionId)
         {
-            DimensionClicked?.Invoke(this, new DimensionClickedEventArgs(dimensionId));
+            DimensionClicked?.Invoke(this, new DimensionClickedEventArgs(dimensionId, e.ClickCount));
         }
 
         if (pressOutcome.RoomLabelClickedId is { } roomLabelId)
@@ -808,12 +825,18 @@ public sealed class FloorPlanPreviewControl : Control
 
         if (activeFloorPlanMove is { } floorPlanMove)
         {
-            var delta = CalculateFloorPlanMoveDelta(
+            var delta = CalculateFloorPlanMoveDispatchDelta(
                 floorPlanMove.Viewport,
-                floorPlanMove.PreviousPointerPosition,
-                pointerPosition);
+                floorPlanMove.DragStartPointerPosition,
+                pointerPosition,
+                floorPlanMove.AppliedDeltaX,
+                floorPlanMove.AppliedDeltaY);
 
-            activeFloorPlanMove = floorPlanMove with { PreviousPointerPosition = pointerPosition };
+            activeFloorPlanMove = floorPlanMove with
+            {
+                AppliedDeltaX = RoundMovementDelta(floorPlanMove.AppliedDeltaX + delta.DeltaX),
+                AppliedDeltaY = RoundMovementDelta(floorPlanMove.AppliedDeltaY + delta.DeltaY)
+            };
             if (delta.DeltaX != 0m || delta.DeltaY != 0m)
             {
                 FloorPlanMoveDeltaRequested?.Invoke(this, new FloorPlanMoveDeltaEventArgs(delta.DeltaX, delta.DeltaY));
@@ -1583,6 +1606,11 @@ public sealed class FloorPlanPreviewControl : Control
         return decimal.Round(value, 3, MidpointRounding.AwayFromZero);
     }
 
+    private static decimal RoundMovementDelta(decimal value)
+    {
+        return decimal.Round(value, 6, MidpointRounding.AwayFromZero);
+    }
+
     private void OnSitePlanGeometryPathsChanged(IReadOnlyList<GeometryPathDto>? oldValue, IReadOnlyList<GeometryPathDto>? newValue)
     {
         preserveViewportOnNextRender = true;
@@ -1785,12 +1813,14 @@ public sealed class FloorPlanPreviewControl : Control
 
     public sealed class DimensionClickedEventArgs : EventArgs
     {
-        public DimensionClickedEventArgs(Guid dimensionId)
+        public DimensionClickedEventArgs(Guid dimensionId, int clickCount = 1)
         {
             DimensionId = dimensionId;
+            ClickCount = clickCount;
         }
 
         public Guid DimensionId { get; }
+        public int ClickCount { get; }
     }
 
     public sealed class DimensionEditedEventArgs : EventArgs
@@ -1899,7 +1929,9 @@ public sealed class FloorPlanPreviewControl : Control
 
     private readonly record struct FloorPlanMoveDragState(
         FloorPlanPreviewGeometry.PreviewViewport Viewport,
-        Point PreviousPointerPosition);
+        Point DragStartPointerPosition,
+        decimal AppliedDeltaX,
+        decimal AppliedDeltaY);
 
     public enum DimensionHandleKind
     {

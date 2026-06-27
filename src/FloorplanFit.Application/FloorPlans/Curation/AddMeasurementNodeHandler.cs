@@ -43,6 +43,11 @@ public sealed class AddMeasurementNodeHandler
         }
 
         var existing = await measurementNodeRepository.ListByCorridorAsync(corridorId, cancellationToken);
+        if (existing.Count >= 2)
+        {
+            throw new InvalidOperationException("A measurement corridor can have at most two nodes.");
+        }
+
         var node = new MeasurementNode(
             Guid.NewGuid(),
             curationId,

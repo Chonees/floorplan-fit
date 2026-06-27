@@ -869,19 +869,30 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     public void ToggleMeasurementNodePlacement()
     {
+        if (IsMeasurementNodePlacementArmed)
+        {
+            IsMeasurementNodePlacementArmed = false;
+            StatusMessage = "Selecci\u00F3n de punto cancelada.";
+            return;
+        }
+
         if (SelectedMeasurementCorridor is null)
         {
             StatusMessage = "Seleccion\u00E1 una franja de medida antes de marcar puntos.";
             return;
         }
 
+        if (SelectedMeasurementCorridorNodes.Count >= 2)
+        {
+            StatusMessage = "La franja ya tiene dos nodos. Elimin\u00E1 uno antes de marcar otro.";
+            return;
+        }
+
         IsPinchPlacementArmed = false;
         IsManualWallLinePlacementArmed = false;
         ManualWallLineDraft = null;
-        IsMeasurementNodePlacementArmed = !IsMeasurementNodePlacementArmed;
-        StatusMessage = IsMeasurementNodePlacementArmed
-            ? "Ahora hac\u00E9 click en una l\u00EDnea o punto v\u00E1lido del preview para marcar un punto de medida en la franja seleccionada."
-            : "Selecci\u00F3n de punto cancelada.";
+        IsMeasurementNodePlacementArmed = true;
+        StatusMessage = "Ahora hac\u00E9 click en una l\u00EDnea o punto v\u00E1lido del preview para marcar un punto de medida en la franja seleccionada.";
     }
 
     public void TogglePinchPlacement()
@@ -1223,9 +1234,13 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         SelectedOpeningLabel = OpeningLabels.FirstOrDefault(item => item.OpeningLabelId == openingLabelId);
     }
 
-    public void SelectDimension(Guid dimensionId)
+    public void SelectDimension(Guid dimensionId, bool selectSavedBinding = false)
     {
         SelectedDimension = Dimensions.FirstOrDefault(item => item.DimensionId == dimensionId);
+        if (selectSavedBinding)
+        {
+            SelectSavedMeasurementBindingForDimension(SelectedDimension);
+        }
     }
 
     public async Task SaveEditedDimensionAsync(
@@ -1845,7 +1860,6 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     partial void OnSelectedDimensionChanged(DimensionDto? value)
     {
-        SelectSavedMeasurementBindingForDimension(value);
         TryAutoAssignMeasurementEndpoints();
         ApplySelectionPresentation(selectionCoordinator.ResolveDimensionPresentation(value));
         RaiseUxNotifications();
@@ -2354,6 +2368,13 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         if (DraftCurationId == Guid.Empty || SelectedMeasurementCorridor is null)
         {
+            return;
+        }
+
+        if (SelectedMeasurementCorridorNodes.Count >= 2)
+        {
+            IsMeasurementNodePlacementArmed = false;
+            StatusMessage = "La franja ya tiene dos nodos. Elimin\u00E1 uno antes de marcar otro.";
             return;
         }
 
