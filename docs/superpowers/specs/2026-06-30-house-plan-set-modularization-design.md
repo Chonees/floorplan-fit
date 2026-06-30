@@ -976,6 +976,12 @@ Exit criteria:
 
 - electrical sheet has stored registration method, transform, confidence, and confirmation status
 
+### Phase 3 implementation bridge
+
+The first Phase 3 implementation stores a whole-sheet similarity registration for electrical sheets in `sheet_registrations`. The current `PlanSetVersionId` still maps to the canonical `FloorPlanVersion.Id`, so `canonical_floor_plan_version_id` uses that same bridge until explicit `PlanSetVersion` records exist.
+
+This phase records method, transform, confidence, warning, and confirmation status only. It does not project adjustments, export dependent sheets, or create an electrical fit engine.
+
 ## Phase 4 - Project Canonical Adjustment to Electrical
 
 Goal:
