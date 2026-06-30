@@ -10,8 +10,10 @@ public sealed class CreateMultiSheetExportAuditHandler
     private const string CanonicalSheetKind = "CanonicalFloorPlan";
     private const string DependentSheetKind = "DependentPlanSheet";
     private const string CanonicalProjectionMethod = "CanonicalFloorPlanAdjustment";
+    private const string MissingProjectionWarning = "No projection exists for this sheet and canonical adjustment.";
 
     private readonly ISheetAdjustmentProjectionRepository sheetAdjustmentProjectionRepository;
+    private readonly IPlanSheetReader planSheetReader;
     private readonly IPlanSetExportRepository planSetExportRepository;
     private readonly IPlanSetAuditEventRepository planSetAuditEventRepository;
     private readonly IUnitOfWork unitOfWork;
@@ -19,12 +21,14 @@ public sealed class CreateMultiSheetExportAuditHandler
 
     public CreateMultiSheetExportAuditHandler(
         ISheetAdjustmentProjectionRepository sheetAdjustmentProjectionRepository,
+        IPlanSheetReader planSheetReader,
         IPlanSetExportRepository planSetExportRepository,
         IPlanSetAuditEventRepository planSetAuditEventRepository,
         IUnitOfWork unitOfWork,
         IClock clock)
     {
         this.sheetAdjustmentProjectionRepository = sheetAdjustmentProjectionRepository;
+        this.planSheetReader = planSheetReader;
         this.planSetExportRepository = planSetExportRepository;
         this.planSetAuditEventRepository = planSetAuditEventRepository;
         this.unitOfWork = unitOfWork;
@@ -63,26 +67,33 @@ public sealed class CreateMultiSheetExportAuditHandler
         var sheets = new List<PlanSetExportedSheet>
         {
             new(
-                Guid.NewGuid(),
-                exportId,
-                request.CanonicalFloorPlanVersionId,
+                id: Guid.NewGuid(),
+                planSetExportId: exportId,
+                planSheetId: request.CanonicalFloorPlanVersionId,
                 sheetProjectionId: null,
-                CanonicalSheetKind,
-                request.CanonicalFloorPlanExportPath,
-                PlanSetExportedSheetStatus.Exported,
-                CanonicalProjectionMethod,
+                sheetKind: CanonicalSheetKind,
+                storagePath: request.CanonicalFloorPlanExportPath,
+                status: PlanSetExportedSheetStatus.Exported,
+                projectionMethod: CanonicalProjectionMethod,
                 confidence: 1m,
                 warning: null,
                 ruleSummary: null)
         };
 
-        foreach (var projectionRequest in request.DependentProjections)
+        if (request.DependentProjections.Count == 0)
         {
-            sheets.Add(await BuildDependentSheetAsync(
-                exportId,
-                request,
-                projectionRequest,
-                cancellationToken));
+            await AddDiscoveredDependentSheetsAsync(exportId, request, sheets, cancellationToken);
+        }
+        else
+        {
+            foreach (var projectionRequest in request.DependentProjections)
+            {
+                sheets.Add(await BuildDependentSheetAsync(
+                    exportId,
+                    request,
+                    projectionRequest,
+                    cancellationToken));
+            }
         }
 
         var summary = BuildSummary(sheets);
@@ -138,29 +149,102 @@ public sealed class CreateMultiSheetExportAuditHandler
             ? PlanSetExportedSheetStatus.ProjectedAutomatically
             : PlanSetExportedSheetStatus.RequiresManualConfirmation;
 
-        return new PlanSetExportedSheet(
-            Guid.NewGuid(),
+        return BuildProjectedSheet(
             exportId,
-            projection.DependentSheetId,
-            projection.Id,
+            projection,
             DependentSheetKind,
             projectionRequest.ExportPath,
-            status,
-            projection.Method.ToString(),
-            projection.Confidence,
-            projection.Warning,
-            projection.RuleSummary);
+            status);
+    }
+
+    private async Task AddDiscoveredDependentSheetsAsync(
+        Guid exportId,
+        CreateMultiSheetExportAuditRequest request,
+        List<PlanSetExportedSheet> sheets,
+        CancellationToken cancellationToken)
+    {
+        var dependentSheetsByVersion = await planSheetReader.ListByPlanSetVersionIdsAsync(
+            [request.PlanSetVersionId],
+            cancellationToken);
+
+        if (!dependentSheetsByVersion.TryGetValue(request.PlanSetVersionId, out var dependentSheets))
+        {
+            return;
+        }
+
+        var projections = await sheetAdjustmentProjectionRepository.ListByPlanSetVersionAndCanonicalAdjustmentAsync(
+            request.PlanSetVersionId,
+            request.CanonicalAdjustmentId,
+            cancellationToken);
+        var latestProjectionBySheet = projections
+            .GroupBy(projection => projection.DependentSheetId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderBy(projection => projection.CreatedAtUtc).Last());
+
+        foreach (var sheet in dependentSheets.Where(sheet => !sheet.IsCanonical))
+        {
+            if (latestProjectionBySheet.TryGetValue(sheet.SheetId, out var projection))
+            {
+                var status = projection.Status is SheetAdjustmentProjectionStatus.ReadyForExport
+                    ? PlanSetExportedSheetStatus.ProjectedAutomatically
+                    : PlanSetExportedSheetStatus.RequiresManualConfirmation;
+
+                sheets.Add(BuildProjectedSheet(
+                    exportId,
+                    projection,
+                    sheet.SheetType,
+                    storagePath: null,
+                    status: status));
+                continue;
+            }
+
+            sheets.Add(new PlanSetExportedSheet(
+                id: Guid.NewGuid(),
+                planSetExportId: exportId,
+                planSheetId: sheet.SheetId,
+                sheetProjectionId: null,
+                sheetKind: sheet.SheetType,
+                storagePath: null,
+                status: PlanSetExportedSheetStatus.MissingProjection,
+                projectionMethod: null,
+                confidence: null,
+                warning: MissingProjectionWarning,
+                ruleSummary: null));
+        }
+    }
+
+    private static PlanSetExportedSheet BuildProjectedSheet(
+        Guid exportId,
+        SheetAdjustmentProjection projection,
+        string sheetKind,
+        string? storagePath,
+        PlanSetExportedSheetStatus status)
+    {
+        return new PlanSetExportedSheet(
+            id: Guid.NewGuid(),
+            planSetExportId: exportId,
+            planSheetId: projection.DependentSheetId,
+            sheetProjectionId: projection.Id,
+            sheetKind: sheetKind,
+            storagePath: storagePath,
+            status: status,
+            projectionMethod: projection.Method.ToString(),
+            confidence: projection.Confidence,
+            warning: projection.Warning,
+            ruleSummary: projection.RuleSummary);
     }
 
     private static ProjectionAuditSummaryDto BuildSummary(IReadOnlyList<PlanSetExportedSheet> sheets)
     {
         var dependentSheets = sheets
-            .Where(sheet => sheet.SheetProjectionId.HasValue)
+            .Where(sheet => sheet.SheetKind != CanonicalSheetKind)
             .ToArray();
         var automaticallyProjectedCount = dependentSheets.Count(
             sheet => sheet.Status is PlanSetExportedSheetStatus.ProjectedAutomatically);
         var manualCount = dependentSheets.Count(
-            sheet => sheet.Status is PlanSetExportedSheetStatus.RequiresManualConfirmation);
+            sheet => sheet.Status is PlanSetExportedSheetStatus.RequiresManualConfirmation or
+                PlanSetExportedSheetStatus.MissingProjection);
         var confidences = dependentSheets
             .Where(sheet => sheet.Confidence.HasValue)
             .Select(sheet => sheet.Confidence!.Value)

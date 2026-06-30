@@ -129,6 +129,14 @@ public sealed class ProjectFacadeElevationSheetAdjustmentHandlerTests
         {
             return Task.FromResult(Items.FirstOrDefault(item => item.Id == projectionId));
         }
+
+        public Task<IReadOnlyList<SheetAdjustmentProjection>> ListByPlanSetVersionAndCanonicalAdjustmentAsync(
+            Guid planSetVersionId,
+            Guid canonicalAdjustmentId,
+            CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private sealed class CapturingUnitOfWork : IUnitOfWork

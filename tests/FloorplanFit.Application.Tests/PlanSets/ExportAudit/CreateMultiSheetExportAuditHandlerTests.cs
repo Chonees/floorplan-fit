@@ -31,6 +31,7 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         var clock = new FakeClock(new DateTime(2026, 6, 30, 23, 55, 0, DateTimeKind.Utc));
         var handler = new CreateMultiSheetExportAuditHandler(
             new FakeSheetAdjustmentProjectionRepository(readyProjection, manualProjection),
+            new FakePlanSheetReader(),
             exportRepository,
             auditEventRepository,
             unitOfWork,
@@ -97,6 +98,7 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         var unitOfWork = new CapturingUnitOfWork();
         var handler = new CreateMultiSheetExportAuditHandler(
             new FakeSheetAdjustmentProjectionRepository(projection),
+            new FakePlanSheetReader(),
             exportRepository,
             new ThrowingPlanSetAuditEventRepository(),
             unitOfWork,
@@ -116,17 +118,74 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         Assert.Single(exportRepository.Items);
     }
 
+    [Fact]
+    public async Task HandleAsync_with_empty_projection_request_audits_all_dependent_sheets_and_marks_missing_projection()
+    {
+        var planSetVersionId = Guid.NewGuid();
+        var canonicalFloorPlanVersionId = Guid.NewGuid();
+        var canonicalAdjustmentId = Guid.NewGuid();
+        var electricalSheetId = Guid.NewGuid();
+        var roofSheetId = Guid.NewGuid();
+        var electricalProjection = CreateProjection(
+            planSetVersionId,
+            canonicalAdjustmentId,
+            SheetAdjustmentProjectionStatus.ReadyForExport,
+            confidence: 0.93m,
+            warning: null,
+            dependentSheetId: electricalSheetId);
+        var exportRepository = new CapturingPlanSetExportRepository();
+        var handler = new CreateMultiSheetExportAuditHandler(
+            new FakeSheetAdjustmentProjectionRepository(electricalProjection),
+            new FakePlanSheetReader(
+                planSetVersionId,
+                [
+                    CreateSheet(electricalSheetId, "ElectricalPlan"),
+                    CreateSheet(roofSheetId, "RoofPlan")
+                ]),
+            exportRepository,
+            new CapturingPlanSetAuditEventRepository(),
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 6, 30, 23, 55, 0, DateTimeKind.Utc)));
+
+        var response = await handler.HandleAsync(
+            new CreateMultiSheetExportAuditRequest(
+                planSetVersionId,
+                canonicalFloorPlanVersionId,
+                canonicalAdjustmentId,
+                "exports/floor-plan.dxf",
+                []),
+            CancellationToken.None);
+
+        Assert.Equal("RequiresManualConfirmation", response.Status);
+        Assert.Equal(3, response.Summary.TotalSheetCount);
+        Assert.Equal(1, response.Summary.AutomaticallyProjectedSheetCount);
+        Assert.Equal(1, response.Summary.ManualConfirmationRequiredSheetCount);
+
+        var projectedSheet = Assert.Single(response.Sheets, sheet => sheet.SheetId == electricalSheetId);
+        Assert.Equal("ProjectedAutomatically", projectedSheet.Status);
+        Assert.Equal(electricalProjection.Id, projectedSheet.ProjectionId);
+
+        var missingSheet = Assert.Single(response.Sheets, sheet => sheet.SheetId == roofSheetId);
+        Assert.Equal("MissingProjection", missingSheet.Status);
+        Assert.Null(missingSheet.ProjectionId);
+        Assert.Contains("No projection", missingSheet.Warning, StringComparison.OrdinalIgnoreCase);
+
+        var saved = Assert.Single(exportRepository.Items);
+        Assert.Contains(saved.Sheets, sheet => sheet.PlanSheetId == roofSheetId && sheet.Status == PlanSetExportedSheetStatus.MissingProjection);
+    }
+
     private static SheetAdjustmentProjection CreateProjection(
         Guid planSetVersionId,
         Guid canonicalAdjustmentId,
         SheetAdjustmentProjectionStatus status,
         decimal confidence,
-        string? warning)
+        string? warning,
+        Guid? dependentSheetId = null)
     {
         return new SheetAdjustmentProjection(
             Guid.NewGuid(),
             planSetVersionId,
-            Guid.NewGuid(),
+            dependentSheetId ?? Guid.NewGuid(),
             Guid.NewGuid(),
             canonicalAdjustmentId,
             SheetAdjustmentProjectionMethod.ElectricalWholeSheetSimilarity,
@@ -141,6 +200,19 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
             canonicalCompressionStepCount: 0,
             new DateTime(2026, 6, 30, 23, 50, 0, DateTimeKind.Utc),
             ruleSummary: "WholeSheetSimilarity");
+    }
+
+    private static PlanSetSheetDto CreateSheet(Guid sheetId, string sheetType)
+    {
+        return new PlanSetSheetDto(
+            sheetId,
+            sheetType,
+            sheetType,
+            Guid.NewGuid(),
+            null,
+            IsCanonical: false,
+            "Registered",
+            "NotProjected");
     }
 
     private sealed class FakeSheetAdjustmentProjectionRepository : ISheetAdjustmentProjectionRepository
@@ -161,6 +233,50 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         {
             projections.TryGetValue(projectionId, out var projection);
             return Task.FromResult(projection);
+        }
+
+        public Task<IReadOnlyList<SheetAdjustmentProjection>> ListByPlanSetVersionAndCanonicalAdjustmentAsync(
+            Guid planSetVersionId,
+            Guid canonicalAdjustmentId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<SheetAdjustmentProjection>>(
+                projections.Values
+                    .Where(item => item.PlanSetVersionId == planSetVersionId &&
+                                   item.CanonicalAdjustmentId == canonicalAdjustmentId)
+                    .ToArray());
+        }
+    }
+
+    private sealed class FakePlanSheetReader : IPlanSheetReader
+    {
+        private readonly Guid planSetVersionId;
+        private readonly IReadOnlyList<PlanSetSheetDto> sheets;
+
+        public FakePlanSheetReader()
+            : this(Guid.NewGuid(), [])
+        {
+        }
+
+        public FakePlanSheetReader(Guid planSetVersionId, IReadOnlyList<PlanSetSheetDto> sheets)
+        {
+            this.planSetVersionId = planSetVersionId;
+            this.sheets = sheets;
+        }
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>>> ListByPlanSetVersionIdsAsync(
+            IReadOnlyCollection<Guid> planSetVersionIds,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>> result =
+                planSetVersionIds.Contains(planSetVersionId)
+                    ? new Dictionary<Guid, IReadOnlyList<PlanSetSheetDto>>
+                    {
+                        [planSetVersionId] = sheets
+                    }
+                    : new Dictionary<Guid, IReadOnlyList<PlanSetSheetDto>>();
+
+            return Task.FromResult(result);
         }
     }
 

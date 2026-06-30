@@ -107,6 +107,46 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
         return Task.FromResult<SheetAdjustmentProjection?>(MapProjection(reader));
     }
 
+    public Task<IReadOnlyList<SheetAdjustmentProjection>> ListByPlanSetVersionAndCanonicalAdjustmentAsync(
+        Guid planSetVersionId,
+        Guid canonicalAdjustmentId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            SELECT id,
+                   plan_set_version_id,
+                   dependent_sheet_id,
+                   sheet_registration_id,
+                   canonical_adjustment_id,
+                   method,
+                   transform_json,
+                   confidence,
+                   status,
+                   warning,
+                   rule_summary,
+                   canonical_compression_step_count,
+                   created_at_utc
+            FROM sheet_adjustment_projections
+            WHERE plan_set_version_id = $plan_set_version_id
+              AND canonical_adjustment_id = $canonical_adjustment_id
+            ORDER BY created_at_utc ASC
+            """);
+        command.Parameters.AddWithValue("$plan_set_version_id", planSetVersionId.ToString());
+        command.Parameters.AddWithValue("$canonical_adjustment_id", canonicalAdjustmentId.ToString());
+
+        using var reader = command.ExecuteReader();
+        var items = new List<SheetAdjustmentProjection>();
+        while (reader.Read())
+        {
+            items.Add(MapProjection(reader));
+        }
+
+        return Task.FromResult<IReadOnlyList<SheetAdjustmentProjection>>(items);
+    }
+
     private static string SerializeTransform(SheetAdjustmentProjectionTransform transform)
     {
         return JsonSerializer.Serialize(
