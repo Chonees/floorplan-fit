@@ -80,7 +80,46 @@ public sealed class ProjectElectricalSheetAdjustmentHandlerTests
         Assert.Contains("confirmed", response.Warning, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task HandleAsync_rejects_non_electrical_registration_method()
+    {
+        var registration = CreateRegistration(
+            SheetRegistrationMethod.FacadeHorizontalReference,
+            SheetRegistrationStatus.Confirmed,
+            0.92m,
+            new DateTime(2026, 6, 30, 20, 0, 0, DateTimeKind.Utc));
+        var handler = new ProjectElectricalSheetAdjustmentHandler(
+            new FakeSheetRegistrationRepository(registration),
+            new CapturingSheetAdjustmentProjectionRepository(),
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 6, 30, 20, 0, 0, DateTimeKind.Utc)));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => handler.HandleAsync(
+            new ProjectElectricalSheetAdjustmentRequest(
+                registration.Id,
+                Guid.NewGuid(),
+                new AdjustedSitePlanPlacementDto(
+                    FloorToSiteScale: 1m,
+                    SiteOffsetX: 0m,
+                    SiteOffsetY: 0m,
+                    CompressionSteps: [])),
+            CancellationToken.None));
+    }
+
     private static SheetRegistration CreateRegistration(
+        SheetRegistrationStatus status,
+        decimal confidence,
+        DateTime? confirmedAtUtc)
+    {
+        return CreateRegistration(
+            SheetRegistrationMethod.WholeSheetSimilarity,
+            status,
+            confidence,
+            confirmedAtUtc);
+    }
+
+    private static SheetRegistration CreateRegistration(
+        SheetRegistrationMethod method,
         SheetRegistrationStatus status,
         decimal confidence,
         DateTime? confirmedAtUtc)
@@ -90,7 +129,7 @@ public sealed class ProjectElectricalSheetAdjustmentHandlerTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             Guid.NewGuid(),
-            SheetRegistrationMethod.WholeSheetSimilarity,
+            method,
             new SheetRegistrationTransform(
                 scale: 1.5m,
                 rotationDegrees: 10m,

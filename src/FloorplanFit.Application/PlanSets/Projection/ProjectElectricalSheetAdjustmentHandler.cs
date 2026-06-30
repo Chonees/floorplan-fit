@@ -49,6 +49,11 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
             throw new InvalidOperationException("Sheet registration was not found.");
         }
 
+        if (registration.Method is not SheetRegistrationMethod.WholeSheetSimilarity)
+        {
+            throw new ArgumentException("Only electrical whole-sheet registrations can use electrical projection.", nameof(request));
+        }
+
         var compressionStepCount = request.CanonicalPlacement.CompressionSteps.Count;
         var status = ResolveStatus(registration, compressionStepCount);
         var warning = ResolveWarning(registration, compressionStepCount, status);
