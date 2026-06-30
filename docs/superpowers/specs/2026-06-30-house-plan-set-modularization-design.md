@@ -1064,6 +1064,12 @@ Exit criteria:
 
 - user can adjust once and export a package that says which sheets were automatically projected, which required confirmation, and what confidence each had
 
+### Phase 7 implementation bridge
+
+The first Phase 7 implementation creates the package audit boundary before adding dependent-sheet DXF rewriting. `CreateMultiSheetExportAuditHandler` consumes the canonical floor-plan export path plus explicit dependent projection ids, persists `plan_set_exports` and `plan_set_exported_sheets`, and reports automatic vs manual sheet status, confidence, warnings, projection method, and rule summary.
+
+Data collection starts with `audit_events`. A `PlanSetExportAuditCreated` event is best-effort: telemetry failure does not block saving the export audit. This phase still does not recalculate fit/registration, discover missing projections, rewrite dependent DXFs, or add Desktop UI.
+
 ## Data Flow
 
 ```text
