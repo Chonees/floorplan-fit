@@ -1,6 +1,7 @@
 ﻿using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.PlanSets.Library;
 using FloorplanFit.Contracts.FloorPlans;
+using FloorplanFit.Contracts.PlanSets;
 
 namespace FloorplanFit.Application.Tests.PlanSets.Library;
 
@@ -31,7 +32,9 @@ public sealed class GetPlanSetLibraryHandlerTests
                     activePublishedCurationId)
             ]);
 
-        var handler = new GetPlanSetLibraryHandler(new FakeFloorPlanLibraryReader([item]));
+        var handler = new GetPlanSetLibraryHandler(
+            new FakeFloorPlanLibraryReader([item]),
+            new FakePlanSheetReader(new Dictionary<Guid, IReadOnlyList<PlanSetSheetDto>>()));
 
         var result = await handler.HandleAsync(CancellationToken.None);
 
@@ -68,7 +71,9 @@ public sealed class GetPlanSetLibraryHandlerTests
             null,
             []);
 
-        var handler = new GetPlanSetLibraryHandler(new FakeFloorPlanLibraryReader([item]));
+        var handler = new GetPlanSetLibraryHandler(
+            new FakeFloorPlanLibraryReader([item]),
+            new FakePlanSheetReader(new Dictionary<Guid, IReadOnlyList<PlanSetSheetDto>>()));
 
         var result = await handler.HandleAsync(CancellationToken.None);
 
@@ -79,6 +84,53 @@ public sealed class GetPlanSetLibraryHandlerTests
         Assert.False(planSet.HasCanonicalFloorPlan);
         Assert.False(planSet.CanProduceCanonicalAdjustment);
         Assert.Empty(planSet.Sheets);
+    }
+
+    [Fact]
+    public async Task HandleAsync_includes_dependent_sheets_for_current_plan_set_version()
+    {
+        var templateId = Guid.NewGuid();
+        var currentVersionId = Guid.NewGuid();
+        var importedAtUtc = new DateTime(2026, 6, 30, 12, 0, 0, DateTimeKind.Utc);
+        var electricalSheet = new PlanSetSheetDto(
+            Guid.NewGuid(),
+            "ElectricalPlan",
+            "Electrical",
+            Guid.NewGuid(),
+            null,
+            IsCanonical: false,
+            "Unregistered",
+            "NotProjected");
+        var item = new FloorPlanLibraryItemDto(
+            templateId,
+            "seminole2000",
+            "SEMINOLE2000",
+            1,
+            currentVersionId,
+            1,
+            [
+                new FloorPlanLibraryVersionDto(
+                    currentVersionId,
+                    1,
+                    "Published",
+                    importedAtUtc,
+                    "inch",
+                    IsCurrent: true)
+            ]);
+
+        var handler = new GetPlanSetLibraryHandler(
+            new FakeFloorPlanLibraryReader([item]),
+            new FakePlanSheetReader(new Dictionary<Guid, IReadOnlyList<PlanSetSheetDto>>
+            {
+                [currentVersionId] = [electricalSheet]
+            }));
+
+        var result = await handler.HandleAsync(CancellationToken.None);
+
+        var planSet = Assert.Single(result);
+        Assert.Equal(2, planSet.Sheets.Count);
+        Assert.Contains(planSet.Sheets, sheet => sheet.IsCanonical && sheet.SheetType == "FloorPlan");
+        Assert.Contains(planSet.Sheets, sheet => !sheet.IsCanonical && sheet.SheetType == "ElectricalPlan");
     }
 
     private sealed class FakeFloorPlanLibraryReader : IFloorPlanLibraryReader
@@ -93,6 +145,23 @@ public sealed class GetPlanSetLibraryHandlerTests
         public Task<IReadOnlyList<FloorPlanLibraryItemDto>> ListAsync(CancellationToken cancellationToken)
         {
             return Task.FromResult(items);
+        }
+    }
+
+    private sealed class FakePlanSheetReader : IPlanSheetReader
+    {
+        private readonly IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>> sheets;
+
+        public FakePlanSheetReader(IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>> sheets)
+        {
+            this.sheets = sheets;
+        }
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>>> ListByPlanSetVersionIdsAsync(
+            IReadOnlyCollection<Guid> planSetVersionIds,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(sheets);
         }
     }
 }
