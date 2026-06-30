@@ -954,6 +954,12 @@ Exit criteria:
 - a house can have floor + electrical sheets stored as related data
 - existing floor-plan review still works against the canonical floor sheet
 
+### Phase 2 implementation bridge
+
+The Phase 2 implementation stores dependent sheets in `plan_sheets` using the current `FloorPlanVersion.Id` as the temporary `PlanSetVersionId`. User-selected sheet type is the first classification source.
+
+This enables a current house plan set to hold a canonical floor-plan sheet plus dependent electrical, roof, or facade/elevation sheet records without introducing registration/projection yet.
+
 ## Phase 3 - Electrical Registration
 
 Goal:
