@@ -29,6 +29,7 @@ public static class DesktopServiceRegistration
 
         services.AddSingleton(new AppWorkspace(workspaceRoot, adjustedDxfExportDirectory));
         services.AddSingleton<IManagedFileStorage, ManagedFileStorage>();
+        services.AddSingleton<IPlanSetExportManifestWriter, PlanSetExportManifestWriter>();
         services.AddSingleton<IDxfGateway, IxMiliaDxfGateway>();
         services.AddSingleton<ISitePlanPreviewReader, IxMiliaSitePlanPreviewReader>();
         services.AddSingleton<HttpClient>();

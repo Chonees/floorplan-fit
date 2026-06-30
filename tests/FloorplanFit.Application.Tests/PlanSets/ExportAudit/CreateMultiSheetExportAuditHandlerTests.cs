@@ -27,6 +27,7 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
             warning: "Needs review");
         var exportRepository = new CapturingPlanSetExportRepository();
         var auditEventRepository = new CapturingPlanSetAuditEventRepository();
+        var manifestWriter = new CapturingPlanSetExportManifestWriter("exports/package/manifest.json");
         var unitOfWork = new CapturingUnitOfWork();
         var clock = new FakeClock(new DateTime(2026, 6, 30, 23, 55, 0, DateTimeKind.Utc));
         var handler = new CreateMultiSheetExportAuditHandler(
@@ -34,6 +35,7 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
             new FakePlanSheetReader(),
             exportRepository,
             auditEventRepository,
+            manifestWriter,
             unitOfWork,
             clock);
 
@@ -50,6 +52,7 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
             CancellationToken.None);
 
         Assert.True(unitOfWork.Saved);
+        Assert.Equal("exports/package/manifest.json", response.PackageManifestPath);
         Assert.Equal("RequiresManualConfirmation", response.Status);
         Assert.Equal(3, response.Summary.TotalSheetCount);
         Assert.Equal(1, response.Summary.AutomaticallyProjectedSheetCount);
@@ -74,7 +77,12 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
 
         var savedExport = Assert.Single(exportRepository.Items);
         Assert.Equal(response.ExportId, savedExport.Id);
+        Assert.Equal("exports/package/manifest.json", savedExport.PackageManifestPath);
         Assert.Equal(3, savedExport.Sheets.Count);
+
+        var manifestAudit = Assert.Single(manifestWriter.Items);
+        Assert.Equal(response.ExportId, manifestAudit.ExportId);
+        Assert.Equal(3, manifestAudit.Sheets.Count);
 
         var auditEvent = Assert.Single(auditEventRepository.Items);
         Assert.Equal("PlanSetExport", auditEvent.AggregateType);
@@ -95,12 +103,14 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
             confidence: 0.95m,
             warning: null);
         var exportRepository = new CapturingPlanSetExportRepository();
+        var manifestWriter = new CapturingPlanSetExportManifestWriter("exports/package/manifest.json");
         var unitOfWork = new CapturingUnitOfWork();
         var handler = new CreateMultiSheetExportAuditHandler(
             new FakeSheetAdjustmentProjectionRepository(projection),
             new FakePlanSheetReader(),
             exportRepository,
             new ThrowingPlanSetAuditEventRepository(),
+            manifestWriter,
             unitOfWork,
             new FakeClock(new DateTime(2026, 6, 30, 23, 55, 0, DateTimeKind.Utc)));
 
@@ -114,6 +124,7 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
             CancellationToken.None);
 
         Assert.True(unitOfWork.Saved);
+        Assert.Equal("exports/package/manifest.json", response.PackageManifestPath);
         Assert.Equal("ReadyForExport", response.Status);
         Assert.Single(exportRepository.Items);
     }
@@ -144,6 +155,7 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
                 ]),
             exportRepository,
             new CapturingPlanSetAuditEventRepository(),
+            new CapturingPlanSetExportManifestWriter("exports/package/manifest.json"),
             new CapturingUnitOfWork(),
             new FakeClock(new DateTime(2026, 6, 30, 23, 55, 0, DateTimeKind.Utc)));
 
@@ -307,6 +319,24 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         public Task AddAsync(PlanSetAuditEvent auditEvent, CancellationToken cancellationToken)
         {
             throw new InvalidOperationException("Telemetry sink unavailable.");
+        }
+    }
+
+    private sealed class CapturingPlanSetExportManifestWriter : IPlanSetExportManifestWriter
+    {
+        private readonly string manifestPath;
+
+        public CapturingPlanSetExportManifestWriter(string manifestPath)
+        {
+            this.manifestPath = manifestPath;
+        }
+
+        public List<MultiSheetExportAuditDto> Items { get; } = [];
+
+        public Task<string> WriteAsync(MultiSheetExportAuditDto audit, CancellationToken cancellationToken)
+        {
+            Items.Add(audit);
+            return Task.FromResult(manifestPath);
         }
     }
 

@@ -7,4 +7,5 @@ public sealed record MultiSheetExportAuditDto(
     string Status,
     ProjectionAuditSummaryDto Summary,
     IReadOnlyList<ExportedPlanSheetDto> Sheets,
+    string? PackageManifestPath,
     DateTime CreatedAtUtc);

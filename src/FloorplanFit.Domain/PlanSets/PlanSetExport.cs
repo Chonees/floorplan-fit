@@ -8,6 +8,7 @@ public sealed class PlanSetExport
         Guid canonicalAdjustmentId,
         PlanSetExportStatus status,
         string confidenceSummaryJson,
+        string? packageManifestPath,
         DateTime createdAtUtc,
         IReadOnlyList<PlanSetExportedSheet> sheets)
     {
@@ -46,6 +47,7 @@ public sealed class PlanSetExport
         CanonicalAdjustmentId = canonicalAdjustmentId;
         Status = status;
         ConfidenceSummaryJson = confidenceSummaryJson;
+        PackageManifestPath = string.IsNullOrWhiteSpace(packageManifestPath) ? null : packageManifestPath.Trim();
         CreatedAtUtc = createdAtUtc;
         Sheets = sheets.ToArray();
     }
@@ -59,6 +61,8 @@ public sealed class PlanSetExport
     public PlanSetExportStatus Status { get; }
 
     public string ConfidenceSummaryJson { get; }
+
+    public string? PackageManifestPath { get; }
 
     public DateTime CreatedAtUtc { get; }
 

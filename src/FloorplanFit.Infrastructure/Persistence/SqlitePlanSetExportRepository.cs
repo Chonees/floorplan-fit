@@ -28,6 +28,7 @@ public sealed class SqlitePlanSetExportRepository : IPlanSetExportRepository
                     canonical_adjustment_id,
                     status,
                     confidence_summary_json,
+                    package_manifest_path,
                     created_at_utc)
                 VALUES (
                     $id,
@@ -35,6 +36,7 @@ public sealed class SqlitePlanSetExportRepository : IPlanSetExportRepository
                     $canonical_adjustment_id,
                     $status,
                     $confidence_summary_json,
+                    $package_manifest_path,
                     $created_at_utc)
                 """;
             command.Parameters.AddWithValue("$id", export.Id.ToString());
@@ -42,6 +44,7 @@ public sealed class SqlitePlanSetExportRepository : IPlanSetExportRepository
             command.Parameters.AddWithValue("$canonical_adjustment_id", export.CanonicalAdjustmentId.ToString());
             command.Parameters.AddWithValue("$status", export.Status.ToString());
             command.Parameters.AddWithValue("$confidence_summary_json", export.ConfidenceSummaryJson);
+            command.Parameters.AddWithValue("$package_manifest_path", (object?)export.PackageManifestPath ?? DBNull.Value);
             command.Parameters.AddWithValue("$created_at_utc", export.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
             command.ExecuteNonQuery();
         }

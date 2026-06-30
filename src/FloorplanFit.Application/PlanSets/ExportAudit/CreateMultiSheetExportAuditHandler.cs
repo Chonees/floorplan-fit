@@ -16,6 +16,7 @@ public sealed class CreateMultiSheetExportAuditHandler
     private readonly IPlanSheetReader planSheetReader;
     private readonly IPlanSetExportRepository planSetExportRepository;
     private readonly IPlanSetAuditEventRepository planSetAuditEventRepository;
+    private readonly IPlanSetExportManifestWriter planSetExportManifestWriter;
     private readonly IUnitOfWork unitOfWork;
     private readonly IClock clock;
 
@@ -24,6 +25,7 @@ public sealed class CreateMultiSheetExportAuditHandler
         IPlanSheetReader planSheetReader,
         IPlanSetExportRepository planSetExportRepository,
         IPlanSetAuditEventRepository planSetAuditEventRepository,
+        IPlanSetExportManifestWriter planSetExportManifestWriter,
         IUnitOfWork unitOfWork,
         IClock clock)
     {
@@ -31,6 +33,7 @@ public sealed class CreateMultiSheetExportAuditHandler
         this.planSheetReader = planSheetReader;
         this.planSetExportRepository = planSetExportRepository;
         this.planSetAuditEventRepository = planSetAuditEventRepository;
+        this.planSetExportManifestWriter = planSetExportManifestWriter;
         this.unitOfWork = unitOfWork;
         this.clock = clock;
     }
@@ -100,12 +103,24 @@ public sealed class CreateMultiSheetExportAuditHandler
         var status = summary.ManualConfirmationRequiredSheetCount == 0
             ? PlanSetExportStatus.ReadyForExport
             : PlanSetExportStatus.RequiresManualConfirmation;
+        var draftExport = new PlanSetExport(
+            exportId,
+            request.PlanSetVersionId,
+            request.CanonicalAdjustmentId,
+            status,
+            JsonSerializer.Serialize(summary),
+            packageManifestPath: null,
+            createdAtUtc,
+            sheets);
+        var draftAudit = ToDto(draftExport, summary);
+        var packageManifestPath = await planSetExportManifestWriter.WriteAsync(draftAudit, cancellationToken);
         var export = new PlanSetExport(
             exportId,
             request.PlanSetVersionId,
             request.CanonicalAdjustmentId,
             status,
             JsonSerializer.Serialize(summary),
+            packageManifestPath,
             createdAtUtc,
             sheets);
 
@@ -292,6 +307,7 @@ public sealed class CreateMultiSheetExportAuditHandler
             export.Status.ToString(),
             summary,
             export.Sheets.Select(ToDto).ToArray(),
+            export.PackageManifestPath,
             export.CreatedAtUtc);
     }
 

@@ -107,6 +107,7 @@ public static class SqliteSchemaInitializer
                 canonical_adjustment_id TEXT NOT NULL,
                 status TEXT NOT NULL,
                 confidence_summary_json TEXT NOT NULL,
+                package_manifest_path TEXT NULL,
                 created_at_utc TEXT NOT NULL
             );
 
@@ -597,6 +598,7 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "plan_set_exports", "canonical_adjustment_id", "TEXT NOT NULL DEFAULT ''");
         EnsureColumnExists(connection, "plan_set_exports", "status", "TEXT NOT NULL DEFAULT 'RequiresManualConfirmation'");
         EnsureColumnExists(connection, "plan_set_exports", "confidence_summary_json", "TEXT NOT NULL DEFAULT '{}'");
+        EnsureColumnExists(connection, "plan_set_exports", "package_manifest_path", "TEXT NULL");
         EnsureColumnExists(connection, "plan_set_exports", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
 
         EnsureColumnExists(connection, "plan_set_exported_sheets", "plan_set_export_id", "TEXT NOT NULL DEFAULT ''");
