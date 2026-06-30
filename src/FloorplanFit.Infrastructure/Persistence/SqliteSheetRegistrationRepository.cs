@@ -36,6 +36,7 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
                 confidence,
                 status,
                 warning,
+                rule_summary,
                 created_at_utc,
                 confirmed_at_utc)
             VALUES (
@@ -48,6 +49,7 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
                 $confidence,
                 $status,
                 $warning,
+                $rule_summary,
                 $created_at_utc,
                 $confirmed_at_utc)
             """);
@@ -60,6 +62,7 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
         command.Parameters.AddWithValue("$confidence", registration.Confidence.ToString(CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$status", registration.Status.ToString());
         command.Parameters.AddWithValue("$warning", (object?)registration.Warning ?? DBNull.Value);
+        command.Parameters.AddWithValue("$rule_summary", (object?)registration.RuleSummary ?? DBNull.Value);
         command.Parameters.AddWithValue("$created_at_utc", registration.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$confirmed_at_utc", FormatNullableDateTime(registration.ConfirmedAtUtc));
         command.ExecuteNonQuery();
@@ -82,6 +85,7 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
                    confidence,
                    status,
                    warning,
+                   rule_summary,
                    created_at_utc,
                    confirmed_at_utc
             FROM sheet_registrations
@@ -133,11 +137,12 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
             DeserializeTransform(reader.GetString(5)),
             decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
             Enum.Parse<SheetRegistrationStatus>(reader.GetString(7)),
-            DateTime.Parse(reader.GetString(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-            reader.IsDBNull(10)
+            DateTime.Parse(reader.GetString(10), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            reader.IsDBNull(11)
                 ? null
-                : DateTime.Parse(reader.GetString(10), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-            reader.IsDBNull(8) ? null : reader.GetString(8));
+                : DateTime.Parse(reader.GetString(11), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            reader.IsDBNull(8) ? null : reader.GetString(8),
+            reader.IsDBNull(9) ? null : reader.GetString(9));
     }
 
     private static object FormatNullableDateTime(DateTime? value)

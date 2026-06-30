@@ -14,7 +14,8 @@ public sealed class SheetAdjustmentProjection
         SheetAdjustmentProjectionStatus status,
         string? warning,
         int canonicalCompressionStepCount,
-        DateTime createdAtUtc)
+        DateTime createdAtUtc,
+        string? ruleSummary = null)
     {
         if (id == Guid.Empty)
         {
@@ -73,6 +74,7 @@ public sealed class SheetAdjustmentProjection
         Warning = string.IsNullOrWhiteSpace(warning) ? null : warning.Trim();
         CanonicalCompressionStepCount = canonicalCompressionStepCount;
         CreatedAtUtc = createdAtUtc;
+        RuleSummary = string.IsNullOrWhiteSpace(ruleSummary) ? null : ruleSummary.Trim();
     }
 
     public Guid Id { get; }
@@ -98,4 +100,6 @@ public sealed class SheetAdjustmentProjection
     public int CanonicalCompressionStepCount { get; }
 
     public DateTime CreatedAtUtc { get; }
+
+    public string? RuleSummary { get; }
 }

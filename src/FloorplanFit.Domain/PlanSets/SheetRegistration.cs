@@ -13,7 +13,8 @@ public sealed class SheetRegistration
         SheetRegistrationStatus status,
         DateTime createdAtUtc,
         DateTime? confirmedAtUtc,
-        string? warning)
+        string? warning,
+        string? ruleSummary = null)
     {
         if (id == Guid.Empty)
         {
@@ -71,6 +72,7 @@ public sealed class SheetRegistration
         CreatedAtUtc = createdAtUtc;
         ConfirmedAtUtc = confirmedAtUtc;
         Warning = string.IsNullOrWhiteSpace(warning) ? null : warning.Trim();
+        RuleSummary = string.IsNullOrWhiteSpace(ruleSummary) ? null : ruleSummary.Trim();
     }
 
     public Guid Id { get; }
@@ -94,4 +96,6 @@ public sealed class SheetRegistration
     public DateTime? ConfirmedAtUtc { get; }
 
     public string? Warning { get; }
+
+    public string? RuleSummary { get; }
 }

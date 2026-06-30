@@ -2,5 +2,6 @@
 
 public enum SheetAdjustmentProjectionMethod
 {
-    ElectricalWholeSheetSimilarity = 1
+    ElectricalWholeSheetSimilarity = 1,
+    RoofOverhangPreserving = 2
 }

@@ -89,7 +89,9 @@ public static class DesktopServiceRegistration
         services.AddScoped<ImportFloorPlanHandler>();
         services.AddScoped<ImportPlanSheetHandler>();
         services.AddScoped<RegisterElectricalSheetHandler>();
+        services.AddScoped<RegisterRoofSheetHandler>();
         services.AddScoped<ProjectElectricalSheetAdjustmentHandler>();
+        services.AddScoped<ProjectRoofSheetAdjustmentHandler>();
         services.AddScoped<FloorplanFit.Application.PlanSets.Library.GetPlanSetLibraryHandler>();
         services.AddScoped<ExtractWallCandidatesHandler>();
         services.AddScoped<GetFloorPlanLibraryHandler>();

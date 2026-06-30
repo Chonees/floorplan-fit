@@ -11,4 +11,5 @@ public sealed record SheetRegistrationDto(
     string Status,
     string? Warning,
     DateTime CreatedAtUtc,
-    DateTime? ConfirmedAtUtc);
+    DateTime? ConfirmedAtUtc,
+    string? RuleSummary = null);

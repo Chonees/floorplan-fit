@@ -80,6 +80,7 @@ public static class SqliteSchemaInitializer
                 confidence TEXT NOT NULL,
                 status TEXT NOT NULL,
                 warning TEXT NULL,
+                rule_summary TEXT NULL,
                 created_at_utc TEXT NOT NULL,
                 confirmed_at_utc TEXT NULL
             );
@@ -95,6 +96,7 @@ public static class SqliteSchemaInitializer
                 confidence TEXT NOT NULL,
                 status TEXT NOT NULL,
                 warning TEXT NULL,
+                rule_summary TEXT NULL,
                 canonical_compression_step_count INTEGER NOT NULL,
                 created_at_utc TEXT NOT NULL
             );
@@ -534,6 +536,7 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "sheet_registrations", "confidence", "TEXT NOT NULL DEFAULT '0'");
         EnsureColumnExists(connection, "sheet_registrations", "status", "TEXT NOT NULL DEFAULT 'PendingConfirmation'");
         EnsureColumnExists(connection, "sheet_registrations", "warning", "TEXT NULL");
+        EnsureColumnExists(connection, "sheet_registrations", "rule_summary", "TEXT NULL");
         EnsureColumnExists(connection, "sheet_registrations", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
         EnsureColumnExists(connection, "sheet_registrations", "confirmed_at_utc", "TEXT NULL");
     }
@@ -549,6 +552,7 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "sheet_adjustment_projections", "confidence", "TEXT NOT NULL DEFAULT '0'");
         EnsureColumnExists(connection, "sheet_adjustment_projections", "status", "TEXT NOT NULL DEFAULT 'RequiresManualConfirmation'");
         EnsureColumnExists(connection, "sheet_adjustment_projections", "warning", "TEXT NULL");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "rule_summary", "TEXT NULL");
         EnsureColumnExists(connection, "sheet_adjustment_projections", "canonical_compression_step_count", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumnExists(connection, "sheet_adjustment_projections", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
     }

@@ -12,4 +12,5 @@ public sealed record SheetAdjustmentProjectionDto(
     string Status,
     string? Warning,
     int CanonicalCompressionStepCount,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    string? RuleSummary = null);

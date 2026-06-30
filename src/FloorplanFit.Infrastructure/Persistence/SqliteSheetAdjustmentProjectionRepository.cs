@@ -37,6 +37,7 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
                 confidence,
                 status,
                 warning,
+                rule_summary,
                 canonical_compression_step_count,
                 created_at_utc)
             VALUES (
@@ -50,6 +51,7 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
                 $confidence,
                 $status,
                 $warning,
+                $rule_summary,
                 $canonical_compression_step_count,
                 $created_at_utc)
             """);
@@ -63,6 +65,7 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
         command.Parameters.AddWithValue("$confidence", projection.Confidence.ToString(CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$status", projection.Status.ToString());
         command.Parameters.AddWithValue("$warning", (object?)projection.Warning ?? DBNull.Value);
+        command.Parameters.AddWithValue("$rule_summary", (object?)projection.RuleSummary ?? DBNull.Value);
         command.Parameters.AddWithValue("$canonical_compression_step_count", projection.CanonicalCompressionStepCount);
         command.Parameters.AddWithValue("$created_at_utc", projection.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
         command.ExecuteNonQuery();
@@ -86,6 +89,7 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
                    confidence,
                    status,
                    warning,
+                   rule_summary,
                    canonical_compression_step_count,
                    created_at_utc
             FROM sheet_adjustment_projections
@@ -139,8 +143,9 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
             decimal.Parse(reader.GetString(7), CultureInfo.InvariantCulture),
             Enum.Parse<SheetAdjustmentProjectionStatus>(reader.GetString(8)),
             reader.IsDBNull(9) ? null : reader.GetString(9),
-            reader.GetInt32(10),
-            DateTime.Parse(reader.GetString(11), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+            reader.GetInt32(11),
+            DateTime.Parse(reader.GetString(12), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            reader.IsDBNull(10) ? null : reader.GetString(10));
     }
 
     private SqliteCommand CreateCommand(string sql)
