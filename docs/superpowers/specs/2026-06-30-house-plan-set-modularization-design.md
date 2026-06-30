@@ -998,6 +998,12 @@ Exit criteria:
 
 - electrical projection can be exported only when confidence/confirmation rules pass
 
+### Phase 4 implementation bridge
+
+The first Phase 4 implementation stores electrical projection records in `sheet_adjustment_projections`. It composes the stored electrical registration transform with the approved canonical `AdjustedSitePlanPlacementDto` affine placement instead of running a second fit engine.
+
+A projection is `ReadyForExport` only when registration is confirmed, confidence is high enough, and the canonical adjustment has no compression steps. Canonical compression is recorded as a review blocker in this first slice so piecewise deformation is not silently exported as a simple affine transform.
+
 ## Phase 5 - Roof Registration and Projection
 
 Goal:
