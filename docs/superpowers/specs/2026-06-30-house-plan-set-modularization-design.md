@@ -1070,6 +1070,12 @@ The first Phase 7 implementation creates the package audit boundary before addin
 
 Data collection starts with `audit_events`. A `PlanSetExportAuditCreated` event is best-effort: telemetry failure does not block saving the export audit. This phase still does not recalculate fit/registration, discover missing projections, rewrite dependent DXFs, or add Desktop UI.
 
+### Phase 7 sheet-discovery bridge
+
+`CreateMultiSheetExportAuditHandler` now supports two modes: explicit projection ids, or automatic PlanSet discovery when `DependentProjections` is empty. Discovery reads dependent sheets from `IPlanSheetReader`, reads existing projections for the plan-set/canonical adjustment, and records sheets without projections as `MissingProjection`.
+
+`MissingProjection` counts as a manual-confirmation blocker. This makes incomplete packages visible instead of silently omitting unprojected sheets. The phase still does not generate missing projections or rewrite dependent DXFs.
+
 ## Data Flow
 
 ```text
