@@ -3,5 +3,6 @@
 public enum SheetRegistrationMethod
 {
     WholeSheetSimilarity = 1,
-    RoofFootprintWithOverhang = 2
+    RoofFootprintWithOverhang = 2,
+    FacadeHorizontalReference = 3
 }
