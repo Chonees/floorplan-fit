@@ -1020,6 +1020,12 @@ Exit criteria:
 
 - roof projection stores rules/warnings and can be reviewed before export
 
+### Phase 5 implementation bridge
+
+The first Phase 5 implementation reuses the shared registration/projection stores but adds `rule_summary` so roof-specific overhang preservation is not lost. Roof registration uses `RoofFootprintWithOverhang`; roof projection uses `RoofOverhangPreserving` and carries `PreserveOverhangInches=<value>` into the persisted projection.
+
+This phase still does not rewrite/export roof DXF geometry. Missing overhang rules, low confidence, unconfirmed registration, or canonical compression steps force manual confirmation before export.
+
 ## Phase 6 - Facade/Elevation Analysis
 
 Goal:
