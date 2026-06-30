@@ -1076,6 +1076,12 @@ Data collection starts with `audit_events`. A `PlanSetExportAuditCreated` event 
 
 `MissingProjection` counts as a manual-confirmation blocker. This makes incomplete packages visible instead of silently omitting unprojected sheets. The phase still does not generate missing projections or rewrite dependent DXFs.
 
+### Phase 7 package-manifest bridge
+
+Each multi-sheet export audit now writes a physical JSON manifest through `IPlanSetExportManifestWriter`. The returned `PackageManifestPath` is persisted on `plan_set_exports` and returned in `MultiSheetExportAuditDto`.
+
+The manifest is the first concrete package artifact: it records canonical/dependent sheet export status, confidence, warnings, projection methods, rule summaries, and missing projections. This still does not create a zip archive, copy dependent DXFs, or rewrite dependent sheet geometry.
+
 ## Data Flow
 
 ```text
