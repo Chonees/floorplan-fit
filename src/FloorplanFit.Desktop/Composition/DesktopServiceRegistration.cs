@@ -4,6 +4,7 @@ using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Import;
 using FloorplanFit.Application.FloorPlans.Library;
 using FloorplanFit.Application.FloorPlans.Review;
+using FloorplanFit.Application.PlanSets.ExportAudit;
 using FloorplanFit.Application.PlanSets.Import;
 using FloorplanFit.Application.PlanSets.Projection;
 using FloorplanFit.Application.PlanSets.Registration;
@@ -82,6 +83,8 @@ public static class DesktopServiceRegistration
         services.AddScoped<IPlanSheetReader>(provider => provider.GetRequiredService<SqlitePlanSheetRepository>());
         services.AddScoped<ISheetRegistrationRepository, SqliteSheetRegistrationRepository>();
         services.AddScoped<ISheetAdjustmentProjectionRepository, SqliteSheetAdjustmentProjectionRepository>();
+        services.AddScoped<IPlanSetExportRepository, SqlitePlanSetExportRepository>();
+        services.AddScoped<IPlanSetAuditEventRepository, SqlitePlanSetAuditEventRepository>();
         services.AddScoped<IFloorPlanExtractionSourceReader, SqliteFloorPlanExtractionSourceReader>();
         services.AddScoped<IFloorPlanReviewSessionReader, SqliteFloorPlanReviewSessionReader>();
         services.AddScoped<IFloorPlanCurationDataCloneService, SqliteFloorPlanCurationDataCloneService>();
@@ -94,6 +97,7 @@ public static class DesktopServiceRegistration
         services.AddScoped<ProjectElectricalSheetAdjustmentHandler>();
         services.AddScoped<ProjectFacadeElevationSheetAdjustmentHandler>();
         services.AddScoped<ProjectRoofSheetAdjustmentHandler>();
+        services.AddScoped<CreateMultiSheetExportAuditHandler>();
         services.AddScoped<FloorplanFit.Application.PlanSets.Library.GetPlanSetLibraryHandler>();
         services.AddScoped<ExtractWallCandidatesHandler>();
         services.AddScoped<GetFloorPlanLibraryHandler>();

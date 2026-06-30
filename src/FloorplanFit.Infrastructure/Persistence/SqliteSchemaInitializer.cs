@@ -101,6 +101,38 @@ public static class SqliteSchemaInitializer
                 created_at_utc TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS plan_set_exports (
+                id TEXT PRIMARY KEY,
+                plan_set_version_id TEXT NOT NULL,
+                canonical_adjustment_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                confidence_summary_json TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS plan_set_exported_sheets (
+                id TEXT PRIMARY KEY,
+                plan_set_export_id TEXT NOT NULL,
+                plan_sheet_id TEXT NOT NULL,
+                sheet_projection_id TEXT NULL,
+                sheet_kind TEXT NOT NULL,
+                storage_path TEXT NULL,
+                status TEXT NOT NULL,
+                projection_method TEXT NULL,
+                confidence TEXT NULL,
+                warning TEXT NULL,
+                rule_summary TEXT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id TEXT PRIMARY KEY,
+                aggregate_type TEXT NOT NULL,
+                aggregate_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                occurred_at_utc TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS geometry_paths (
                 id TEXT PRIMARY KEY,
                 is_closed INTEGER NOT NULL
@@ -501,6 +533,8 @@ public static class SqliteSchemaInitializer
         EnsurePlanSheetsSchema(connection);
         EnsureSheetRegistrationsSchema(connection);
         EnsureSheetAdjustmentProjectionsSchema(connection);
+        EnsurePlanSetExportsSchema(connection);
+        EnsureAuditEventsSchema(connection);
         EnsureRoomLabelsSchema(connection);
         EnsureFixedPlanComponentsSchema(connection);
         EnsureDimensionsSchema(connection);
@@ -555,6 +589,35 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "sheet_adjustment_projections", "rule_summary", "TEXT NULL");
         EnsureColumnExists(connection, "sheet_adjustment_projections", "canonical_compression_step_count", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumnExists(connection, "sheet_adjustment_projections", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    private static void EnsurePlanSetExportsSchema(SqliteConnection connection)
+    {
+        EnsureColumnExists(connection, "plan_set_exports", "plan_set_version_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "plan_set_exports", "canonical_adjustment_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "plan_set_exports", "status", "TEXT NOT NULL DEFAULT 'RequiresManualConfirmation'");
+        EnsureColumnExists(connection, "plan_set_exports", "confidence_summary_json", "TEXT NOT NULL DEFAULT '{}'");
+        EnsureColumnExists(connection, "plan_set_exports", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
+
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "plan_set_export_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "plan_sheet_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "sheet_projection_id", "TEXT NULL");
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "sheet_kind", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "storage_path", "TEXT NULL");
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "status", "TEXT NOT NULL DEFAULT 'RequiresManualConfirmation'");
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "projection_method", "TEXT NULL");
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "confidence", "TEXT NULL");
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "warning", "TEXT NULL");
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "rule_summary", "TEXT NULL");
+    }
+
+    private static void EnsureAuditEventsSchema(SqliteConnection connection)
+    {
+        EnsureColumnExists(connection, "audit_events", "aggregate_type", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "audit_events", "aggregate_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "audit_events", "event_type", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "audit_events", "payload_json", "TEXT NOT NULL DEFAULT '{}'");
+        EnsureColumnExists(connection, "audit_events", "occurred_at_utc", "TEXT NOT NULL DEFAULT ''");
     }
 
     private static void EnsureFloorPlanVersionsSoftDeleteSchema(SqliteConnection connection)
