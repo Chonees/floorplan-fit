@@ -59,6 +59,17 @@ public static class SqliteSchemaInitializer
                 UNIQUE(floorplan_template_id, version_number)
             );
 
+            CREATE TABLE IF NOT EXISTS plan_sheets (
+                id TEXT PRIMARY KEY,
+                plan_set_version_id TEXT NOT NULL,
+                sheet_type INTEGER NOT NULL,
+                imported_document_id TEXT NOT NULL,
+                measurement_context_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS geometry_paths (
                 id TEXT PRIMARY KEY,
                 is_closed INTEGER NOT NULL
@@ -456,6 +467,7 @@ public static class SqliteSchemaInitializer
 
         command.ExecuteNonQuery();
         EnsureColumnExists(connection, "floorplan_templates", "active_published_curation_id", "TEXT NULL");
+        EnsurePlanSheetsSchema(connection);
         EnsureRoomLabelsSchema(connection);
         EnsureFixedPlanComponentsSchema(connection);
         EnsureDimensionsSchema(connection);
@@ -468,6 +480,17 @@ public static class SqliteSchemaInitializer
         EnsureFloorPlanVersionsSoftDeleteSchema(connection);
         EnsureDeletionPipelineIndexes(connection);
         return Task.CompletedTask;
+    }
+
+    private static void EnsurePlanSheetsSchema(SqliteConnection connection)
+    {
+        EnsureColumnExists(connection, "plan_sheets", "plan_set_version_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "plan_sheets", "sheet_type", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(connection, "plan_sheets", "imported_document_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "plan_sheets", "measurement_context_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "plan_sheets", "name", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "plan_sheets", "status", "TEXT NOT NULL DEFAULT 'Imported'");
+        EnsureColumnExists(connection, "plan_sheets", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
     }
 
     private static void EnsureFloorPlanVersionsSoftDeleteSchema(SqliteConnection connection)
