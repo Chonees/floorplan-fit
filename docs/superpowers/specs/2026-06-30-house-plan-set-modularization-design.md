@@ -921,6 +921,17 @@ Scope:
 - map current floor-plan template/version to canonical floor-plan sheet conceptually
 - keep current UI behavior intact
 
+### Phase 1 implementation bridge
+
+The first implementation slice exposes existing `FloorPlanLibraryItemDto` rows as `PlanSetLibraryItemDto` rows. This is intentionally a read-model bridge:
+
+- `HousePlanSetId` maps to the existing `FloorPlanTemplate.TemplateId`.
+- `ActivePlanSetVersionId` maps to the current `FloorPlanVersion` id.
+- The only sheet is a canonical `FloorPlan` sheet.
+- Dependent electrical, roof, and facade/elevation sheets are not persisted in Phase 1.
+
+This keeps the current app working while giving future PlanSet features a stable product vocabulary.
+
 Exit criteria:
 
 - architecture docs explain that current floor-plan library item is the first canonical sheet of a future plan set

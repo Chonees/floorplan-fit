@@ -6,7 +6,7 @@
 
 **Architecture:** This is a thin compatibility backbone. Existing `FloorPlanTemplate` / `FloorPlanVersion` remain the persisted source; a new PlanSets application/read-model surface projects them as `HousePlanSet` summaries with a canonical `FloorPlan` sheet. No schema migration, UI rewrite, or dependent-sheet import is included in this phase.
 
-**Tech Stack:** C#/.NET 10, xUnit, existing Application/Contracts/Domain projects. No build command; use targeted `dotnet test --no-restore` only.
+**Tech Stack:** C#/.NET 10, xUnit, existing Application/Contracts/Domain projects. No build command. Because this repo forbids builds after changes, focused tests may only be executed when an existing compiled test assembly already contains the new tests; otherwise use `git diff --check` and leave test execution for the next allowed compile window.
 
 ---
 
@@ -272,10 +272,10 @@ public sealed class GetPlanSetLibraryHandlerTests
 Run:
 
 ```powershell
-dotnet test tests\FloorplanFit.Application.Tests\FloorplanFit.Application.Tests.csproj --no-restore --filter FullyQualifiedName~PlanSets.Library.GetPlanSetLibraryHandlerTests
+dotnet test tests\FloorplanFit.Application.Tests\FloorplanFit.Application.Tests.csproj --no-build --filter FullyQualifiedName~PlanSets.Library.GetPlanSetLibraryHandlerTests
 ```
 
-Expected: FAIL because `FloorplanFit.Application.PlanSets.Library.GetPlanSetLibraryHandler` does not exist.
+Expected if the compiled test assembly includes this test: FAIL because `FloorplanFit.Application.PlanSets.Library.GetPlanSetLibraryHandler` does not exist. If the compiled assembly does not include new tests yet, do not force a build; record RED by proving the production handler/contracts are absent before implementation.
 
 ---
 
@@ -362,10 +362,10 @@ public sealed class GetPlanSetLibraryHandler
 Run:
 
 ```powershell
-dotnet test tests\FloorplanFit.Application.Tests\FloorplanFit.Application.Tests.csproj --no-restore --filter FullyQualifiedName~PlanSets.Library.GetPlanSetLibraryHandlerTests
+dotnet test tests\FloorplanFit.Application.Tests\FloorplanFit.Application.Tests.csproj --no-build --filter FullyQualifiedName~PlanSets.Library.GetPlanSetLibraryHandlerTests
 ```
 
-Expected: PASS for the two PlanSet library tests.
+Expected if the compiled test assembly includes this test: PASS for the two PlanSet library tests. If not, do not force a build; use `git diff --check` and explicitly report that runtime test execution is pending because builds are forbidden after changes.
 
 - [ ] **Step 4: Commit**
 
