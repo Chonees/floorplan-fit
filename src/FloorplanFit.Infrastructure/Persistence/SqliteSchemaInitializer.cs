@@ -70,6 +70,20 @@ public static class SqliteSchemaInitializer
                 created_at_utc TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS sheet_registrations (
+                id TEXT PRIMARY KEY,
+                plan_set_version_id TEXT NOT NULL,
+                dependent_sheet_id TEXT NOT NULL,
+                canonical_floor_plan_version_id TEXT NOT NULL,
+                method TEXT NOT NULL,
+                transform_json TEXT NOT NULL,
+                confidence TEXT NOT NULL,
+                status TEXT NOT NULL,
+                warning TEXT NULL,
+                created_at_utc TEXT NOT NULL,
+                confirmed_at_utc TEXT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS geometry_paths (
                 id TEXT PRIMARY KEY,
                 is_closed INTEGER NOT NULL
@@ -468,6 +482,7 @@ public static class SqliteSchemaInitializer
         command.ExecuteNonQuery();
         EnsureColumnExists(connection, "floorplan_templates", "active_published_curation_id", "TEXT NULL");
         EnsurePlanSheetsSchema(connection);
+        EnsureSheetRegistrationsSchema(connection);
         EnsureRoomLabelsSchema(connection);
         EnsureFixedPlanComponentsSchema(connection);
         EnsureDimensionsSchema(connection);
@@ -491,6 +506,20 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "plan_sheets", "name", "TEXT NOT NULL DEFAULT ''");
         EnsureColumnExists(connection, "plan_sheets", "status", "TEXT NOT NULL DEFAULT 'Imported'");
         EnsureColumnExists(connection, "plan_sheets", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    private static void EnsureSheetRegistrationsSchema(SqliteConnection connection)
+    {
+        EnsureColumnExists(connection, "sheet_registrations", "plan_set_version_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "sheet_registrations", "dependent_sheet_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "sheet_registrations", "canonical_floor_plan_version_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "sheet_registrations", "method", "TEXT NOT NULL DEFAULT 'WholeSheetSimilarity'");
+        EnsureColumnExists(connection, "sheet_registrations", "transform_json", "TEXT NOT NULL DEFAULT '{}'");
+        EnsureColumnExists(connection, "sheet_registrations", "confidence", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "sheet_registrations", "status", "TEXT NOT NULL DEFAULT 'PendingConfirmation'");
+        EnsureColumnExists(connection, "sheet_registrations", "warning", "TEXT NULL");
+        EnsureColumnExists(connection, "sheet_registrations", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "sheet_registrations", "confirmed_at_utc", "TEXT NULL");
     }
 
     private static void EnsureFloorPlanVersionsSoftDeleteSchema(SqliteConnection connection)
