@@ -1042,6 +1042,12 @@ Exit criteria:
 
 - facade/elevation projection design is proven with at least one real example before automation is trusted
 
+### Phase 6 implementation bridge
+
+The first Phase 6 implementation reuses the shared registration/projection stores and adds facade-specific method names instead of creating a facade fit engine. Facade/elevation registration uses `FacadeHorizontalReference` and stores `PreserveVertical=true;HorizontalReference=<name>` in `rule_summary`.
+
+Facade/elevation projection uses `FacadeHorizontalPreservingVerticals`. It composes the approved canonical floor-plan horizontal scale/offset into the registered horizontal reference, but keeps rotation and vertical translation at `0` so the elevation's height/vertical scale is not silently distorted. Missing vertical-preservation metadata, low confidence, unconfirmed registration, or canonical compression steps force manual confirmation before export.
+
 ## Phase 7 - Multi-Sheet Export with Audit
 
 Goal:
