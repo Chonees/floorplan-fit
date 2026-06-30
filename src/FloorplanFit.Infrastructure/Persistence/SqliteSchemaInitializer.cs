@@ -84,6 +84,21 @@ public static class SqliteSchemaInitializer
                 confirmed_at_utc TEXT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS sheet_adjustment_projections (
+                id TEXT PRIMARY KEY,
+                plan_set_version_id TEXT NOT NULL,
+                dependent_sheet_id TEXT NOT NULL,
+                sheet_registration_id TEXT NOT NULL,
+                canonical_adjustment_id TEXT NOT NULL,
+                method TEXT NOT NULL,
+                transform_json TEXT NOT NULL,
+                confidence TEXT NOT NULL,
+                status TEXT NOT NULL,
+                warning TEXT NULL,
+                canonical_compression_step_count INTEGER NOT NULL,
+                created_at_utc TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS geometry_paths (
                 id TEXT PRIMARY KEY,
                 is_closed INTEGER NOT NULL
@@ -483,6 +498,7 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "floorplan_templates", "active_published_curation_id", "TEXT NULL");
         EnsurePlanSheetsSchema(connection);
         EnsureSheetRegistrationsSchema(connection);
+        EnsureSheetAdjustmentProjectionsSchema(connection);
         EnsureRoomLabelsSchema(connection);
         EnsureFixedPlanComponentsSchema(connection);
         EnsureDimensionsSchema(connection);
@@ -520,6 +536,21 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "sheet_registrations", "warning", "TEXT NULL");
         EnsureColumnExists(connection, "sheet_registrations", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
         EnsureColumnExists(connection, "sheet_registrations", "confirmed_at_utc", "TEXT NULL");
+    }
+
+    private static void EnsureSheetAdjustmentProjectionsSchema(SqliteConnection connection)
+    {
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "plan_set_version_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "dependent_sheet_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "sheet_registration_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "canonical_adjustment_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "method", "TEXT NOT NULL DEFAULT 'ElectricalWholeSheetSimilarity'");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "transform_json", "TEXT NOT NULL DEFAULT '{}'");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "confidence", "TEXT NOT NULL DEFAULT '0'");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "status", "TEXT NOT NULL DEFAULT 'RequiresManualConfirmation'");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "warning", "TEXT NULL");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "canonical_compression_step_count", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
     }
 
     private static void EnsureFloorPlanVersionsSoftDeleteSchema(SqliteConnection connection)
