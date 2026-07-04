@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using FloorplanFit.Application.Abstractions;
+using FloorplanFit.Application.PlanSets.DataCollection;
 using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Domain.PlanSets;
 
@@ -19,6 +20,7 @@ public sealed class CreateMultiSheetExportAuditHandler
     private readonly IPlanSetExportManifestWriter planSetExportManifestWriter;
     private readonly IUnitOfWork unitOfWork;
     private readonly IClock clock;
+    private readonly GetPlanSetQualityReportHandler? qualityReportHandler;
 
     public CreateMultiSheetExportAuditHandler(
         ISheetAdjustmentProjectionRepository sheetAdjustmentProjectionRepository,
@@ -27,7 +29,8 @@ public sealed class CreateMultiSheetExportAuditHandler
         IPlanSetAuditEventRepository planSetAuditEventRepository,
         IPlanSetExportManifestWriter planSetExportManifestWriter,
         IUnitOfWork unitOfWork,
-        IClock clock)
+        IClock clock,
+        GetPlanSetQualityReportHandler? qualityReportHandler = null)
     {
         this.sheetAdjustmentProjectionRepository = sheetAdjustmentProjectionRepository;
         this.planSheetReader = planSheetReader;
@@ -36,6 +39,7 @@ public sealed class CreateMultiSheetExportAuditHandler
         this.planSetExportManifestWriter = planSetExportManifestWriter;
         this.unitOfWork = unitOfWork;
         this.clock = clock;
+        this.qualityReportHandler = qualityReportHandler;
     }
 
     public async Task<MultiSheetExportAuditDto> HandleAsync(
@@ -83,7 +87,7 @@ public sealed class CreateMultiSheetExportAuditHandler
                 ruleSummary: null)
         };
 
-        if (request.DependentProjections.Count == 0)
+        if (request.DiscoverAllDependentSheets || request.DependentProjections.Count == 0)
         {
             await AddDiscoveredDependentSheetsAsync(exportId, request, sheets, cancellationToken);
         }
@@ -103,6 +107,7 @@ public sealed class CreateMultiSheetExportAuditHandler
         var status = summary.ManualConfirmationRequiredSheetCount == 0
             ? PlanSetExportStatus.ReadyForExport
             : PlanSetExportStatus.RequiresManualConfirmation;
+        var qualityReport = await TryBuildQualityReportAsync(request.PlanSetVersionId, cancellationToken);
         var draftExport = new PlanSetExport(
             exportId,
             request.PlanSetVersionId,
@@ -112,7 +117,7 @@ public sealed class CreateMultiSheetExportAuditHandler
             packageManifestPath: null,
             createdAtUtc,
             sheets);
-        var draftAudit = ToDto(draftExport, summary);
+        var draftAudit = ToDto(draftExport, summary, qualityReport);
         var packageManifestPath = await planSetExportManifestWriter.WriteAsync(draftAudit, cancellationToken);
         var export = new PlanSetExport(
             exportId,
@@ -128,7 +133,7 @@ public sealed class CreateMultiSheetExportAuditHandler
         await TryRecordAuditEventAsync(export, summary, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return ToDto(export, summary);
+        return ToDto(export, summary, qualityReport);
     }
 
     private async Task<PlanSetExportedSheet> BuildDependentSheetAsync(
@@ -191,6 +196,9 @@ public sealed class CreateMultiSheetExportAuditHandler
             request.PlanSetVersionId,
             request.CanonicalAdjustmentId,
             cancellationToken);
+        var exportPathByProjectionId = request.DependentProjections.ToDictionary(
+            projection => projection.ProjectionId,
+            projection => projection.ExportPath);
         var latestProjectionBySheet = projections
             .GroupBy(projection => projection.DependentSheetId)
             .ToDictionary(
@@ -209,7 +217,7 @@ public sealed class CreateMultiSheetExportAuditHandler
                     exportId,
                     projection,
                     sheet.SheetType,
-                    storagePath: null,
+                    storagePath: exportPathByProjectionId.GetValueOrDefault(projection.Id),
                     status: status));
                 continue;
             }
@@ -247,7 +255,8 @@ public sealed class CreateMultiSheetExportAuditHandler
             projectionMethod: projection.Method.ToString(),
             confidence: projection.Confidence,
             warning: projection.Warning,
-            ruleSummary: projection.RuleSummary);
+            ruleSummary: projection.RuleSummary,
+            recipeHandlingSummary: projection.RecipeHandlingSummary);
     }
 
     private static ProjectionAuditSummaryDto BuildSummary(IReadOnlyList<PlanSetExportedSheet> sheets)
@@ -296,9 +305,30 @@ public sealed class CreateMultiSheetExportAuditHandler
         }
     }
 
+    private async Task<PlanSetQualityReportDto?> TryBuildQualityReportAsync(
+        Guid planSetVersionId,
+        CancellationToken cancellationToken)
+    {
+        if (qualityReportHandler is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await qualityReportHandler.HandleAsync(planSetVersionId, cancellationToken);
+        }
+        catch (Exception)
+        {
+            // ponytail: quality reporting is export metadata; keep package export alive unless it becomes a hard business gate.
+            return null;
+        }
+    }
+
     private static MultiSheetExportAuditDto ToDto(
         PlanSetExport export,
-        ProjectionAuditSummaryDto summary)
+        ProjectionAuditSummaryDto summary,
+        PlanSetQualityReportDto? qualityReport = null)
     {
         return new MultiSheetExportAuditDto(
             export.Id,
@@ -308,7 +338,8 @@ public sealed class CreateMultiSheetExportAuditHandler
             summary,
             export.Sheets.Select(ToDto).ToArray(),
             export.PackageManifestPath,
-            export.CreatedAtUtc);
+            export.CreatedAtUtc,
+            qualityReport);
     }
 
     private static ExportedPlanSheetDto ToDto(PlanSetExportedSheet sheet)
@@ -322,6 +353,7 @@ public sealed class CreateMultiSheetExportAuditHandler
             sheet.ProjectionMethod,
             sheet.Confidence,
             sheet.Warning,
-            sheet.RuleSummary);
+            sheet.RuleSummary,
+            sheet.RecipeHandlingSummary);
     }
 }

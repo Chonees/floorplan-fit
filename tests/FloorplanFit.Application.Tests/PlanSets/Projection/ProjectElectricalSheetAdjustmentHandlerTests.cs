@@ -14,12 +14,14 @@ public sealed class ProjectElectricalSheetAdjustmentHandlerTests
         var clock = new FakeClock(new DateTime(2026, 6, 30, 20, 0, 0, DateTimeKind.Utc));
         var registration = CreateRegistration(SheetRegistrationStatus.Confirmed, 0.92m, clock.UtcNow);
         var projectionRepository = new CapturingSheetAdjustmentProjectionRepository();
+        var auditEventRepository = new CapturingPlanSetAuditEventRepository();
         var unitOfWork = new CapturingUnitOfWork();
         var handler = new ProjectElectricalSheetAdjustmentHandler(
             new FakeSheetRegistrationRepository(registration),
             projectionRepository,
             unitOfWork,
-            clock);
+            clock,
+            auditEventRepository);
         var canonicalAdjustmentId = Guid.NewGuid();
 
         var response = await handler.HandleAsync(
@@ -52,6 +54,15 @@ public sealed class ProjectElectricalSheetAdjustmentHandlerTests
         var saved = Assert.Single(projectionRepository.Items);
         Assert.Equal(response.ProjectionId, saved.Id);
         Assert.Equal(SheetAdjustmentProjectionStatus.ReadyForExport, saved.Status);
+
+        var auditEvent = Assert.Single(auditEventRepository.Items);
+        Assert.Equal("SheetAdjustmentProjection", auditEvent.AggregateType);
+        Assert.Equal(response.ProjectionId, auditEvent.AggregateId);
+        Assert.Equal("SheetAdjustmentProjectionQualityMeasured", auditEvent.EventType);
+        Assert.Equal(clock.UtcNow, auditEvent.OccurredAtUtc);
+        Assert.Contains("\"confidence\":0.92", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"status\":\"ReadyForExport\"", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"method\":\"ElectricalWholeSheetSimilarity\"", auditEvent.PayloadJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -78,6 +89,75 @@ public sealed class ProjectElectricalSheetAdjustmentHandlerTests
 
         Assert.Equal("RequiresManualConfirmation", response.Status);
         Assert.Contains("confirmed", response.Warning, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleAsync_reports_canonical_recipe_compression_as_electrical_review_required()
+    {
+        var clock = new FakeClock(new DateTime(2026, 7, 2, 12, 0, 0, DateTimeKind.Utc));
+        var registration = CreateRegistration(SheetRegistrationStatus.Confirmed, 0.92m, clock.UtcNow);
+        var projectionRepository = new CapturingSheetAdjustmentProjectionRepository();
+        var handler = new ProjectElectricalSheetAdjustmentHandler(
+            new FakeSheetRegistrationRepository(registration),
+            projectionRepository,
+            new CapturingUnitOfWork(),
+            clock);
+
+        var response = await handler.HandleAsync(
+            new ProjectElectricalSheetAdjustmentRequest(
+                registration.Id,
+                Guid.NewGuid(),
+                new AdjustedSitePlanPlacementDto(
+                    1m,
+                    0m,
+                    0m,
+                    [new AdjustedCompressionStepDto("Width", "Right", [new AdjustedCompressionMarkerDto(50m, 2m)])])),
+            CancellationToken.None);
+
+        Assert.Equal("RequiresManualConfirmation", response.Status);
+        Assert.Equal(1, response.CanonicalCompressionStepCount);
+        var recipeHandling = Assert.IsType<string>(response.RecipeHandlingSummary);
+        Assert.Contains("HorizontalCompression", recipeHandling);
+        Assert.Contains("ElectricalPlan", recipeHandling);
+        Assert.Contains("review", recipeHandling, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleAsync_consumes_explicit_recipe_for_transform_and_review_summary()
+    {
+        var clock = new FakeClock(new DateTime(2026, 7, 3, 12, 0, 0, DateTimeKind.Utc));
+        var registration = CreateRegistration(SheetRegistrationStatus.Confirmed, 0.92m, clock.UtcNow);
+        var handler = new ProjectElectricalSheetAdjustmentHandler(
+            new FakeSheetRegistrationRepository(registration),
+            new CapturingSheetAdjustmentProjectionRepository(),
+            new CapturingUnitOfWork(),
+            clock);
+        var placementWithoutCompression = new AdjustedSitePlanPlacementDto(
+            1m,
+            0m,
+            0m,
+            []);
+        var explicitRecipe = new AdjustmentRecipeSummaryDto(
+            "v1",
+            2m,
+            100m,
+            200m,
+            [new AdjustmentRecipeOperationDto("HorizontalCompression", "Width", "Right", 50m, 2m)]);
+
+        var response = await handler.HandleAsync(
+            new ProjectElectricalSheetAdjustmentRequest(
+                registration.Id,
+                Guid.NewGuid(),
+                placementWithoutCompression,
+                explicitRecipe),
+            CancellationToken.None);
+
+        Assert.Equal("RequiresManualConfirmation", response.Status);
+        Assert.Equal(1, response.CanonicalCompressionStepCount);
+        Assert.Equal(3m, response.Transform.Scale);
+        Assert.Equal(110m, response.Transform.TranslateX);
+        Assert.Equal(194m, response.Transform.TranslateY);
+        Assert.Contains("HorizontalCompression", response.RecipeHandlingSummary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -193,6 +273,17 @@ public sealed class ProjectElectricalSheetAdjustmentHandlerTests
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
             Saved = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingPlanSetAuditEventRepository : IPlanSetAuditEventRepository
+    {
+        public List<PlanSetAuditEvent> Items { get; } = [];
+
+        public Task AddAsync(PlanSetAuditEvent auditEvent, CancellationToken cancellationToken)
+        {
+            Items.Add(auditEvent);
             return Task.CompletedTask;
         }
     }

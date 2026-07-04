@@ -39,7 +39,8 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
                 warning,
                 rule_summary,
                 canonical_compression_step_count,
-                created_at_utc)
+                created_at_utc,
+                recipe_handling_summary)
             VALUES (
                 $id,
                 $plan_set_version_id,
@@ -53,7 +54,8 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
                 $warning,
                 $rule_summary,
                 $canonical_compression_step_count,
-                $created_at_utc)
+                $created_at_utc,
+                $recipe_handling_summary)
             """);
         command.Parameters.AddWithValue("$id", projection.Id.ToString());
         command.Parameters.AddWithValue("$plan_set_version_id", projection.PlanSetVersionId.ToString());
@@ -68,6 +70,7 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
         command.Parameters.AddWithValue("$rule_summary", (object?)projection.RuleSummary ?? DBNull.Value);
         command.Parameters.AddWithValue("$canonical_compression_step_count", projection.CanonicalCompressionStepCount);
         command.Parameters.AddWithValue("$created_at_utc", projection.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$recipe_handling_summary", (object?)projection.RecipeHandlingSummary ?? DBNull.Value);
         command.ExecuteNonQuery();
 
         return Task.CompletedTask;
@@ -91,7 +94,8 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
                    warning,
                    rule_summary,
                    canonical_compression_step_count,
-                   created_at_utc
+                   created_at_utc,
+                   recipe_handling_summary
             FROM sheet_adjustment_projections
             WHERE id = $id
             LIMIT 1
@@ -128,7 +132,8 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
                    warning,
                    rule_summary,
                    canonical_compression_step_count,
-                   created_at_utc
+                   created_at_utc,
+                   recipe_handling_summary
             FROM sheet_adjustment_projections
             WHERE plan_set_version_id = $plan_set_version_id
               AND canonical_adjustment_id = $canonical_adjustment_id
@@ -145,6 +150,65 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
         }
 
         return Task.FromResult<IReadOnlyList<SheetAdjustmentProjection>>(items);
+    }
+
+    public Task<IReadOnlyList<SheetAdjustmentProjection>> ListByPlanSetVersionAsync(
+        Guid planSetVersionId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            SELECT id,
+                   plan_set_version_id,
+                   dependent_sheet_id,
+                   sheet_registration_id,
+                   canonical_adjustment_id,
+                   method,
+                   transform_json,
+                   confidence,
+                   status,
+                   warning,
+                   rule_summary,
+                   canonical_compression_step_count,
+                   created_at_utc,
+                   recipe_handling_summary
+            FROM sheet_adjustment_projections
+            WHERE plan_set_version_id = $plan_set_version_id
+            ORDER BY created_at_utc ASC
+            """);
+        command.Parameters.AddWithValue("$plan_set_version_id", planSetVersionId.ToString());
+
+        using var reader = command.ExecuteReader();
+        var items = new List<SheetAdjustmentProjection>();
+        while (reader.Read())
+        {
+            items.Add(MapProjection(reader));
+        }
+
+        return Task.FromResult<IReadOnlyList<SheetAdjustmentProjection>>(items);
+    }
+
+    public Task UpdateAsync(SheetAdjustmentProjection projection, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            UPDATE sheet_adjustment_projections
+            SET status = $status
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", projection.Id.ToString());
+        command.Parameters.AddWithValue("$status", projection.Status.ToString());
+
+        if (command.ExecuteNonQuery() == 0)
+        {
+            throw new InvalidOperationException("Sheet adjustment projection was not found.");
+        }
+
+        return Task.CompletedTask;
     }
 
     private static string SerializeTransform(SheetAdjustmentProjectionTransform transform)
@@ -185,7 +249,8 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
             reader.IsDBNull(9) ? null : reader.GetString(9),
             reader.GetInt32(11),
             DateTime.Parse(reader.GetString(12), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-            reader.IsDBNull(10) ? null : reader.GetString(10));
+            reader.IsDBNull(10) ? null : reader.GetString(10),
+            reader.IsDBNull(13) ? null : reader.GetString(13));
     }
 
     private SqliteCommand CreateCommand(string sql)

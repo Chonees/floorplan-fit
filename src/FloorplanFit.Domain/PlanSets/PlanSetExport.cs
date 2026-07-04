@@ -37,6 +37,8 @@ public sealed class PlanSetExport
             throw new ArgumentException("Confidence summary is required.", nameof(confidenceSummaryJson));
         }
 
+        ArgumentNullException.ThrowIfNull(sheets);
+
         if (sheets.Count == 0)
         {
             throw new ArgumentException("At least one exported sheet is required.", nameof(sheets));

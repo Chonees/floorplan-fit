@@ -19,16 +19,25 @@ This deliberately avoids four competing fit engines.
 
 ## Current-State Evidence
 
-Verified in the working tree:
+Originally verified on 2026-06-30:
 
 - The solution is already a local-first modular monolith with `Desktop`, `Application`, `Domain`, `Infrastructure`, and `Contracts` projects.
 - `TECH-STACK-ARCHITECTURE-DATAFLOW.md` currently describes a floor-plan-centered flow: raw DXF, extraction by CAD families, curation, site-plan envelope, deterministic fit, export, and audit.
-- Code search found no first-class `HousePlanSet`, `PlanSetVersion`, `PlanSheet`, `SheetRegistration`, electrical-plan module, roof-plan module, or facade/elevation module.
 - Existing electrical mentions are extraction exclusions such as `ELECTRICAL WIRING`, not a managed electrical sheet model.
 - Existing facade concepts are domain/test vocabulary such as `WallRole.Facade` and `ConstraintKind.PreserveFacade`, not facade/elevation sheet support.
 - Existing `roof` mentions in preview/dimension code are internal geometric naming for dimension shape lines, not roof-plan support.
 
-So this design is not a rename exercise. It is an incremental product architecture shift: keep the floor-plan capabilities, then wrap them in a plan-set model.
+As-built update on 2026-07-01:
+
+- `Domain/PlanSets` now contains `HousePlanSet`, `PlanSetVersion`, `PlanSheet`, `SheetRegistration`, `SheetAdjustmentProjection`, and export/audit domain entities.
+- `Application/PlanSets` now has modules for `Adjustment`, `Classification`, `Confirmation`, `DataCollection`, `Export`, `ExportAudit`, `Import`, `Library`, `Projection`, and `Registration`.
+- `Contracts/PlanSets` now exposes request/response DTOs for resolving plan sets/versions, importing/classifying sheets, registering/projecting dependent sheets, recording canonical adjustment, confirming manual states, exporting projected sheets, exporting multi-sheet packages, and reading quality reports.
+- `Infrastructure/Persistence` now persists plan sets, plan-set versions, sheets, registrations, projections, canonical adjustments, export audit data, and quality/audit events through SQLite repositories.
+- `Desktop` now exposes a minimal visible HousePlanSet loop: select a canonical floor-plan version, import electrical/roof/facade sheets, correct wrong unregistered or rejected sheet types, unlink wrong unregistered/rejected imports, register dependent sheets through a manual transform dialog, show registration/projection method-confidence-warning labels, reject or confirm pending registrations, confirm manual projections, show package export audit lines after canonical adjustment, and re-export the package after manual projection approval without creating a new canonical adjustment.
+- `SheetClassification` now uses filename/title plus DXF layer hints, records classification quality events in `audit_events`/DataCollection signals, and exposes a type-correction use case for unregistered dependent sheets; it still requires manual confirmation when evidence conflicts.
+- `ExportProjectedPlanSheetHandler` and `ProjectedPlanSheetDxfExporter` now export `ReadyForExport` dependent DXFs by applying stored projection transforms to explicit DXF coordinates, circle/arc radii, text heights, INSERT scale/rotation, and arc angles.
+
+So this design is no longer only a proposal. It is the governing module contract for the partially implemented HousePlanSet backbone. Keep updating this file when current truth changes.
 
 ## Chosen Approach
 
@@ -50,7 +59,8 @@ Application/
     Import/
     Classification/
     Registration/
-    AdjustmentProjection/
+    Projection/
+    Export/
     ExportAudit/
     DataCollection/
   FloorPlans/
@@ -909,6 +919,18 @@ Manual fallback:
 
 ## Incremental Phases
 
+### Implementation status as of 2026-07-01
+
+| Phase | Current status | Still missing |
+| --- | --- | --- |
+| 1. Conceptual PlanSet Backbone | Implemented with explicit `HousePlanSet` and `PlanSetVersion` resolvers/persistence. | Broader naming cleanup where old floor-plan terminology is still transitional. |
+| 2. Multiple Sheets per House | Implemented through `PlanSheet` import/listing, visible Desktop import/select/unlink/type-correction seam, registration-rejection recovery, and Application/Persistence sheet-type correction before active registration. | Rich import wizard/modal for correction/review. |
+| 3. Electrical Registration | Implemented as whole-sheet similarity registration with manual transform input, confidence/status, visible quality labels, and visible Register/Reject/Confirm actions. | Automatic anchor picking/visual calibration UX. |
+| 4. Electrical Projection | Implemented by composing confirmed registration with canonical placement, surfacing projection quality labels, and visible projection confirmation. | Piecewise canonical compression projection remains manual-review gated. |
+| 5. Roof Registration and Projection | Implemented with overhang rule metadata, roof-specific projection method, and shared visible Register/Confirm/Confirm Projection path. | Validation against real roof sheets before deeper roof geometry automation. |
+| 6. Facade/Elevation Analysis | Implemented with horizontal-reference/vertical-preservation projection rule and shared visible Register/Confirm/Confirm Projection path. | Validation against real facade/elevation sheets before richer elevation rules. |
+| 7. Multi-Sheet Export with Audit | Implemented with package manifest, dependent DXF projection export for `ReadyForExport` sheets, projection discovery, missing/manual sheet audit, quality report metadata, and post-review re-export from the same canonical adjustment. | Richer manual geometry review. |
+
 ## Phase 1 - Conceptual PlanSet Backbone
 
 Goal:
@@ -958,7 +980,7 @@ Exit criteria:
 
 The Phase 2 implementation stores dependent sheets in `plan_sheets` using the current `FloorPlanVersion.Id` as the temporary `PlanSetVersionId`. User-selected sheet type is the first classification source.
 
-This enables a current house plan set to hold a canonical floor-plan sheet plus dependent electrical, roof, or facade/elevation sheet records without introducing registration/projection yet.
+This enables a current house plan set to hold a canonical floor-plan sheet plus dependent electrical, roof, or facade/elevation sheet records without introducing registration/projection yet. Imported dependent sheet type can now be corrected before registration or after a pending registration is rejected; pending/confirmed registrations still block correction to avoid stale registration/projection data.
 
 ## Phase 3 - Electrical Registration
 
@@ -1024,7 +1046,7 @@ Exit criteria:
 
 The first Phase 5 implementation reuses the shared registration/projection stores but adds `rule_summary` so roof-specific overhang preservation is not lost. Roof registration uses `RoofFootprintWithOverhang`; roof projection uses `RoofOverhangPreserving` and carries `PreserveOverhangInches=<value>` into the persisted projection.
 
-This phase still does not rewrite/export roof DXF geometry. Missing overhang rules, low confidence, unconfirmed registration, or canonical compression steps force manual confirmation before export.
+Roof projections now participate in the shared dependent DXF export path once their projection is `ReadyForExport`. Missing overhang rules, low confidence, unconfirmed registration, or canonical compression steps still force manual confirmation before export.
 
 ## Phase 6 - Facade/Elevation Analysis
 
@@ -1068,19 +1090,31 @@ Exit criteria:
 
 The first Phase 7 implementation creates the package audit boundary before adding dependent-sheet DXF rewriting. `CreateMultiSheetExportAuditHandler` consumes the canonical floor-plan export path plus explicit dependent projection ids, persists `plan_set_exports` and `plan_set_exported_sheets`, and reports automatic vs manual sheet status, confidence, warnings, projection method, and rule summary.
 
-Data collection starts with `audit_events`. A `PlanSetExportAuditCreated` event is best-effort: telemetry failure does not block saving the export audit. This phase still does not recalculate fit/registration, discover missing projections, rewrite dependent DXFs, or add Desktop UI.
+Data collection starts with `audit_events`. A `PlanSetExportAuditCreated` event is best-effort: telemetry failure does not block saving the export audit. This phase does not recalculate fit/registration; it consumes canonical adjustments, projections, and their confirmation status.
 
 ### Phase 7 sheet-discovery bridge
 
 `CreateMultiSheetExportAuditHandler` now supports two modes: explicit projection ids, or automatic PlanSet discovery when `DependentProjections` is empty. Discovery reads dependent sheets from `IPlanSheetReader`, reads existing projections for the plan-set/canonical adjustment, and records sheets without projections as `MissingProjection`.
 
-`MissingProjection` counts as a manual-confirmation blocker. This makes incomplete packages visible instead of silently omitting unprojected sheets. The phase still does not generate missing projections or rewrite dependent DXFs.
+`MissingProjection` counts as a manual-confirmation blocker. This makes incomplete packages visible instead of silently omitting unprojected sheets. The phase still does not invent missing projections; registered sheets are projected before package export by the Desktop adjustment flow.
 
 ### Phase 7 package-manifest bridge
 
 Each multi-sheet export audit now writes a physical JSON manifest through `IPlanSetExportManifestWriter`. The returned `PackageManifestPath` is persisted on `plan_set_exports` and returned in `MultiSheetExportAuditDto`.
 
-The manifest is the first concrete package artifact: it records canonical/dependent sheet export status, confidence, warnings, projection methods, rule summaries, and missing projections. This still does not create a zip archive, copy dependent DXFs, or rewrite dependent sheet geometry.
+The manifest records canonical/dependent sheet export status, confidence, warnings, projection methods, rule summaries, and missing projections. It is accompanied by projected dependent DXF files for `ReadyForExport` projections. This still does not create a zip archive or a full manual geometry review workspace.
+
+### Phase 7 projected dependent DXF export bridge
+
+`ExportMultiSheetPlanSetPackageHandler` exports the canonical adjusted floor-plan path plus every latest `ReadyForExport` dependent projection for the same plan-set version/canonical adjustment. `ExportProjectedPlanSheetHandler` refuses unconfirmed/manual projections, so the package cannot silently emit untrusted dependent geometry.
+
+`ProjectedPlanSheetDxfExporter` currently applies the stored projection transform to explicit DXF coordinate pairs and the common dependent-sheet primitives already covered by tests: circle/arc radii, text/MTEXT heights, INSERT scale/rotation, and arc start/end angles. More DXF entity families should be added only when real sheets require them.
+
+### Phase 7 post-review re-export bridge
+
+`SitePlanAdjustmentViewModel.ConfirmManualPlanSetProjectionsAndReExportAsync(...)` confirms the current audit's `RequiresManualConfirmation` projection ids and calls `ExportMultiSheetPlanSetPackageHandler` again with the same `LastCanonicalAdjustmentId` and canonical exported DXF path.
+
+This keeps the canonical floor-plan adjustment stable after manual projection approval. It does not create a new fit run, recalculate registration, or invent a separate dependent-sheet fit engine.
 
 ## Data Flow
 
@@ -1221,7 +1255,7 @@ Invariant:
 The published floor-plan curation is the canonical source of adjustment. Dependent sheets register to it and receive projections. Do not create independent fit engines per sheet.
 
 Work phase:
-Use Phase 1 by default unless the user explicitly selects another phase.
+Continue from the current implementation status. Do not restart at Phase 1 unless the user explicitly asks for a redesign.
 
 Rules:
 - no big-bang rewrite
@@ -1235,6 +1269,9 @@ Rules:
 
 ## Recommendation
 
-Start with **Phase 1: Conceptual PlanSet Backbone**.
+The backbone and first end-to-end HousePlanSet loop now exist. Keep improving the smallest missing review/export seams instead of restarting the architecture:
 
-Do less first: document and name the product model, then introduce the smallest data/use-case seam that lets the existing floor-plan library become the canonical sheet of a plan set. Electrical registration is the first real dependent-sheet proof. Roof and facade/elevation come later, after the system has real registration evidence.
+1. Manually smoke-test the visible Desktop loop with real floor/electrical/roof/facade files.
+2. Add richer calibration only where real sheets prove the default registration is insufficient.
+3. Smoke-test the post-review `Confirmar manuales + re-exportar` path with real files.
+4. Keep dependent sheets registered/projected from the canonical floor-plan adjustment; do not introduce independent fit engines.

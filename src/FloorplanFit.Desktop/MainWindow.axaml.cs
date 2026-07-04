@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using FloorplanFit.Contracts.FloorPlans;
+using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Desktop.ViewModels;
 using FloorplanFit.Infrastructure.Dxf;
 
@@ -16,9 +17,69 @@ public partial class MainWindow : Window
 
     private async void ImportButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
+        var filePath = await OpenDxfPickerAsync("Select floor plan DXF");
+
+        if (filePath is null)
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.ImportAsync(filePath, CancellationToken.None);
+    }
+
+    private async void ImportElectricalSheetButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        await ImportDependentSheetAsync("Select electrical plan DXF", "ElectricalPlan");
+    }
+
+    private async void ImportRoofSheetButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        await ImportDependentSheetAsync("Select roof plan DXF", "RoofPlan");
+    }
+
+    private async void ImportFacadeSheetButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        await ImportDependentSheetAsync("Select facade/elevation plan DXF", "FacadeElevation");
+    }
+
+    private async Task ImportDependentSheetAsync(string pickerTitle, string sheetType)
+    {
+        var filePath = await OpenDxfPickerAsync(pickerTitle);
+
+        if (filePath is null)
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            await viewModel.ImportDependentSheetAsync(
+                filePath,
+                sheetType,
+                name: null,
+                cancellationToken: CancellationToken.None);
+        }
+        catch (ArgumentException exception)
+        {
+            viewModel.StatusMessage = $"Dependent sheet import needs review: {exception.Message}";
+        }
+    }
+
+    private async Task<string?> OpenDxfPickerAsync(string title)
+    {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Select floor plan DXF",
+            Title = title,
             AllowMultiple = false,
             FileTypeFilter =
             [
@@ -29,19 +90,7 @@ public partial class MainWindow : Window
             ]
         });
 
-        var file = files.FirstOrDefault();
-
-        if (file is null)
-        {
-            return;
-        }
-
-        if (DataContext is not LibraryViewModel viewModel)
-        {
-            return;
-        }
-
-        await viewModel.ImportAsync(file.Path.LocalPath, CancellationToken.None);
+        return files.FirstOrDefault()?.Path.LocalPath;
     }
 
     private async void MainWindow_OnOpened(object? sender, EventArgs e)
@@ -52,6 +101,141 @@ public partial class MainWindow : Window
         }
 
         await viewModel.LoadAsync(CancellationToken.None);
+    }
+
+    private void SelectVersionButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: FloorPlanLibraryVersionDto version })
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        var item = viewModel.Items.FirstOrDefault(libraryItem =>
+            libraryItem.Versions.Any(candidate => candidate.VersionId == version.VersionId));
+        if (item is null)
+        {
+            return;
+        }
+
+        viewModel.SelectVersion(item, version);
+    }
+
+    private async void UnlinkDependentSheetButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: PlanSetSheetDto sheet })
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.UnlinkDependentSheetAsync(sheet, CancellationToken.None);
+    }
+
+    private async void RegisterDependentSheetButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: PlanSetSheetDto sheet })
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        var dialog = new RegistrationTransformDialog(sheet);
+        var registrationResult = await dialog.ShowDialog<RegistrationTransformDialogResult?>(this);
+        if (registrationResult is null)
+        {
+            return;
+        }
+
+        await viewModel.RegisterDependentSheetAsync(
+            sheet,
+            transform: registrationResult.Transform,
+            confidence: registrationResult.Confidence,
+            confirmRegistration: false,
+            overhangInches: registrationResult.OverhangInches,
+            horizontalReferenceName: registrationResult.HorizontalReferenceName,
+            cancellationToken: CancellationToken.None);
+    }
+
+    private async void ConfirmSheetRegistrationButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: PlanSetSheetDto sheet })
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.ConfirmDependentSheetRegistrationAsync(sheet, CancellationToken.None);
+    }
+
+    private async void RejectSheetRegistrationButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: PlanSetSheetDto sheet })
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.RejectDependentSheetRegistrationAsync(sheet, CancellationToken.None);
+    }
+
+    private async void ConfirmSheetProjectionButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: PlanSetSheetDto sheet })
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.ConfirmDependentSheetProjectionAsync(sheet, CancellationToken.None);
+    }
+
+    private async void CorrectSheetToElectricalButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => await CorrectSheetTypeAsync(sender, "ElectricalPlan");
+
+    private async void CorrectSheetToRoofButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => await CorrectSheetTypeAsync(sender, "RoofPlan");
+
+    private async void CorrectSheetToFacadeButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => await CorrectSheetTypeAsync(sender, "FacadeElevation");
+
+    private async Task CorrectSheetTypeAsync(object? sender, string sheetType)
+    {
+        if (sender is not Button { DataContext: PlanSetSheetDto sheet })
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.CorrectDependentSheetTypeAsync(sheet, sheetType, CancellationToken.None);
     }
 
     private async void OpenVersionButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

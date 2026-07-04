@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:viewModels="using:FloorplanFit.Desktop.ViewModels"
         xmlns:contracts="using:FloorplanFit.Contracts.FloorPlans"
+        xmlns:planSets="using:FloorplanFit.Contracts.PlanSets"
         xmlns:views="using:FloorplanFit.Desktop"
         x:Class="FloorplanFit.Desktop.MainWindow"
         x:DataType="viewModels:LibraryViewModel"
@@ -11,7 +12,7 @@
         Height="800"
         Title="{Binding ShellTitle}">
   <Grid>
-    <Grid RowDefinitions="Auto,Auto,*"
+    <Grid RowDefinitions="Auto,Auto,Auto,*"
           Margin="24"
           IsVisible="{Binding IsLibraryScreenVisible}">
       <TextBlock FontSize="24"
@@ -19,22 +20,111 @@
                  Text="Floorplan Library" />
 
       <Grid Grid.Row="1"
-            ColumnDefinitions="Auto,*,Auto"
+            ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
             ColumnSpacing="12"
             Margin="0,16,0,16">
         <Button Name="ImportButton"
                 Grid.Column="0"
                 Content="Import DXF"
                 Click="ImportButton_OnClick" />
-        <TextBlock Grid.Column="1"
+        <Button Name="ImportElectricalSheetButton"
+                Grid.Column="1"
+                Content="Import Electrical"
+                Click="ImportElectricalSheetButton_OnClick" />
+        <Button Name="ImportRoofSheetButton"
+                Grid.Column="2"
+                Content="Import Roof"
+                Click="ImportRoofSheetButton_OnClick" />
+        <Button Name="ImportFacadeSheetButton"
+                Grid.Column="3"
+                Content="Import Facade"
+                Click="ImportFacadeSheetButton_OnClick" />
+        <TextBlock Grid.Column="4"
                    VerticalAlignment="Center"
                    Text="{Binding SelectedVersionLabel}" />
-        <TextBlock Grid.Column="2"
+        <TextBlock Grid.Column="5"
                    VerticalAlignment="Center"
                    Text="{Binding StatusMessage}" />
       </Grid>
 
-      <ScrollViewer Grid.Row="2"
+      <Border Grid.Row="2"
+              Classes="section-card"
+              Padding="10"
+              Margin="0,0,0,12">
+        <StackPanel Spacing="8">
+          <TextBlock FontWeight="SemiBold"
+                     Text="{Binding SelectedPlanSetSheetsLabel}" />
+          <ItemsControl ItemsSource="{Binding SelectedPlanSetSheets}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="planSets:PlanSetSheetDto">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                      ColumnSpacing="12"
+                      Margin="0,0,0,4">
+                  <TextBlock Grid.Column="0"
+                             FontWeight="SemiBold"
+                             Text="{Binding SheetType}" />
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding Name}" />
+                  <TextBlock Grid.Column="2"
+                             Classes="muted"
+                             Text="{Binding RegistrationStatus}" />
+                  <TextBlock Grid.Column="3"
+                             Classes="muted"
+                             Text="{Binding ProjectionStatus}" />
+                  <TextBlock Grid.Column="4"
+                             Classes="muted"
+                             Text="{Binding RegistrationQualityLabel}" />
+                  <TextBlock Grid.Column="5"
+                             Classes="muted"
+                             Text="{Binding ProjectionQualityLabel}" />
+                  <Button Grid.Column="6"
+                          Padding="6,0"
+                          Content="Register"
+                          IsVisible="{Binding CanRegisterDependent}"
+                          Click="RegisterDependentSheetButton_OnClick" />
+                  <Button Grid.Column="7"
+                          Padding="6,0"
+                          Content="Confirm"
+                          IsVisible="{Binding CanConfirmRegistration}"
+                          Click="ConfirmSheetRegistrationButton_OnClick" />
+                  <Button Grid.Column="8"
+                          Padding="6,0"
+                          Content="Reject Reg"
+                          IsVisible="{Binding CanRejectRegistration}"
+                          Click="RejectSheetRegistrationButton_OnClick" />
+                  <Button Grid.Column="9"
+                          Padding="6,0"
+                          Content="Confirm Projection"
+                          IsVisible="{Binding CanConfirmProjection}"
+                          Click="ConfirmSheetProjectionButton_OnClick" />
+                  <Button Grid.Column="10"
+                          Padding="6,0"
+                          Content="To Electrical"
+                          IsVisible="{Binding CanCorrectToElectrical}"
+                          Click="CorrectSheetToElectricalButton_OnClick" />
+                  <Button Grid.Column="11"
+                          Padding="6,0"
+                          Content="To Roof"
+                          IsVisible="{Binding CanCorrectToRoof}"
+                          Click="CorrectSheetToRoofButton_OnClick" />
+                  <Button Grid.Column="12"
+                          Padding="6,0"
+                          Content="To Facade"
+                          IsVisible="{Binding CanCorrectToFacade}"
+                          Click="CorrectSheetToFacadeButton_OnClick" />
+                  <Button Grid.Column="13"
+                          Padding="6,0"
+                          Content="?"
+                          IsVisible="{Binding CanUnlink}"
+                          Click="UnlinkDependentSheetButton_OnClick" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <ScrollViewer Grid.Row="3"
                     HorizontalScrollBarVisibility="Disabled"
                     VerticalScrollBarVisibility="Auto">
         <ItemsControl ItemsSource="{Binding Items}">
@@ -68,7 +158,7 @@
                         <Border Classes="section-card"
                                 Padding="10"
                                 Margin="0,0,0,8">
-                          <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
+                          <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                             <TextBlock Grid.Column="0"
                                        FontWeight="SemiBold"
                                        Text="{Binding DisplayName}" />
@@ -88,14 +178,18 @@
                                        Text="{Binding CurrentLabel}" />
                             <Button Grid.Column="4"
                                     Margin="12,0,0,0"
+                                    Content="Select"
+                                    Click="SelectVersionButton_OnClick" />
+                            <Button Grid.Column="5"
+                                    Margin="12,0,0,0"
                                     Content="Edit"
                                     Click="OpenVersionButton_OnClick" />
-                            <Button Grid.Column="5"
+                            <Button Grid.Column="6"
                                     Margin="12,0,0,0"
                                     Content="Adjust to Site Plan"
                                     IsEnabled="{Binding CanAdjustToSitePlan}"
                                     Click="AdjustVersionToSitePlanButton_OnClick" />
-                            <Button Grid.Column="6"
+                            <Button Grid.Column="7"
                                     Margin="12,0,0,0"
                                     Content="Delete"
                                     Click="DeleteVersionButton_OnClick" />

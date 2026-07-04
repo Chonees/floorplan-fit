@@ -8,4 +8,5 @@ public sealed record DetectedFloorPlanDocument(
     LengthUnit SourceUnit,
     decimal ToMillimetersFactor,
     string? DxfVersion,
-    string GeometryFingerprint);
+    string GeometryFingerprint,
+    IReadOnlyList<string>? LayerNames = null);

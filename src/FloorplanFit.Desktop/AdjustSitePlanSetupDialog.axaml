@@ -4,6 +4,7 @@
         RequestedThemeVariant="Dark"
         Width="640"
         SizeToContent="Height"
+        Background="#FF2F333A"
         CanResize="False"
         WindowStartupLocation="CenterOwner"
         Title="Adjust to Site Plan">

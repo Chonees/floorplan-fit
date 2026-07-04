@@ -1,7 +1,15 @@
 using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
+using FloorplanFit.Application.PlanSets.Adjustment;
+using FloorplanFit.Application.PlanSets.Confirmation;
+using FloorplanFit.Application.PlanSets.DataCollection;
+using FloorplanFit.Application.PlanSets.Export;
+using FloorplanFit.Application.PlanSets.ExportAudit;
+using FloorplanFit.Application.PlanSets.Projection;
 using FloorplanFit.Contracts.FloorPlans;
+using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Desktop.ViewModels;
+using FloorplanFit.Domain.PlanSets;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -87,6 +95,64 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
         Assert.DoesNotContain("Preview only", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Move Floor Plan", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(" over ", viewModel.Subtitle, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Build_uses_explicit_plan_set_version_for_canonical_adjustment()
+    {
+        var templateId = Guid.NewGuid();
+        var planSetVersionId = Guid.NewGuid();
+        var canonicalFloorPlanVersionId = Guid.NewGuid();
+        var version = new FloorPlanLibraryVersionDto(
+            canonicalFloorPlanVersionId,
+            1,
+            "Published",
+            DateTime.UtcNow,
+            "inch",
+            IsCurrent: true,
+            ActivePublishedCurationId: Guid.NewGuid());
+        var libraryItem = new FloorPlanLibraryItemDto(
+            templateId,
+            "seminole2000",
+            "Seminole",
+            VersionCount: 1,
+            CurrentVersionId: version.VersionId,
+            CurrentVersionNumber: version.VersionNumber,
+            Versions: [version]);
+        using var provider = new ServiceCollection().BuildServiceProvider();
+        var reviewViewModel = new FloorPlanReviewViewModel(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            templateId);
+        reviewViewModel.GeometryPaths.Add(CreateRectangle(Guid.NewGuid(), minX: 0m, minY: 0m, maxX: 100m, maxY: 200m));
+        reviewViewModel.MeasurementContext = new MeasurementContextDto("inch", 25.4m, 0.1m, 1m);
+        var sitePlan = new SitePlanPreviewDto(
+            "lote.dxf",
+            "inch",
+            25.4m,
+            [CreateRectangle(Guid.NewGuid(), minX: 0m, minY: 0m, maxX: 700m, maxY: 1100m)],
+            new SitePlanBuildableAreaDto(100m, 101m, 583.786m, 1029m));
+        var repository = new CapturingCanonicalFloorPlanAdjustmentRepository();
+        var recorder = new RecordCanonicalFloorPlanAdjustmentHandler(
+            repository,
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 6, 30, 23, 59, 0, DateTimeKind.Utc)));
+
+        var viewModel = SitePlanAdjustmentPreviewProjector.Build(
+            libraryItem,
+            version,
+            reviewViewModel,
+            sitePlan,
+            floorPlanSourcePath: @"C:\plans\floor.dxf",
+            sitePlanSourcePath: @"C:\plans\site.dxf",
+            adjustedSitePlanExporter: new FakeAdjustedSitePlanExporter(),
+            canonicalAdjustmentRecorder: recorder,
+            planSetVersionId: planSetVersionId);
+
+        await viewModel.ExportAdjustedSitePlanAsync(@"C:\out\combined.dxf", CancellationToken.None);
+
+        var adjustment = Assert.Single(repository.Items);
+        Assert.Equal(planSetVersionId, adjustment.PlanSetVersionId);
+        Assert.Equal(canonicalFloorPlanVersionId, adjustment.CanonicalFloorPlanVersionId);
     }
 
     [Fact]
@@ -1077,6 +1143,343 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
         Assert.Contains("combined.dxf", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task ExportAdjustedSitePlanAsync_records_canonical_adjustment_when_recorder_is_available()
+    {
+        var planSetVersionId = Guid.NewGuid();
+        var floorPlanVersionId = Guid.NewGuid();
+        var repository = new CapturingCanonicalFloorPlanAdjustmentRepository();
+        var unitOfWork = new CapturingUnitOfWork();
+        var recorder = new RecordCanonicalFloorPlanAdjustmentHandler(
+            repository,
+            unitOfWork,
+            new FakeClock(new DateTime(2026, 6, 30, 23, 59, 0, DateTimeKind.Utc)));
+        var exporter = new FakeAdjustedSitePlanExporter();
+        var viewModel = new SitePlanAdjustmentViewModel(
+            "Adjust",
+            "Subtitle",
+            "Selection",
+            "Status",
+            sitePlanGeometryPaths: [],
+            sitePlanRenderPaths: [],
+            sitePlanTexts: [],
+            floorPlanGeometryPaths: [],
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            projectionScale: 1m,
+            projectionOffsetX: 100m,
+            projectionOffsetY: 50m,
+            floorPlanSourcePath: @"C:\plans\floor.dxf",
+            sitePlanSourcePath: @"C:\plans\site.dxf",
+            adjustedSitePlanExporter: exporter,
+            planSetVersionId: planSetVersionId,
+            canonicalFloorPlanVersionId: floorPlanVersionId,
+            canonicalAdjustmentRecorder: recorder);
+
+        viewModel.MoveFloorPlanBy(10m, -4m);
+
+        await viewModel.ExportAdjustedSitePlanAsync(@"C:\out\combined.dxf", CancellationToken.None);
+
+        Assert.True(unitOfWork.Saved);
+        var adjustment = Assert.Single(repository.Items);
+        Assert.Equal(planSetVersionId, adjustment.PlanSetVersionId);
+        Assert.Equal(floorPlanVersionId, adjustment.CanonicalFloorPlanVersionId);
+        Assert.Equal(@"C:\plans\site.dxf", adjustment.SitePlanSourcePath);
+        Assert.Equal(@"C:\out\combined.dxf", adjustment.CanonicalFloorPlanExportPath);
+        Assert.Contains("\"SiteOffsetX\":110", adjustment.PlacementJson, StringComparison.Ordinal);
+        Assert.Equal(adjustment.Id, viewModel.LastCanonicalAdjustmentId);
+    }
+
+    [Fact]
+    public async Task ExportAdjustedSitePlanAsync_exports_plan_set_package_after_recording_canonical_adjustment()
+    {
+        var planSetVersionId = Guid.NewGuid();
+        var floorPlanVersionId = Guid.NewGuid();
+        var dependentSheetId = Guid.NewGuid();
+        var roofSheetId = Guid.NewGuid();
+        var adjustmentRepository = new CapturingCanonicalFloorPlanAdjustmentRepository();
+        var registration = new SheetRegistration(
+            Guid.NewGuid(),
+            planSetVersionId,
+            dependentSheetId,
+            floorPlanVersionId,
+            SheetRegistrationMethod.WholeSheetSimilarity,
+            new SheetRegistrationTransform(1m, 0m, 12m, 34m),
+            0.94m,
+            SheetRegistrationStatus.Confirmed,
+            new DateTime(2026, 6, 30, 23, 50, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 30, 23, 50, 0, DateTimeKind.Utc),
+            warning: null,
+            ruleSummary: "electrical follows floor plan");
+        var registrationRepository = new StaticSheetRegistrationRepository(registration);
+        var projectionRepository = new CapturingSheetAdjustmentProjectionRepository();
+        var projectionUnitOfWork = new CapturingUnitOfWork();
+        var projectionAuditEvents = new CapturingPlanSetAuditEventRepository();
+        var projectionClock = new FakeClock(new DateTime(2026, 6, 30, 23, 59, 0, DateTimeKind.Utc));
+        var registeredSheetProjector = new ProjectRegisteredPlanSetSheetsHandler(
+            registrationRepository,
+            new ProjectElectricalSheetAdjustmentHandler(
+                registrationRepository,
+                projectionRepository,
+                projectionUnitOfWork,
+                projectionClock,
+                projectionAuditEvents),
+            new ProjectRoofSheetAdjustmentHandler(
+                registrationRepository,
+                projectionRepository,
+                projectionUnitOfWork,
+                projectionClock,
+                projectionAuditEvents),
+            new ProjectFacadeElevationSheetAdjustmentHandler(
+                registrationRepository,
+                projectionRepository,
+                projectionUnitOfWork,
+                projectionClock,
+                projectionAuditEvents));
+        var packageUnitOfWork = new CapturingUnitOfWork();
+        var manifestWriter = new CapturingPlanSetExportManifestWriter(@"C:\out\manifest.json");
+        var projectedSheetExporter = new CapturingProjectedPlanSheetExporter();
+        var qualityReportHandler = new GetPlanSetQualityReportHandler(
+            new StaticPlanSetAuditEventReader(
+                new PlanSetAuditEvent(
+                    Guid.NewGuid(),
+                    "SheetRegistration",
+                    dependentSheetId,
+                    "SheetRegistrationQualityMeasured",
+                    $$"""
+                    {"planSetVersionId":"{{planSetVersionId}}","method":"WholeSheetSimilarity","confidence":0.83,"status":"PendingConfirmation","warning":"Needs visual review","ruleSummary":null}
+                    """,
+                    new DateTime(2026, 6, 30, 23, 50, 0, DateTimeKind.Utc)),
+                new PlanSetAuditEvent(
+                    Guid.NewGuid(),
+                    "SheetAdjustmentProjection",
+                    dependentSheetId,
+                    "SheetAdjustmentProjectionQualityMeasured",
+                    $$"""
+                    {"planSetVersionId":"{{planSetVersionId}}","method":"ElectricalWholeSheetSimilarity","confidence":0.94,"status":"ReadyForExport","warning":null,"ruleSummary":"electrical follows floor plan"}
+                    """,
+                    new DateTime(2026, 6, 30, 23, 55, 0, DateTimeKind.Utc))));
+        var packageExporter = new ExportMultiSheetPlanSetPackageHandler(
+            projectionRepository,
+            new StaticPlanSheetSourceReader(
+                dependentSheetId,
+                new PlanSheetSourceDto(
+                    dependentSheetId,
+                    PlanSheetType.ElectricalPlan.ToString(),
+                    "Electrical",
+                    Guid.NewGuid(),
+                    @"C:\plans\electrical.dxf")),
+            new ExportProjectedPlanSheetHandler(projectionRepository, projectedSheetExporter),
+            new CreateMultiSheetExportAuditHandler(
+                projectionRepository,
+                new StaticPlanSheetReader(
+                    planSetVersionId,
+                    [
+                        new PlanSetSheetDto(
+                            dependentSheetId,
+                            PlanSheetType.ElectricalPlan.ToString(),
+                            "Electrical",
+                            Guid.NewGuid(),
+                            floorPlanVersionId,
+                            IsCanonical: false,
+                            RegistrationStatus: "Registered",
+                            ProjectionStatus: "ReadyForExport"),
+                        new PlanSetSheetDto(
+                            roofSheetId,
+                            PlanSheetType.RoofPlan.ToString(),
+                            "Roof",
+                            Guid.NewGuid(),
+                            floorPlanVersionId,
+                            IsCanonical: false,
+                            RegistrationStatus: "Registered",
+                            ProjectionStatus: "MissingProjection")
+                    ]),
+                new CapturingPlanSetExportRepository(),
+                new CapturingPlanSetAuditEventRepository(),
+                manifestWriter,
+                packageUnitOfWork,
+                new FakeClock(new DateTime(2026, 6, 30, 23, 59, 0, DateTimeKind.Utc)),
+                qualityReportHandler));
+        var recorder = new RecordCanonicalFloorPlanAdjustmentHandler(
+            adjustmentRepository,
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 6, 30, 23, 59, 0, DateTimeKind.Utc)));
+        var viewModel = new SitePlanAdjustmentViewModel(
+            "Adjust",
+            "Subtitle",
+            "Selection",
+            "Status",
+            sitePlanGeometryPaths: [],
+            sitePlanRenderPaths: [],
+            sitePlanTexts: [],
+            floorPlanGeometryPaths: [],
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            floorPlanSourcePath: @"C:\plans\floor.dxf",
+            sitePlanSourcePath: @"C:\plans\site.dxf",
+            adjustedSitePlanExporter: new FakeAdjustedSitePlanExporter(),
+            planSetVersionId: planSetVersionId,
+            canonicalFloorPlanVersionId: floorPlanVersionId,
+            canonicalAdjustmentRecorder: recorder,
+            planSetPackageExporter: packageExporter,
+            registeredSheetProjector: registeredSheetProjector);
+
+        await viewModel.ExportAdjustedSitePlanAsync(@"C:\out\combined.dxf", CancellationToken.None);
+
+        var adjustment = Assert.Single(adjustmentRepository.Items);
+        Assert.Equal(adjustment.Id, viewModel.LastCanonicalAdjustmentId);
+        Assert.NotNull(viewModel.LastPlanSetExportAudit);
+        Assert.Equal(adjustment.Id, viewModel.LastPlanSetExportAudit!.CanonicalAdjustmentId);
+        Assert.Equal(3, viewModel.LastPlanSetExportAudit.Summary.TotalSheetCount);
+        Assert.Equal(1, viewModel.LastPlanSetExportAudit.Summary.AutomaticallyProjectedSheetCount);
+        Assert.Equal(1, viewModel.LastPlanSetExportAudit.Summary.ManualConfirmationRequiredSheetCount);
+        Assert.Contains(viewModel.PlanSetExportAuditLines, line =>
+            line.Contains("ElectricalPlan", StringComparison.Ordinal) &&
+            line.Contains("ProjectedAutomatically", StringComparison.Ordinal) &&
+            line.Contains("94%", StringComparison.Ordinal));
+        Assert.Contains(viewModel.PlanSetExportAuditLines, line =>
+            line.Contains("RoofPlan", StringComparison.Ordinal) &&
+            line.Contains("MissingProjection", StringComparison.Ordinal));
+        Assert.Contains(viewModel.PlanSetExportAuditLines, line =>
+            line.Contains("Quality", StringComparison.Ordinal) &&
+            line.Contains("registrations 1", StringComparison.Ordinal) &&
+            line.Contains("projections 1", StringComparison.Ordinal) &&
+            line.Contains("83%", StringComparison.Ordinal) &&
+            line.Contains("94%", StringComparison.Ordinal) &&
+            line.Contains("manual registrations 1", StringComparison.Ordinal));
+        Assert.Contains("combined-plan-set", projectedSheetExporter.LastOutputFilePath, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("manifest.json", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(projectionRepository.Items, projection =>
+            projection.SheetRegistrationId == registration.Id &&
+            projection.CanonicalAdjustmentId == adjustment.Id);
+        Assert.True(packageUnitOfWork.Saved);
+        Assert.True(projectionUnitOfWork.Saved);
+    }
+
+    [Fact]
+    public async Task ConfirmManualPlanSetProjectionsAndReExportAsync_reuses_existing_canonical_adjustment()
+    {
+        var planSetVersionId = Guid.NewGuid();
+        var floorPlanVersionId = Guid.NewGuid();
+        var dependentSheetId = Guid.NewGuid();
+        var adjustmentRepository = new CapturingCanonicalFloorPlanAdjustmentRepository();
+        var registration = new SheetRegistration(
+            Guid.NewGuid(),
+            planSetVersionId,
+            dependentSheetId,
+            floorPlanVersionId,
+            SheetRegistrationMethod.WholeSheetSimilarity,
+            new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+            0.25m,
+            SheetRegistrationStatus.Confirmed,
+            new DateTime(2026, 7, 1, 16, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 7, 1, 16, 0, 0, DateTimeKind.Utc),
+            warning: "Needs visual review",
+            ruleSummary: "low confidence");
+        var registrationRepository = new StaticSheetRegistrationRepository(registration);
+        var projectionRepository = new CapturingSheetAdjustmentProjectionRepository();
+        var projectionUnitOfWork = new CapturingUnitOfWork();
+        var projectionClock = new FakeClock(new DateTime(2026, 7, 1, 16, 5, 0, DateTimeKind.Utc));
+        var registeredSheetProjector = new ProjectRegisteredPlanSetSheetsHandler(
+            registrationRepository,
+            new ProjectElectricalSheetAdjustmentHandler(
+                registrationRepository,
+                projectionRepository,
+                projectionUnitOfWork,
+                projectionClock),
+            new ProjectRoofSheetAdjustmentHandler(
+                registrationRepository,
+                projectionRepository,
+                projectionUnitOfWork,
+                projectionClock),
+            new ProjectFacadeElevationSheetAdjustmentHandler(
+                registrationRepository,
+                projectionRepository,
+                projectionUnitOfWork,
+                projectionClock));
+        var projectedSheetExporter = new CapturingProjectedPlanSheetExporter();
+        var packageUnitOfWork = new CapturingUnitOfWork();
+        var packageExporter = new ExportMultiSheetPlanSetPackageHandler(
+            projectionRepository,
+            new StaticPlanSheetSourceReader(
+                dependentSheetId,
+                new PlanSheetSourceDto(
+                    dependentSheetId,
+                    PlanSheetType.ElectricalPlan.ToString(),
+                    "Electrical",
+                    Guid.NewGuid(),
+                    @"C:\plans\electrical.dxf")),
+            new ExportProjectedPlanSheetHandler(projectionRepository, projectedSheetExporter),
+            new CreateMultiSheetExportAuditHandler(
+                projectionRepository,
+                new StaticPlanSheetReader(
+                    planSetVersionId,
+                    [
+                        new PlanSetSheetDto(
+                            dependentSheetId,
+                            PlanSheetType.ElectricalPlan.ToString(),
+                            "Electrical",
+                            Guid.NewGuid(),
+                            floorPlanVersionId,
+                            IsCanonical: false,
+                            RegistrationStatus: "Confirmed",
+                            ProjectionStatus: "RequiresManualConfirmation")
+                    ]),
+                new CapturingPlanSetExportRepository(),
+                new CapturingPlanSetAuditEventRepository(),
+                new CapturingPlanSetExportManifestWriter(@"C:\out\manifest.json"),
+                packageUnitOfWork,
+                new FakeClock(new DateTime(2026, 7, 1, 16, 6, 0, DateTimeKind.Utc))));
+        var confirmProjectionHandler = new ConfirmSheetAdjustmentProjectionHandler(
+            projectionRepository,
+            registrationRepository,
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 7, 1, 16, 7, 0, DateTimeKind.Utc)));
+        var recorder = new RecordCanonicalFloorPlanAdjustmentHandler(
+            adjustmentRepository,
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 7, 1, 16, 8, 0, DateTimeKind.Utc)));
+        var viewModel = new SitePlanAdjustmentViewModel(
+            "Adjust",
+            "Subtitle",
+            "Selection",
+            "Status",
+            sitePlanGeometryPaths: [],
+            sitePlanRenderPaths: [],
+            sitePlanTexts: [],
+            floorPlanGeometryPaths: [],
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            floorPlanSourcePath: @"C:\plans\floor.dxf",
+            sitePlanSourcePath: @"C:\plans\site.dxf",
+            adjustedSitePlanExporter: new FakeAdjustedSitePlanExporter(),
+            planSetVersionId: planSetVersionId,
+            canonicalFloorPlanVersionId: floorPlanVersionId,
+            canonicalAdjustmentRecorder: recorder,
+            planSetPackageExporter: packageExporter,
+            registeredSheetProjector: registeredSheetProjector,
+            confirmSheetProjectionHandler: confirmProjectionHandler);
+
+        await viewModel.ExportAdjustedSitePlanAsync(@"C:\out\combined.dxf", CancellationToken.None);
+
+        var canonicalAdjustmentId = Assert.Single(adjustmentRepository.Items).Id;
+        Assert.True(viewModel.CanConfirmManualPlanSetProjections);
+        Assert.Equal(1, viewModel.LastPlanSetExportAudit!.Summary.ManualConfirmationRequiredSheetCount);
+
+        await viewModel.ConfirmManualPlanSetProjectionsAndReExportAsync(CancellationToken.None);
+
+        Assert.Single(adjustmentRepository.Items);
+        Assert.Equal(canonicalAdjustmentId, viewModel.LastCanonicalAdjustmentId);
+        Assert.Equal(canonicalAdjustmentId, viewModel.LastPlanSetExportAudit!.CanonicalAdjustmentId);
+        Assert.Equal(1, viewModel.LastPlanSetExportAudit.Summary.AutomaticallyProjectedSheetCount);
+        Assert.Equal(0, viewModel.LastPlanSetExportAudit.Summary.ManualConfirmationRequiredSheetCount);
+        Assert.Contains("paquete HousePlanSet listo", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("combined-plan-set", projectedSheetExporter.LastOutputFilePath, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class FakeAdjustedSitePlanExporter : FloorplanFit.Application.Abstractions.IAdjustedSitePlanExporter
     {
         public sealed record Call(
@@ -1100,6 +1503,211 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
                 4,
                 []));
         }
+    }
+
+    private sealed class CapturingCanonicalFloorPlanAdjustmentRepository : ICanonicalFloorPlanAdjustmentRepository
+    {
+        public List<CanonicalFloorPlanAdjustment> Items { get; } = [];
+
+        public Task AddAsync(CanonicalFloorPlanAdjustment adjustment, CancellationToken cancellationToken)
+        {
+            Items.Add(adjustment);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingUnitOfWork : IUnitOfWork
+    {
+        public bool Saved { get; private set; }
+
+        public Task SaveChangesAsync(CancellationToken cancellationToken)
+        {
+            Saved = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingSheetAdjustmentProjectionRepository : ISheetAdjustmentProjectionRepository
+    {
+        private readonly List<SheetAdjustmentProjection> projections = [];
+
+        public Func<Guid, Guid, IReadOnlyList<SheetAdjustmentProjection>>? ListFactory { get; init; }
+
+        public IReadOnlyList<SheetAdjustmentProjection> Items => projections;
+
+        public Task AddAsync(SheetAdjustmentProjection projection, CancellationToken cancellationToken)
+        {
+            projections.Add(projection);
+            return Task.CompletedTask;
+        }
+
+        public Task<SheetAdjustmentProjection?> GetByIdAsync(Guid projectionId, CancellationToken cancellationToken)
+            => Task.FromResult(projections.FirstOrDefault(projection => projection.Id == projectionId));
+
+        public Task UpdateAsync(SheetAdjustmentProjection projection, CancellationToken cancellationToken)
+        {
+            var index = projections.FindIndex(item => item.Id == projection.Id);
+            if (index >= 0)
+            {
+                projections[index] = projection;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<SheetAdjustmentProjection>> ListByPlanSetVersionAndCanonicalAdjustmentAsync(
+            Guid planSetVersionId,
+            Guid canonicalAdjustmentId,
+            CancellationToken cancellationToken)
+        {
+            var listed = ListFactory?.Invoke(planSetVersionId, canonicalAdjustmentId) ??
+                projections
+                    .Where(projection =>
+                        projection.PlanSetVersionId == planSetVersionId &&
+                        projection.CanonicalAdjustmentId == canonicalAdjustmentId)
+                    .ToArray();
+            foreach (var projection in listed.Where(projection => projections.All(item => item.Id != projection.Id)))
+            {
+                projections.Add(projection);
+            }
+
+            return Task.FromResult(listed);
+        }
+    }
+
+    private sealed class StaticSheetRegistrationRepository : ISheetRegistrationRepository
+    {
+        private readonly SheetRegistration registration;
+
+        public StaticSheetRegistrationRepository(SheetRegistration registration)
+        {
+            this.registration = registration;
+        }
+
+        public Task AddAsync(SheetRegistration registration, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<SheetRegistration?> GetByIdAsync(Guid registrationId, CancellationToken cancellationToken)
+            => Task.FromResult(registration.Id == registrationId ? registration : null);
+
+        public Task<IReadOnlyList<SheetRegistration>> ListByPlanSetVersionAsync(
+            Guid planSetVersionId,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<SheetRegistration> result = registration.PlanSetVersionId == planSetVersionId
+                ? [registration]
+                : [];
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class StaticPlanSheetSourceReader : IPlanSheetSourceReader
+    {
+        private readonly Guid sheetId;
+        private readonly PlanSheetSourceDto source;
+
+        public StaticPlanSheetSourceReader(Guid sheetId, PlanSheetSourceDto source)
+        {
+            this.sheetId = sheetId;
+            this.source = source;
+        }
+
+        public Task<PlanSheetSourceDto?> GetBySheetIdAsync(Guid requestedSheetId, CancellationToken cancellationToken)
+            => Task.FromResult(requestedSheetId == sheetId ? source : null);
+    }
+
+    private sealed class StaticPlanSetAuditEventReader : IPlanSetAuditEventReader
+    {
+        private readonly IReadOnlyList<PlanSetAuditEvent> events;
+
+        public StaticPlanSetAuditEventReader(params PlanSetAuditEvent[] events)
+        {
+            this.events = events;
+        }
+
+        public Task<IReadOnlyList<PlanSetAuditEvent>> ListQualityEventsByPlanSetVersionAsync(
+            Guid planSetVersionId,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<PlanSetAuditEvent> result = events
+                .Where(auditEvent => auditEvent.PayloadJson.Contains(
+                    planSetVersionId.ToString(),
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class StaticPlanSheetReader : IPlanSheetReader
+    {
+        private readonly Guid planSetVersionId;
+        private readonly IReadOnlyList<PlanSetSheetDto> sheets;
+
+        public StaticPlanSheetReader(Guid planSetVersionId, IReadOnlyList<PlanSetSheetDto> sheets)
+        {
+            this.planSetVersionId = planSetVersionId;
+            this.sheets = sheets;
+        }
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>>> ListByPlanSetVersionIdsAsync(
+            IReadOnlyCollection<Guid> planSetVersionIds,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>> result = planSetVersionIds.Contains(planSetVersionId)
+                ? new Dictionary<Guid, IReadOnlyList<PlanSetSheetDto>> { [planSetVersionId] = sheets }
+                : new Dictionary<Guid, IReadOnlyList<PlanSetSheetDto>>();
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class CapturingProjectedPlanSheetExporter : IProjectedPlanSheetExporter
+    {
+        public string? LastOutputFilePath { get; private set; }
+
+        public Task ExportAsync(
+            string sourceFilePath,
+            string outputFilePath,
+            SheetAdjustmentProjectionTransform transform,
+            CancellationToken cancellationToken)
+        {
+            LastOutputFilePath = outputFilePath;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingPlanSetExportRepository : IPlanSetExportRepository
+    {
+        public Task AddAsync(PlanSetExport export, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+    }
+
+    private sealed class CapturingPlanSetAuditEventRepository : IPlanSetAuditEventRepository
+    {
+        public Task AddAsync(PlanSetAuditEvent auditEvent, CancellationToken cancellationToken)
+            => Task.CompletedTask;
+    }
+
+    private sealed class CapturingPlanSetExportManifestWriter : IPlanSetExportManifestWriter
+    {
+        private readonly string manifestPath;
+
+        public CapturingPlanSetExportManifestWriter(string manifestPath)
+        {
+            this.manifestPath = manifestPath;
+        }
+
+        public Task<string> WriteAsync(MultiSheetExportAuditDto audit, CancellationToken cancellationToken)
+            => Task.FromResult(manifestPath);
+    }
+
+    private sealed class FakeClock : IClock
+    {
+        public FakeClock(DateTime utcNow)
+        {
+            UtcNow = utcNow;
+        }
+
+        public DateTime UtcNow { get; }
     }
 
     [Fact]

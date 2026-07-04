@@ -5,4 +5,7 @@ public sealed record CreateMultiSheetExportAuditRequest(
     Guid CanonicalFloorPlanVersionId,
     Guid CanonicalAdjustmentId,
     string CanonicalFloorPlanExportPath,
-    IReadOnlyList<MultiSheetExportProjectionRequestDto> DependentProjections);
+    IReadOnlyList<MultiSheetExportProjectionRequestDto> DependentProjections)
+{
+    public bool DiscoverAllDependentSheets { get; init; }
+}

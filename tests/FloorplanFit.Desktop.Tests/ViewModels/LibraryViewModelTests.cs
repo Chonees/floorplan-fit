@@ -3,9 +3,17 @@ using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Library;
 using FloorplanFit.Application.FloorPlans.Review;
+using FloorplanFit.Application.PlanSets.Classification;
+using FloorplanFit.Application.PlanSets.Confirmation;
+using FloorplanFit.Application.PlanSets.Import;
+using FloorplanFit.Application.PlanSets.Library;
+using FloorplanFit.Application.PlanSets.Registration;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.ViewModels;
+using FloorplanFit.Domain.Documents;
 using FloorplanFit.Domain.FloorPlans;
+using FloorplanFit.Domain.Measurement;
+using FloorplanFit.Domain.PlanSets;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -88,6 +96,738 @@ public sealed class LibraryViewModelTests
 
         Assert.Equal("Published v11 · Draft v12 · 11 published total", version.CurationHistoryLabel);
         Assert.False(version.CanExtract);
+    }
+
+    [Fact]
+    public async Task ImportDependentSheetAsync_imports_classified_sheet_into_selected_plan_set_version()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var item = CreateLibraryItem(
+            templateId,
+            versionId,
+            "Published",
+            activePublishedCurationId: Guid.NewGuid());
+        var unitOfWork = new FakeUnitOfWork();
+        var housePlanSets = new InMemoryHousePlanSetRepository();
+        var planSetVersions = new InMemoryPlanSetVersionRepository();
+        var planSheets = new CapturingPlanSheetRepository();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IDxfGateway>(new FakeDxfGateway());
+        services.AddSingleton<IManagedFileStorage>(new FakeManagedFileStorage());
+        services.AddSingleton<IImportedDocumentRepository>(new CapturingImportedDocumentRepository());
+        services.AddSingleton<IMeasurementContextRepository>(new CapturingMeasurementContextRepository());
+        services.AddSingleton<IPlanSheetRepository>(planSheets);
+        services.AddSingleton<IPlanSheetReader>(planSheets);
+        services.AddSingleton<IFileHashService>(new FakeHashService());
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 7, 1, 11, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IUnitOfWork>(unitOfWork);
+        services.AddSingleton<IHousePlanSetRepository>(housePlanSets);
+        services.AddSingleton<IPlanSetVersionRepository>(planSetVersions);
+        services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader([item]));
+        services.AddTransient<ClassifyPlanSheetHandler>();
+        services.AddTransient<ImportPlanSheetHandler>();
+        services.AddTransient<ResolveHousePlanSetHandler>();
+        services.AddTransient<ResolvePlanSetVersionHandler>();
+        services.AddTransient<GetFloorPlanLibraryHandler>();
+        services.AddTransient<GetPlanSetLibraryHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
+        {
+            SelectedItem = item,
+            SelectedVersion = item.Versions[0]
+        };
+
+        var response = await viewModel.ImportDependentSheetAsync(
+            @"C:\plans\seminole-electrical.dxf",
+            sheetType: string.Empty,
+            name: null,
+            CancellationToken.None);
+
+        Assert.NotNull(response);
+        Assert.Equal("ElectricalPlan", response!.SheetType);
+        Assert.True(unitOfWork.SaveChangesCalled);
+        Assert.Single(housePlanSets.Items);
+        var planSetVersion = Assert.Single(planSetVersions.Items);
+        var sheet = Assert.Single(planSheets.Items);
+        Assert.Equal(planSetVersion.Id, sheet.PlanSetVersionId);
+        Assert.Equal(PlanSheetType.ElectricalPlan, sheet.SheetType);
+        Assert.Equal("seminole-electrical", sheet.Name);
+        Assert.Contains("ElectricalPlan", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Equal(templateId, viewModel.SelectedItem?.TemplateId);
+        Assert.Equal(versionId, viewModel.SelectedVersion?.VersionId);
+        Assert.Contains(viewModel.SelectedPlanSetSheets, sheet => !sheet.IsCanonical && sheet.SheetType == "ElectricalPlan");
+        Assert.Contains("2 sheet", viewModel.SelectedPlanSetSheetsLabel, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task UnlinkDependentSheetAsync_removes_unregistered_dependent_sheet_and_refreshes_selected_set()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var planSetVersionId = Guid.NewGuid();
+        var item = CreateLibraryItem(
+            templateId,
+            versionId,
+            "Published",
+            activePublishedCurationId: Guid.NewGuid());
+        var housePlanSet = new HousePlanSet(
+            Guid.NewGuid(),
+            templateId,
+            "santa-barbara",
+            "SANTA-BARBARA",
+            new DateTime(2026, 7, 1, 12, 0, 0, DateTimeKind.Utc));
+        var planSetVersion = new PlanSetVersion(
+            planSetVersionId,
+            housePlanSet.Id,
+            versionId,
+            versionNumber: 1,
+            new DateTime(2026, 7, 1, 12, 5, 0, DateTimeKind.Utc));
+        var electricalSheet = new PlanSheet(
+            Guid.NewGuid(),
+            planSetVersionId,
+            PlanSheetType.ElectricalPlan,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "ELECTRICAL PLAN SEMINOLE 2000",
+            PlanSheetStatus.Imported,
+            new DateTime(2026, 7, 1, 12, 10, 0, DateTimeKind.Utc));
+        var dependentSheet = new PlanSetSheetDto(
+            electricalSheet.Id,
+            "ElectricalPlan",
+            electricalSheet.Name,
+            electricalSheet.ImportedDocumentId,
+            SourceFloorPlanVersionId: null,
+            IsCanonical: false,
+            RegistrationStatus: "Unregistered",
+            ProjectionStatus: "NotProjected");
+        var unitOfWork = new FakeUnitOfWork();
+        var housePlanSets = new InMemoryHousePlanSetRepository();
+        housePlanSets.Items.Add(housePlanSet);
+        var planSetVersions = new InMemoryPlanSetVersionRepository();
+        planSetVersions.Items.Add(planSetVersion);
+        var planSheets = new CapturingPlanSheetRepository();
+        planSheets.Items.Add(electricalSheet);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader([item]));
+        services.AddSingleton<IPlanSheetRepository>(planSheets);
+        services.AddSingleton<IPlanSheetReader>(planSheets);
+        services.AddSingleton<IUnitOfWork>(unitOfWork);
+        services.AddSingleton<IHousePlanSetRepository>(housePlanSets);
+        services.AddSingleton<IPlanSetVersionRepository>(planSetVersions);
+        services.AddTransient<GetFloorPlanLibraryHandler>();
+        services.AddTransient<GetPlanSetLibraryHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
+        {
+            SelectedItem = item,
+            SelectedVersion = item.Versions[0]
+        };
+
+        await viewModel.UnlinkDependentSheetAsync(dependentSheet, CancellationToken.None);
+
+        Assert.Empty(planSheets.Items);
+        Assert.True(unitOfWork.SaveChangesCalled);
+        Assert.Equal(templateId, viewModel.SelectedItem?.TemplateId);
+        Assert.Equal(versionId, viewModel.SelectedVersion?.VersionId);
+        Assert.DoesNotContain(viewModel.SelectedPlanSetSheets, sheet => sheet.SheetId == electricalSheet.Id);
+        Assert.Contains("Unlinked ElectricalPlan sheet", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CorrectDependentSheetTypeAsync_updates_unregistered_sheet_type_and_refreshes_selected_set()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var planSetVersionId = Guid.NewGuid();
+        var item = CreateLibraryItem(
+            templateId,
+            versionId,
+            "Published",
+            activePublishedCurationId: Guid.NewGuid());
+        var housePlanSet = new HousePlanSet(
+            Guid.NewGuid(),
+            templateId,
+            "santa-barbara",
+            "SANTA-BARBARA",
+            new DateTime(2026, 7, 1, 12, 0, 0, DateTimeKind.Utc));
+        var planSetVersion = new PlanSetVersion(
+            planSetVersionId,
+            housePlanSet.Id,
+            versionId,
+            versionNumber: 1,
+            new DateTime(2026, 7, 1, 12, 5, 0, DateTimeKind.Utc));
+        var roofSheet = new PlanSheet(
+            Guid.NewGuid(),
+            planSetVersionId,
+            PlanSheetType.RoofPlan,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Wrong type",
+            PlanSheetStatus.Imported,
+            new DateTime(2026, 7, 1, 12, 10, 0, DateTimeKind.Utc));
+        var dependentSheet = new PlanSetSheetDto(
+            roofSheet.Id,
+            "RoofPlan",
+            roofSheet.Name,
+            roofSheet.ImportedDocumentId,
+            SourceFloorPlanVersionId: null,
+            IsCanonical: false,
+            RegistrationStatus: "Unregistered",
+            ProjectionStatus: "NotProjected");
+        var unitOfWork = new FakeUnitOfWork();
+        var housePlanSets = new InMemoryHousePlanSetRepository();
+        housePlanSets.Items.Add(housePlanSet);
+        var planSetVersions = new InMemoryPlanSetVersionRepository();
+        planSetVersions.Items.Add(planSetVersion);
+        var planSheets = new CapturingPlanSheetRepository();
+        planSheets.Items.Add(roofSheet);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader([item]));
+        services.AddSingleton<IPlanSheetRepository>(planSheets);
+        services.AddSingleton<IPlanSheetReader>(planSheets);
+        services.AddSingleton<ISheetRegistrationRepository>(new CapturingSheetRegistrationRepository());
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 7, 1, 12, 30, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IUnitOfWork>(unitOfWork);
+        services.AddSingleton<IHousePlanSetRepository>(housePlanSets);
+        services.AddSingleton<IPlanSetVersionRepository>(planSetVersions);
+        services.AddTransient<CorrectPlanSheetTypeHandler>();
+        services.AddTransient<GetFloorPlanLibraryHandler>();
+        services.AddTransient<GetPlanSetLibraryHandler>();
+        services.AddTransient<ResolveHousePlanSetHandler>();
+        services.AddTransient<ResolvePlanSetVersionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
+        {
+            SelectedItem = item,
+            SelectedVersion = item.Versions[0]
+        };
+
+        var response = await viewModel.CorrectDependentSheetTypeAsync(
+            dependentSheet,
+            "ElectricalPlan",
+            CancellationToken.None);
+
+        Assert.NotNull(response);
+        Assert.Equal("ElectricalPlan", response!.SheetType);
+        Assert.Equal(PlanSheetType.ElectricalPlan, Assert.Single(planSheets.Items).SheetType);
+        Assert.True(unitOfWork.SaveChangesCalled);
+        Assert.Equal(templateId, viewModel.SelectedItem?.TemplateId);
+        Assert.Equal(versionId, viewModel.SelectedVersion?.VersionId);
+        Assert.Contains(viewModel.SelectedPlanSetSheets, sheet =>
+            sheet.SheetId == roofSheet.Id &&
+            sheet.SheetType == "ElectricalPlan" &&
+            sheet.RegistrationStatus == "Unregistered");
+        Assert.Contains("Changed RoofPlan sheet Wrong type to ElectricalPlan", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RegisterDependentSheetAsync_registers_electrical_sheet_against_selected_plan_set_version()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var planSetVersionId = Guid.NewGuid();
+        var housePlanSet = new HousePlanSet(
+            Guid.NewGuid(),
+            templateId,
+            "seminole",
+            "Seminole",
+            new DateTime(2026, 7, 1, 11, 0, 0, DateTimeKind.Utc));
+        var electricalSheet = new PlanSheet(
+            Guid.NewGuid(),
+            planSetVersionId,
+            PlanSheetType.ElectricalPlan,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Electrical",
+            PlanSheetStatus.Imported,
+            new DateTime(2026, 7, 1, 11, 30, 0, DateTimeKind.Utc));
+        var item = CreateLibraryItem(
+            templateId,
+            versionId,
+            "Published",
+            activePublishedCurationId: Guid.NewGuid());
+        var dependentSheet = new PlanSetSheetDto(
+            electricalSheet.Id,
+            "ElectricalPlan",
+            "Electrical",
+            electricalSheet.ImportedDocumentId,
+            versionId,
+            IsCanonical: false,
+            RegistrationStatus: "Unregistered",
+            ProjectionStatus: "NotProjected");
+        var sheetRepository = new CapturingPlanSheetRepository();
+        sheetRepository.Items.Add(electricalSheet);
+        var registrationRepository = new CapturingSheetRegistrationRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var housePlanSets = new InMemoryHousePlanSetRepository();
+        housePlanSets.Items.Add(housePlanSet);
+        var planSetVersions = new InMemoryPlanSetVersionRepository();
+        planSetVersions.Items.Add(new PlanSetVersion(
+            planSetVersionId,
+            housePlanSet.Id,
+            versionId,
+            versionNumber: 1,
+            new DateTime(2026, 7, 1, 11, 0, 0, DateTimeKind.Utc)));
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader([item]));
+        services.AddSingleton<IPlanSheetRepository>(sheetRepository);
+        services.AddSingleton<IPlanSheetReader>(sheetRepository);
+        services.AddSingleton<ISheetRegistrationRepository>(registrationRepository);
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 7, 1, 11, 45, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IUnitOfWork>(unitOfWork);
+        services.AddSingleton<IHousePlanSetRepository>(housePlanSets);
+        services.AddSingleton<IPlanSetVersionRepository>(planSetVersions);
+        services.AddTransient<GetFloorPlanLibraryHandler>();
+        services.AddTransient<GetPlanSetLibraryHandler>();
+        services.AddTransient<RegisterElectricalSheetHandler>();
+        services.AddTransient<RegisterRoofSheetHandler>();
+        services.AddTransient<RegisterFacadeElevationSheetHandler>();
+        services.AddTransient<ResolveHousePlanSetHandler>();
+        services.AddTransient<ResolvePlanSetVersionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
+        {
+            SelectedItem = item,
+            SelectedVersion = item.Versions[0]
+        };
+
+        var response = await viewModel.RegisterDependentSheetAsync(
+            dependentSheet,
+            new SheetRegistrationTransformDto(1.25m, 0.5m, 12m, -3m),
+            confidence: 0.82m,
+            confirmRegistration: false,
+            overhangInches: 0m,
+            horizontalReferenceName: null,
+            cancellationToken: CancellationToken.None);
+
+        Assert.NotNull(response);
+        Assert.Equal("WholeSheetSimilarity", response!.Method);
+        Assert.Equal("PendingConfirmation", response.Status);
+        Assert.Equal(planSetVersionId, response.PlanSetVersionId);
+        Assert.Equal(electricalSheet.Id, response.DependentSheetId);
+        var registration = Assert.Single(registrationRepository.Items);
+        Assert.Equal(SheetRegistrationMethod.WholeSheetSimilarity, registration.Method);
+        Assert.Equal(1.25m, registration.Transform.Scale);
+        Assert.True(unitOfWork.SaveChangesCalled);
+        Assert.Contains("PendingConfirmation", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains(viewModel.SelectedPlanSetSheets, sheet =>
+            sheet.SheetId == electricalSheet.Id &&
+            sheet.RegistrationStatus == "PendingConfirmation" &&
+            sheet.ProjectionStatus == "NotProjected");
+    }
+
+    [Theory]
+    [InlineData("RoofPlan", "RoofFootprintWithOverhang")]
+    [InlineData("FacadeElevation", "FacadeHorizontalReference")]
+    public async Task RegisterDependentSheetAsync_registers_roof_and_facade_sheets_against_selected_plan_set_version(
+        string sheetType,
+        string expectedMethod)
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var planSetVersionId = Guid.NewGuid();
+        var housePlanSet = new HousePlanSet(
+            Guid.NewGuid(),
+            templateId,
+            "seminole",
+            "Seminole",
+            new DateTime(2026, 7, 1, 15, 0, 0, DateTimeKind.Utc));
+        var planSheetType = Enum.Parse<PlanSheetType>(sheetType);
+        var dependentPlanSheet = new PlanSheet(
+            Guid.NewGuid(),
+            planSetVersionId,
+            planSheetType,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            sheetType,
+            PlanSheetStatus.Imported,
+            new DateTime(2026, 7, 1, 15, 5, 0, DateTimeKind.Utc));
+        var item = CreateLibraryItem(
+            templateId,
+            versionId,
+            "Published",
+            activePublishedCurationId: Guid.NewGuid());
+        var dependentSheet = new PlanSetSheetDto(
+            dependentPlanSheet.Id,
+            sheetType,
+            sheetType,
+            dependentPlanSheet.ImportedDocumentId,
+            versionId,
+            IsCanonical: false,
+            RegistrationStatus: "Unregistered",
+            ProjectionStatus: "NotProjected");
+        var sheetRepository = new CapturingPlanSheetRepository();
+        sheetRepository.Items.Add(dependentPlanSheet);
+        var registrationRepository = new CapturingSheetRegistrationRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var housePlanSets = new InMemoryHousePlanSetRepository();
+        housePlanSets.Items.Add(housePlanSet);
+        var planSetVersions = new InMemoryPlanSetVersionRepository();
+        planSetVersions.Items.Add(new PlanSetVersion(
+            planSetVersionId,
+            housePlanSet.Id,
+            versionId,
+            versionNumber: 1,
+            new DateTime(2026, 7, 1, 15, 0, 0, DateTimeKind.Utc)));
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader([item]));
+        services.AddSingleton<IPlanSheetRepository>(sheetRepository);
+        services.AddSingleton<IPlanSheetReader>(sheetRepository);
+        services.AddSingleton<ISheetRegistrationRepository>(registrationRepository);
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 7, 1, 15, 10, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IUnitOfWork>(unitOfWork);
+        services.AddSingleton<IHousePlanSetRepository>(housePlanSets);
+        services.AddSingleton<IPlanSetVersionRepository>(planSetVersions);
+        services.AddTransient<GetFloorPlanLibraryHandler>();
+        services.AddTransient<GetPlanSetLibraryHandler>();
+        services.AddTransient<RegisterElectricalSheetHandler>();
+        services.AddTransient<RegisterRoofSheetHandler>();
+        services.AddTransient<RegisterFacadeElevationSheetHandler>();
+        services.AddTransient<ResolveHousePlanSetHandler>();
+        services.AddTransient<ResolvePlanSetVersionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
+        {
+            SelectedItem = item,
+            SelectedVersion = item.Versions[0]
+        };
+
+        var response = await viewModel.RegisterDependentSheetAsync(
+            dependentSheet,
+            new SheetRegistrationTransformDto(1m, 0m, 0m, 0m),
+            confidence: 0.25m,
+            confirmRegistration: false,
+            overhangInches: 0m,
+            horizontalReferenceName: null,
+            cancellationToken: CancellationToken.None);
+
+        Assert.NotNull(response);
+        Assert.Equal(expectedMethod, response!.Method);
+        Assert.Equal("PendingConfirmation", response.Status);
+        Assert.Equal(planSetVersionId, response.PlanSetVersionId);
+        Assert.Equal(dependentPlanSheet.Id, response.DependentSheetId);
+        Assert.True(unitOfWork.SaveChangesCalled);
+        Assert.Contains(viewModel.SelectedPlanSetSheets, sheet =>
+            sheet.SheetId == dependentPlanSheet.Id &&
+            sheet.RegistrationStatus == "PendingConfirmation");
+    }
+
+    [Fact]
+    public async Task ConfirmDependentSheetRegistrationAsync_confirms_pending_registration_and_refreshes_selected_set()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var planSetVersionId = Guid.NewGuid();
+        var housePlanSet = new HousePlanSet(
+            Guid.NewGuid(),
+            templateId,
+            "seminole",
+            "Seminole",
+            new DateTime(2026, 7, 1, 13, 0, 0, DateTimeKind.Utc));
+        var electricalSheet = new PlanSheet(
+            Guid.NewGuid(),
+            planSetVersionId,
+            PlanSheetType.ElectricalPlan,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Electrical",
+            PlanSheetStatus.Imported,
+            new DateTime(2026, 7, 1, 13, 5, 0, DateTimeKind.Utc));
+        var registration = new SheetRegistration(
+            Guid.NewGuid(),
+            planSetVersionId,
+            electricalSheet.Id,
+            versionId,
+            SheetRegistrationMethod.WholeSheetSimilarity,
+            new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+            0.25m,
+            SheetRegistrationStatus.PendingConfirmation,
+            new DateTime(2026, 7, 1, 13, 10, 0, DateTimeKind.Utc),
+            confirmedAtUtc: null,
+            warning: "Needs manual review");
+        var item = CreateLibraryItem(
+            templateId,
+            versionId,
+            "Published",
+            activePublishedCurationId: Guid.NewGuid());
+        var dependentSheet = new PlanSetSheetDto(
+            electricalSheet.Id,
+            "ElectricalPlan",
+            "Electrical",
+            electricalSheet.ImportedDocumentId,
+            versionId,
+            IsCanonical: false,
+            RegistrationStatus: "PendingConfirmation",
+            ProjectionStatus: "NotProjected",
+            SheetRegistrationId: registration.Id);
+        var sheetRepository = new CapturingPlanSheetRepository();
+        sheetRepository.Items.Add(electricalSheet);
+        var registrationRepository = new CapturingSheetRegistrationRepository();
+        registrationRepository.Items.Add(registration);
+        var unitOfWork = new FakeUnitOfWork();
+        var housePlanSets = new InMemoryHousePlanSetRepository();
+        housePlanSets.Items.Add(housePlanSet);
+        var planSetVersions = new InMemoryPlanSetVersionRepository();
+        planSetVersions.Items.Add(new PlanSetVersion(
+            planSetVersionId,
+            housePlanSet.Id,
+            versionId,
+            versionNumber: 1,
+            new DateTime(2026, 7, 1, 13, 0, 0, DateTimeKind.Utc)));
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader([item]));
+        services.AddSingleton<IPlanSheetRepository>(sheetRepository);
+        services.AddSingleton<IPlanSheetReader>(sheetRepository);
+        services.AddSingleton<ISheetRegistrationRepository>(registrationRepository);
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 7, 1, 13, 15, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IUnitOfWork>(unitOfWork);
+        services.AddSingleton<IHousePlanSetRepository>(housePlanSets);
+        services.AddSingleton<IPlanSetVersionRepository>(planSetVersions);
+        services.AddTransient<ConfirmSheetRegistrationHandler>();
+        services.AddTransient<GetFloorPlanLibraryHandler>();
+        services.AddTransient<GetPlanSetLibraryHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
+        {
+            SelectedItem = item,
+            SelectedVersion = item.Versions[0]
+        };
+
+        await viewModel.ConfirmDependentSheetRegistrationAsync(dependentSheet, CancellationToken.None);
+
+        var confirmed = Assert.Single(registrationRepository.Items);
+        Assert.Equal(SheetRegistrationStatus.Confirmed, confirmed.Status);
+        Assert.NotNull(confirmed.ConfirmedAtUtc);
+        Assert.True(unitOfWork.SaveChangesCalled);
+        Assert.Contains(viewModel.SelectedPlanSetSheets, sheet =>
+            sheet.SheetId == electricalSheet.Id &&
+            sheet.RegistrationStatus == "Confirmed" &&
+            sheet.SheetRegistrationId == registration.Id);
+        Assert.Contains("Confirmed ElectricalPlan sheet", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RejectDependentSheetRegistrationAsync_rejects_pending_registration_and_refreshes_selected_set()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var planSetVersionId = Guid.NewGuid();
+        var housePlanSet = new HousePlanSet(
+            Guid.NewGuid(),
+            templateId,
+            "seminole",
+            "Seminole",
+            new DateTime(2026, 7, 1, 13, 30, 0, DateTimeKind.Utc));
+        var electricalSheet = new PlanSheet(
+            Guid.NewGuid(),
+            planSetVersionId,
+            PlanSheetType.ElectricalPlan,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Electrical",
+            PlanSheetStatus.Imported,
+            new DateTime(2026, 7, 1, 13, 35, 0, DateTimeKind.Utc));
+        var registration = new SheetRegistration(
+            Guid.NewGuid(),
+            planSetVersionId,
+            electricalSheet.Id,
+            versionId,
+            SheetRegistrationMethod.WholeSheetSimilarity,
+            new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+            0.25m,
+            SheetRegistrationStatus.PendingConfirmation,
+            new DateTime(2026, 7, 1, 13, 40, 0, DateTimeKind.Utc),
+            confirmedAtUtc: null,
+            warning: "Needs manual review");
+        var item = CreateLibraryItem(
+            templateId,
+            versionId,
+            "Published",
+            activePublishedCurationId: Guid.NewGuid());
+        var dependentSheet = new PlanSetSheetDto(
+            electricalSheet.Id,
+            "ElectricalPlan",
+            "Electrical",
+            electricalSheet.ImportedDocumentId,
+            versionId,
+            IsCanonical: false,
+            RegistrationStatus: "PendingConfirmation",
+            ProjectionStatus: "NotProjected",
+            SheetRegistrationId: registration.Id);
+        var sheetRepository = new CapturingPlanSheetRepository();
+        sheetRepository.Items.Add(electricalSheet);
+        var registrationRepository = new CapturingSheetRegistrationRepository();
+        registrationRepository.Items.Add(registration);
+        var unitOfWork = new FakeUnitOfWork();
+        var housePlanSets = new InMemoryHousePlanSetRepository();
+        housePlanSets.Items.Add(housePlanSet);
+        var planSetVersions = new InMemoryPlanSetVersionRepository();
+        planSetVersions.Items.Add(new PlanSetVersion(
+            planSetVersionId,
+            housePlanSet.Id,
+            versionId,
+            versionNumber: 1,
+            new DateTime(2026, 7, 1, 13, 30, 0, DateTimeKind.Utc)));
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader([item]));
+        services.AddSingleton<IPlanSheetRepository>(sheetRepository);
+        services.AddSingleton<IPlanSheetReader>(sheetRepository);
+        services.AddSingleton<ISheetRegistrationRepository>(registrationRepository);
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 7, 1, 13, 45, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IUnitOfWork>(unitOfWork);
+        services.AddSingleton<IHousePlanSetRepository>(housePlanSets);
+        services.AddSingleton<IPlanSetVersionRepository>(planSetVersions);
+        services.AddTransient<RejectSheetRegistrationHandler>();
+        services.AddTransient<GetFloorPlanLibraryHandler>();
+        services.AddTransient<GetPlanSetLibraryHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
+        {
+            SelectedItem = item,
+            SelectedVersion = item.Versions[0]
+        };
+
+        var response = await viewModel.RejectDependentSheetRegistrationAsync(dependentSheet, CancellationToken.None);
+
+        Assert.NotNull(response);
+        var rejected = Assert.Single(registrationRepository.Items);
+        Assert.Equal(SheetRegistrationStatus.Rejected, rejected.Status);
+        Assert.Null(rejected.ConfirmedAtUtc);
+        Assert.True(unitOfWork.SaveChangesCalled);
+        Assert.Contains(viewModel.SelectedPlanSetSheets, sheet =>
+            sheet.SheetId == electricalSheet.Id &&
+            sheet.RegistrationStatus == "Rejected" &&
+            sheet.CanCorrectSheetType &&
+            sheet.CanRegisterDependent &&
+            sheet.CanUnlink);
+        Assert.Contains("Rejected ElectricalPlan registration", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConfirmDependentSheetProjectionAsync_confirms_manual_projection_and_refreshes_selected_set()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var planSetVersionId = Guid.NewGuid();
+        var housePlanSet = new HousePlanSet(
+            Guid.NewGuid(),
+            templateId,
+            "seminole",
+            "Seminole",
+            new DateTime(2026, 7, 1, 14, 0, 0, DateTimeKind.Utc));
+        var electricalSheet = new PlanSheet(
+            Guid.NewGuid(),
+            planSetVersionId,
+            PlanSheetType.ElectricalPlan,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Electrical",
+            PlanSheetStatus.Imported,
+            new DateTime(2026, 7, 1, 14, 5, 0, DateTimeKind.Utc));
+        var registration = new SheetRegistration(
+            Guid.NewGuid(),
+            planSetVersionId,
+            electricalSheet.Id,
+            versionId,
+            SheetRegistrationMethod.WholeSheetSimilarity,
+            new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+            0.25m,
+            SheetRegistrationStatus.Confirmed,
+            new DateTime(2026, 7, 1, 14, 10, 0, DateTimeKind.Utc),
+            confirmedAtUtc: new DateTime(2026, 7, 1, 14, 12, 0, DateTimeKind.Utc),
+            warning: "Needs manual review");
+        var projection = new SheetAdjustmentProjection(
+            Guid.NewGuid(),
+            planSetVersionId,
+            electricalSheet.Id,
+            registration.Id,
+            Guid.NewGuid(),
+            SheetAdjustmentProjectionMethod.ElectricalWholeSheetSimilarity,
+            new SheetAdjustmentProjectionTransform(1m, 0m, 0m, 0m),
+            0.25m,
+            SheetAdjustmentProjectionStatus.RequiresManualConfirmation,
+            "Low confidence projection requires review.",
+            canonicalCompressionStepCount: 0,
+            new DateTime(2026, 7, 1, 14, 20, 0, DateTimeKind.Utc));
+        var item = CreateLibraryItem(
+            templateId,
+            versionId,
+            "Published",
+            activePublishedCurationId: Guid.NewGuid());
+        var dependentSheet = new PlanSetSheetDto(
+            electricalSheet.Id,
+            "ElectricalPlan",
+            "Electrical",
+            electricalSheet.ImportedDocumentId,
+            versionId,
+            IsCanonical: false,
+            RegistrationStatus: "Confirmed",
+            ProjectionStatus: "RequiresManualConfirmation",
+            SheetRegistrationId: registration.Id,
+            SheetProjectionId: projection.Id);
+        var sheetRepository = new CapturingPlanSheetRepository();
+        sheetRepository.Items.Add(electricalSheet);
+        var registrationRepository = new CapturingSheetRegistrationRepository();
+        registrationRepository.Items.Add(registration);
+        var projectionRepository = new CapturingSheetAdjustmentProjectionRepository();
+        projectionRepository.Items.Add(projection);
+        var unitOfWork = new FakeUnitOfWork();
+        var housePlanSets = new InMemoryHousePlanSetRepository();
+        housePlanSets.Items.Add(housePlanSet);
+        var planSetVersions = new InMemoryPlanSetVersionRepository();
+        planSetVersions.Items.Add(new PlanSetVersion(
+            planSetVersionId,
+            housePlanSet.Id,
+            versionId,
+            versionNumber: 1,
+            new DateTime(2026, 7, 1, 14, 0, 0, DateTimeKind.Utc)));
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader([item]));
+        services.AddSingleton<IPlanSheetRepository>(sheetRepository);
+        services.AddSingleton<IPlanSheetReader>(sheetRepository);
+        services.AddSingleton<ISheetRegistrationRepository>(registrationRepository);
+        services.AddSingleton<ISheetAdjustmentProjectionRepository>(projectionRepository);
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 7, 1, 14, 25, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IUnitOfWork>(unitOfWork);
+        services.AddSingleton<IHousePlanSetRepository>(housePlanSets);
+        services.AddSingleton<IPlanSetVersionRepository>(planSetVersions);
+        services.AddTransient<ConfirmSheetAdjustmentProjectionHandler>();
+        services.AddTransient<GetFloorPlanLibraryHandler>();
+        services.AddTransient<GetPlanSetLibraryHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>())
+        {
+            SelectedItem = item,
+            SelectedVersion = item.Versions[0]
+        };
+
+        await viewModel.ConfirmDependentSheetProjectionAsync(dependentSheet, CancellationToken.None);
+
+        var confirmed = Assert.Single(projectionRepository.Items);
+        Assert.Equal(SheetAdjustmentProjectionStatus.ReadyForExport, confirmed.Status);
+        Assert.True(unitOfWork.SaveChangesCalled);
+        Assert.Contains(viewModel.SelectedPlanSetSheets, sheet =>
+            sheet.SheetId == electricalSheet.Id &&
+            sheet.ProjectionStatus == "ReadyForExport" &&
+            sheet.SheetProjectionId == projection.Id);
+        Assert.Contains("Confirmed ElectricalPlan projection", viewModel.StatusMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -810,6 +1550,214 @@ public sealed class LibraryViewModelTests
         public Task<IReadOnlyList<FloorPlanLibraryItemDto>> ListAsync(CancellationToken cancellationToken)
         {
             return Task.FromResult(items);
+        }
+    }
+
+    private sealed class FakeDxfGateway : IDxfGateway
+    {
+        public Task<DetectedFloorPlanDocument> ReadFloorPlanAsync(string filePath, CancellationToken cancellationToken)
+            => Task.FromResult(new DetectedFloorPlanDocument(
+                Path.GetFileName(filePath),
+                Path.GetFileNameWithoutExtension(filePath),
+                LengthUnit.Inch,
+                25.4m,
+                "AC1032",
+                "bbox:0,0,10,10"));
+    }
+
+    private sealed class FakeManagedFileStorage : IManagedFileStorage
+    {
+        public Task<string> CopyIntoLibraryAsync(string sourceFilePath, CancellationToken cancellationToken)
+            => Task.FromResult(Path.Combine(@"C:\managed", Path.GetFileName(sourceFilePath)));
+
+        public Task<string> ReserveAdjustedDxfPathAsync(string sourceFileName, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+    }
+
+    private sealed class FakeHashService : IFileHashService
+    {
+        public Task<string> ComputeSha256Async(string filePath, CancellationToken cancellationToken)
+            => Task.FromResult("hash");
+    }
+
+    private sealed class CapturingMeasurementContextRepository : IMeasurementContextRepository
+    {
+        public List<MeasurementContext> Items { get; } = [];
+
+        public Task AddAsync(MeasurementContext context, CancellationToken cancellationToken)
+        {
+            Items.Add(context);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingImportedDocumentRepository : IImportedDocumentRepository
+    {
+        public List<ImportedDocument> Items { get; } = [];
+
+        public Task AddAsync(ImportedDocument document, CancellationToken cancellationToken)
+        {
+            Items.Add(document);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingPlanSheetRepository : IPlanSheetRepository, IPlanSheetReader
+    {
+        public List<PlanSheet> Items { get; } = [];
+
+        public Task AddAsync(PlanSheet sheet, CancellationToken cancellationToken)
+        {
+            Items.Add(sheet);
+            return Task.CompletedTask;
+        }
+
+        public Task<PlanSheet?> GetByIdAsync(Guid sheetId, CancellationToken cancellationToken)
+            => Task.FromResult(Items.FirstOrDefault(item => item.Id == sheetId));
+
+        public Task RemoveAsync(Guid sheetId, CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.Id == sheetId);
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateAsync(PlanSheet sheet, CancellationToken cancellationToken)
+        {
+            var index = Items.FindIndex(item => item.Id == sheet.Id);
+            if (index >= 0)
+            {
+                Items[index] = sheet;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>>> ListByPlanSetVersionIdsAsync(
+            IReadOnlyCollection<Guid> planSetVersionIds,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>> result = Items
+                .Where(sheet => planSetVersionIds.Contains(sheet.PlanSetVersionId))
+                .GroupBy(sheet => sheet.PlanSetVersionId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<PlanSetSheetDto>)group
+                        .Select(sheet => new PlanSetSheetDto(
+                            sheet.Id,
+                            sheet.SheetType.ToString(),
+                            sheet.Name,
+                            sheet.ImportedDocumentId,
+                            SourceFloorPlanVersionId: null,
+                            IsCanonical: false,
+                            sheet.Status.ToString(),
+                            "NotProjected"))
+                        .ToArray());
+
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class CapturingSheetRegistrationRepository : ISheetRegistrationRepository
+    {
+        public List<SheetRegistration> Items { get; } = [];
+
+        public Task AddAsync(SheetRegistration registration, CancellationToken cancellationToken)
+        {
+            Items.Add(registration);
+            return Task.CompletedTask;
+        }
+
+        public Task<SheetRegistration?> GetByIdAsync(Guid registrationId, CancellationToken cancellationToken)
+            => Task.FromResult(Items.FirstOrDefault(item => item.Id == registrationId));
+
+        public Task<IReadOnlyList<SheetRegistration>> ListByPlanSetVersionAsync(
+            Guid planSetVersionId,
+            CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<SheetRegistration>>(
+                Items.Where(item => item.PlanSetVersionId == planSetVersionId).ToArray());
+
+        public Task UpdateAsync(SheetRegistration registration, CancellationToken cancellationToken)
+        {
+            var index = Items.FindIndex(item => item.Id == registration.Id);
+            if (index >= 0)
+            {
+                Items[index] = registration;
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingSheetAdjustmentProjectionRepository : ISheetAdjustmentProjectionRepository
+    {
+        public List<SheetAdjustmentProjection> Items { get; } = [];
+
+        public Task AddAsync(SheetAdjustmentProjection projection, CancellationToken cancellationToken)
+        {
+            Items.Add(projection);
+            return Task.CompletedTask;
+        }
+
+        public Task<SheetAdjustmentProjection?> GetByIdAsync(Guid projectionId, CancellationToken cancellationToken)
+            => Task.FromResult(Items.FirstOrDefault(item => item.Id == projectionId));
+
+        public Task UpdateAsync(SheetAdjustmentProjection projection, CancellationToken cancellationToken)
+        {
+            var index = Items.FindIndex(item => item.Id == projection.Id);
+            if (index >= 0)
+            {
+                Items[index] = projection;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<SheetAdjustmentProjection>> ListByPlanSetVersionAndCanonicalAdjustmentAsync(
+            Guid planSetVersionId,
+            Guid canonicalAdjustmentId,
+            CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<SheetAdjustmentProjection>>(
+                Items
+                    .Where(item => item.PlanSetVersionId == planSetVersionId &&
+                                   item.CanonicalAdjustmentId == canonicalAdjustmentId)
+                    .ToArray());
+
+        public Task<IReadOnlyList<SheetAdjustmentProjection>> ListByPlanSetVersionAsync(
+            Guid planSetVersionId,
+            CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<SheetAdjustmentProjection>>(
+                Items.Where(item => item.PlanSetVersionId == planSetVersionId).ToArray());
+    }
+
+    private sealed class InMemoryHousePlanSetRepository : IHousePlanSetRepository
+    {
+        public List<HousePlanSet> Items { get; } = [];
+
+        public Task<HousePlanSet?> GetBySourceFloorPlanTemplateAsync(
+            Guid sourceFloorPlanTemplateId,
+            CancellationToken cancellationToken)
+            => Task.FromResult(Items.FirstOrDefault(item => item.SourceFloorPlanTemplateId == sourceFloorPlanTemplateId));
+
+        public Task AddAsync(HousePlanSet housePlanSet, CancellationToken cancellationToken)
+        {
+            Items.Add(housePlanSet);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryPlanSetVersionRepository : IPlanSetVersionRepository
+    {
+        public List<PlanSetVersion> Items { get; } = [];
+
+        public Task<PlanSetVersion?> GetByCanonicalFloorPlanVersionAsync(
+            Guid canonicalFloorPlanVersionId,
+            CancellationToken cancellationToken)
+            => Task.FromResult(Items.FirstOrDefault(item => item.CanonicalFloorPlanVersionId == canonicalFloorPlanVersionId));
+
+        public Task AddAsync(PlanSetVersion version, CancellationToken cancellationToken)
+        {
+            Items.Add(version);
+            return Task.CompletedTask;
         }
     }
 

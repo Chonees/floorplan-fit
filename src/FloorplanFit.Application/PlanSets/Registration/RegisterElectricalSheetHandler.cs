@@ -1,4 +1,5 @@
-﻿using FloorplanFit.Application.Abstractions;
+using System.Text.Json;
+using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Domain.PlanSets;
 
@@ -10,17 +11,20 @@ public sealed class RegisterElectricalSheetHandler
     private readonly ISheetRegistrationRepository sheetRegistrationRepository;
     private readonly IUnitOfWork unitOfWork;
     private readonly IClock clock;
+    private readonly IPlanSetAuditEventRepository? planSetAuditEventRepository;
 
     public RegisterElectricalSheetHandler(
         IPlanSheetRepository planSheetRepository,
         ISheetRegistrationRepository sheetRegistrationRepository,
         IUnitOfWork unitOfWork,
-        IClock clock)
+        IClock clock,
+        IPlanSetAuditEventRepository? planSetAuditEventRepository = null)
     {
         this.planSheetRepository = planSheetRepository;
         this.sheetRegistrationRepository = sheetRegistrationRepository;
         this.unitOfWork = unitOfWork;
         this.clock = clock;
+        this.planSetAuditEventRepository = planSetAuditEventRepository;
     }
 
     public async Task<SheetRegistrationDto> HandleAsync(
@@ -77,9 +81,47 @@ public sealed class RegisterElectricalSheetHandler
             request.Warning);
 
         await sheetRegistrationRepository.AddAsync(registration, cancellationToken);
+        await TryRecordRegistrationQualityEventAsync(registration, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return ToDto(registration);
+    }
+
+    private async Task TryRecordRegistrationQualityEventAsync(
+        SheetRegistration registration,
+        CancellationToken cancellationToken)
+    {
+        if (planSetAuditEventRepository is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await planSetAuditEventRepository.AddAsync(
+                new PlanSetAuditEvent(
+                    Guid.NewGuid(),
+                    "SheetRegistration",
+                    registration.Id,
+                    "SheetRegistrationQualityMeasured",
+                    JsonSerializer.Serialize(new
+                    {
+                        planSetVersionId = registration.PlanSetVersionId,
+                        dependentSheetId = registration.DependentSheetId,
+                        canonicalFloorPlanVersionId = registration.CanonicalFloorPlanVersionId,
+                        method = registration.Method.ToString(),
+                        confidence = registration.Confidence,
+                        status = registration.Status.ToString(),
+                        warning = registration.Warning,
+                        ruleSummary = registration.RuleSummary
+                    }),
+                    registration.CreatedAtUtc),
+                cancellationToken);
+        }
+        catch (Exception)
+        {
+            // ponytail: registration telemetry is best-effort; add durable retries only if analytics becomes business-critical.
+        }
     }
 
     private static SheetRegistrationDto ToDto(SheetRegistration registration)

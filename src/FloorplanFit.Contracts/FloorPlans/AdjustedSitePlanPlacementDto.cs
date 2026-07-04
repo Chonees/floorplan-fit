@@ -51,3 +51,59 @@ public sealed record AdjustedCompressionStepDto(
 public sealed record AdjustedCompressionMarkerDto(
     decimal Coordinate,
     decimal TrimSourceUnits);
+
+public sealed record AdjustmentRecipeSummaryDto(
+    string Version,
+    decimal FloorToSiteScale,
+    decimal SiteOffsetX,
+    decimal SiteOffsetY,
+    IReadOnlyList<AdjustmentRecipeOperationDto> Operations)
+{
+    public static AdjustmentRecipeSummaryDto FromPlacement(AdjustedSitePlanPlacementDto placement)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+
+        return new AdjustmentRecipeSummaryDto(
+            "v1",
+            placement.FloorToSiteScale,
+            placement.SiteOffsetX,
+            placement.SiteOffsetY,
+            placement.CompressionSteps
+                .SelectMany(step => step.Markers.Select(marker =>
+                    new AdjustmentRecipeOperationDto(
+                        ResolveOperationKind(step),
+                        step.AxisTag,
+                        step.Edge,
+                        marker.Coordinate,
+                        marker.TrimSourceUnits)))
+                .ToArray());
+    }
+
+    public string ToSheetReviewSummary(string sheetKind)
+    {
+        var normalizedSheetKind = string.IsNullOrWhiteSpace(sheetKind) ? "DependentSheet" : sheetKind.Trim();
+        if (Operations.Count == 0)
+        {
+            return $"{normalizedSheetKind}: affine placement applied; no local compression operations.";
+        }
+
+        var operations = string.Join(
+            ", ",
+            Operations.Select(operation =>
+                $"{operation.Kind} {operation.Edge} @{operation.Coordinate} delta {operation.DeltaSourceUnits}"));
+
+        return $"{normalizedSheetKind}: affine placement applied; local recipe requires review before DXF deformation: {operations}.";
+    }
+
+    private static string ResolveOperationKind(AdjustedCompressionStepDto step)
+        => string.Equals(step.AxisTag, "Height", StringComparison.OrdinalIgnoreCase)
+            ? "VerticalCompression"
+            : "HorizontalCompression";
+}
+
+public sealed record AdjustmentRecipeOperationDto(
+    string Kind,
+    string AxisTag,
+    string Edge,
+    decimal Coordinate,
+    decimal DeltaSourceUnits);

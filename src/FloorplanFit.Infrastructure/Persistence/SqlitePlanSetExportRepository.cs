@@ -74,7 +74,8 @@ public sealed class SqlitePlanSetExportRepository : IPlanSetExportRepository
                 projection_method,
                 confidence,
                 warning,
-                rule_summary)
+                rule_summary,
+                recipe_handling_summary)
             VALUES (
                 $id,
                 $plan_set_export_id,
@@ -86,7 +87,8 @@ public sealed class SqlitePlanSetExportRepository : IPlanSetExportRepository
                 $projection_method,
                 $confidence,
                 $warning,
-                $rule_summary)
+                $rule_summary,
+                $recipe_handling_summary)
             """;
         command.Parameters.AddWithValue("$id", sheet.Id.ToString());
         command.Parameters.AddWithValue("$plan_set_export_id", sheet.PlanSetExportId.ToString());
@@ -99,6 +101,7 @@ public sealed class SqlitePlanSetExportRepository : IPlanSetExportRepository
         command.Parameters.AddWithValue("$confidence", sheet.Confidence.HasValue ? (object)sheet.Confidence.Value.ToString(CultureInfo.InvariantCulture) : DBNull.Value);
         command.Parameters.AddWithValue("$warning", (object?)sheet.Warning ?? DBNull.Value);
         command.Parameters.AddWithValue("$rule_summary", (object?)sheet.RuleSummary ?? DBNull.Value);
+        command.Parameters.AddWithValue("$recipe_handling_summary", (object?)sheet.RecipeHandlingSummary ?? DBNull.Value);
         command.ExecuteNonQuery();
     }
 }

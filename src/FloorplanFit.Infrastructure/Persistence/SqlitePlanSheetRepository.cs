@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 
 namespace FloorplanFit.Infrastructure.Persistence;
 
-public sealed class SqlitePlanSheetRepository : IPlanSheetRepository, IPlanSheetReader
+public sealed class SqlitePlanSheetRepository : IPlanSheetRepository, IPlanSheetReader, IPlanSheetSourceReader
 {
     private readonly SqliteSession session;
 
@@ -75,6 +75,42 @@ public sealed class SqlitePlanSheetRepository : IPlanSheetRepository, IPlanSheet
         return Task.FromResult<PlanSheet?>(MapSheet(reader));
     }
 
+    public Task RemoveAsync(Guid sheetId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            DELETE FROM plan_sheets
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", sheetId.ToString());
+        command.ExecuteNonQuery();
+
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateAsync(PlanSheet sheet, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            UPDATE plan_sheets
+            SET sheet_type = $sheet_type
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", sheet.Id.ToString());
+        command.Parameters.AddWithValue("$sheet_type", (int)sheet.SheetType);
+
+        if (command.ExecuteNonQuery() == 0)
+        {
+            throw new InvalidOperationException("Plan sheet was not found.");
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>>> ListByPlanSetVersionIdsAsync(
         IReadOnlyCollection<Guid> planSetVersionIds,
         CancellationToken cancellationToken)
@@ -126,6 +162,34 @@ public sealed class SqlitePlanSheetRepository : IPlanSheetRepository, IPlanSheet
 
         return Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<PlanSetSheetDto>>>(
             mutable.ToDictionary(item => item.Key, item => (IReadOnlyList<PlanSetSheetDto>)item.Value));
+    }
+
+    public Task<PlanSheetSourceDto?> GetBySheetIdAsync(Guid sheetId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            SELECT ps.id, ps.sheet_type, ps.name, ps.imported_document_id, d.storage_path
+            FROM plan_sheets ps
+            JOIN imported_documents d ON d.id = ps.imported_document_id
+            WHERE ps.id = $id
+            LIMIT 1
+            """);
+        command.Parameters.AddWithValue("$id", sheetId.ToString());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return Task.FromResult<PlanSheetSourceDto?>(null);
+        }
+
+        return Task.FromResult<PlanSheetSourceDto?>(new PlanSheetSourceDto(
+            Guid.Parse(reader.GetString(0)),
+            ((PlanSheetType)reader.GetInt32(1)).ToString(),
+            reader.GetString(2),
+            Guid.Parse(reader.GetString(3)),
+            reader.GetString(4)));
     }
 
     private static PlanSheet MapSheet(SqliteDataReader reader)

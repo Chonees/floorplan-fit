@@ -14,12 +14,14 @@ public sealed class ProjectRoofSheetAdjustmentHandlerTests
         var clock = new FakeClock(new DateTime(2026, 6, 30, 22, 0, 0, DateTimeKind.Utc));
         var registration = CreateRoofRegistration("PreserveOverhangInches=18");
         var projectionRepository = new CapturingSheetAdjustmentProjectionRepository();
+        var auditEventRepository = new CapturingPlanSetAuditEventRepository();
         var unitOfWork = new CapturingUnitOfWork();
         var handler = new ProjectRoofSheetAdjustmentHandler(
             new FakeSheetRegistrationRepository(registration),
             projectionRepository,
             unitOfWork,
-            clock);
+            clock,
+            auditEventRepository);
         var canonicalAdjustmentId = Guid.NewGuid();
 
         var response = await handler.HandleAsync(
@@ -46,6 +48,15 @@ public sealed class ProjectRoofSheetAdjustmentHandlerTests
         var saved = Assert.Single(projectionRepository.Items);
         Assert.Equal(SheetAdjustmentProjectionMethod.RoofOverhangPreserving, saved.Method);
         Assert.Equal("PreserveOverhangInches=18", saved.RuleSummary);
+
+        var auditEvent = Assert.Single(auditEventRepository.Items);
+        Assert.Equal("SheetAdjustmentProjection", auditEvent.AggregateType);
+        Assert.Equal(response.ProjectionId, auditEvent.AggregateId);
+        Assert.Equal("SheetAdjustmentProjectionQualityMeasured", auditEvent.EventType);
+        Assert.Contains("\"method\":\"RoofOverhangPreserving\"", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"confidence\":0.91", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"status\":\"ReadyForExport\"", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"ruleSummary\":\"PreserveOverhangInches=18\"", auditEvent.PayloadJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -145,6 +156,17 @@ public sealed class ProjectRoofSheetAdjustmentHandlerTests
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
             Saved = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingPlanSetAuditEventRepository : IPlanSetAuditEventRepository
+    {
+        public List<PlanSetAuditEvent> Items { get; } = [];
+
+        public Task AddAsync(PlanSetAuditEvent auditEvent, CancellationToken cancellationToken)
+        {
+            Items.Add(auditEvent);
             return Task.CompletedTask;
         }
     }

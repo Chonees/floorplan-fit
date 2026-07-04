@@ -14,12 +14,14 @@ public sealed class RegisterRoofSheetHandlerTests
         var roofSheet = CreateSheet(planSetVersionId, PlanSheetType.RoofPlan);
         var clock = new FakeClock(new DateTime(2026, 6, 30, 21, 0, 0, DateTimeKind.Utc));
         var registrationRepository = new CapturingSheetRegistrationRepository();
+        var auditEventRepository = new CapturingPlanSetAuditEventRepository();
         var unitOfWork = new CapturingUnitOfWork();
         var handler = new RegisterRoofSheetHandler(
             new FakePlanSheetRepository(roofSheet),
             registrationRepository,
             unitOfWork,
-            clock);
+            clock,
+            auditEventRepository);
 
         var response = await handler.HandleAsync(
             new RegisterRoofSheetRequest(
@@ -46,6 +48,15 @@ public sealed class RegisterRoofSheetHandlerTests
         var saved = Assert.Single(registrationRepository.Items);
         Assert.Equal(SheetRegistrationMethod.RoofFootprintWithOverhang, saved.Method);
         Assert.Equal("PreserveOverhangInches=18", saved.RuleSummary);
+
+        var auditEvent = Assert.Single(auditEventRepository.Items);
+        Assert.Equal("SheetRegistration", auditEvent.AggregateType);
+        Assert.Equal(response.RegistrationId, auditEvent.AggregateId);
+        Assert.Equal("SheetRegistrationQualityMeasured", auditEvent.EventType);
+        Assert.Contains("\"method\":\"RoofFootprintWithOverhang\"", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"confidence\":0.86", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"status\":\"Confirmed\"", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"ruleSummary\":\"PreserveOverhangInches=18\"", auditEvent.PayloadJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -104,6 +115,11 @@ public sealed class RegisterRoofSheetHandlerTests
         {
             return Task.FromResult(sheet.Id == sheetId ? sheet : null);
         }
+
+        public Task RemoveAsync(Guid sheetId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private sealed class CapturingSheetRegistrationRepository : ISheetRegistrationRepository
@@ -129,6 +145,17 @@ public sealed class RegisterRoofSheetHandlerTests
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
             Saved = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingPlanSetAuditEventRepository : IPlanSetAuditEventRepository
+    {
+        public List<PlanSetAuditEvent> Items { get; } = [];
+
+        public Task AddAsync(PlanSetAuditEvent auditEvent, CancellationToken cancellationToken)
+        {
+            Items.Add(auditEvent);
             return Task.CompletedTask;
         }
     }

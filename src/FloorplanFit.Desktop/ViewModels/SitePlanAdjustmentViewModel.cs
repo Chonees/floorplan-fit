@@ -5,7 +5,12 @@ using CommunityToolkit.Mvvm.Input;
 using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.FloorPlans.Review;
 using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
+using FloorplanFit.Application.PlanSets.Adjustment;
+using FloorplanFit.Application.PlanSets.Confirmation;
+using FloorplanFit.Application.PlanSets.Export;
+using FloorplanFit.Application.PlanSets.Projection;
 using FloorplanFit.Contracts.FloorPlans;
+using FloorplanFit.Contracts.PlanSets;
 
 namespace FloorplanFit.Desktop.ViewModels;
 
@@ -24,6 +29,12 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     private readonly string? floorPlanSourcePath;
     private readonly string? sitePlanSourcePath;
     private readonly IAdjustedSitePlanExporter? adjustedSitePlanExporter;
+    private readonly Guid? planSetVersionId;
+    private readonly Guid? canonicalFloorPlanVersionId;
+    private readonly RecordCanonicalFloorPlanAdjustmentHandler? canonicalAdjustmentRecorder;
+    private readonly ExportMultiSheetPlanSetPackageHandler? planSetPackageExporter;
+    private readonly ProjectRegisteredPlanSetSheetsHandler? registeredSheetProjector;
+    private readonly ConfirmSheetAdjustmentProjectionHandler? confirmSheetProjectionHandler;
     private IReadOnlyList<AdjustedCompressionStepDto> appliedCompressionSteps = [];
     private readonly IReadOnlyList<PinchMarkerDto> pinchMarkers;
     private readonly IReadOnlyList<PinchGroupDto> pinchGroups;
@@ -64,7 +75,13 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         IAdjustedSitePlanExporter? adjustedSitePlanExporter = null,
         IReadOnlyList<PinchGroupDto>? pinchGroups = null,
         SitePlanBuildableAreaDto? autoFitBuildableArea = null,
-        IReadOnlySet<Guid>? autoFitGeometryPathIds = null)
+        IReadOnlySet<Guid>? autoFitGeometryPathIds = null,
+        Guid? planSetVersionId = null,
+        Guid? canonicalFloorPlanVersionId = null,
+        RecordCanonicalFloorPlanAdjustmentHandler? canonicalAdjustmentRecorder = null,
+        ExportMultiSheetPlanSetPackageHandler? planSetPackageExporter = null,
+        ProjectRegisteredPlanSetSheetsHandler? registeredSheetProjector = null,
+        ConfirmSheetAdjustmentProjectionHandler? confirmSheetProjectionHandler = null)
     {
         Title = title;
         Subtitle = subtitle;
@@ -81,6 +98,12 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         this.floorPlanSourcePath = floorPlanSourcePath;
         this.sitePlanSourcePath = sitePlanSourcePath;
         this.adjustedSitePlanExporter = adjustedSitePlanExporter;
+        this.planSetVersionId = planSetVersionId;
+        this.canonicalFloorPlanVersionId = canonicalFloorPlanVersionId;
+        this.canonicalAdjustmentRecorder = canonicalAdjustmentRecorder;
+        this.planSetPackageExporter = planSetPackageExporter;
+        this.registeredSheetProjector = registeredSheetProjector;
+        this.confirmSheetProjectionHandler = confirmSheetProjectionHandler;
         this.pinchMarkers = pinchMarkers ?? [];
         this.pinchGroups = pinchGroups ?? [];
         this.measurementCorridors = measurementCorridors ?? [];
@@ -134,6 +157,12 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     public ObservableCollection<DimensionDto> Dimensions { get; } = [];
 
     public ObservableCollection<AutoFitSuggestionOptionViewModel> AutoFitSuggestionOptions { get; } = [];
+
+    public ObservableCollection<string> PlanSetExportAuditLines { get; } = [];
+
+    public Guid? LastCanonicalAdjustmentId { get; private set; }
+
+    public MultiSheetExportAuditDto? LastPlanSetExportAudit { get; private set; }
 
     public bool CanSuggestAutoFitPlan =>
         autoFitSuggestionFacts?.NeedsAdjustment == true;
@@ -440,6 +469,12 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         !string.IsNullOrWhiteSpace(floorPlanSourcePath) &&
         !string.IsNullOrWhiteSpace(sitePlanSourcePath);
 
+    public bool CanConfirmManualPlanSetProjections =>
+        confirmSheetProjectionHandler is not null &&
+        planSetPackageExporter is not null &&
+        LastCanonicalAdjustmentId.HasValue &&
+        LastPlanSetExportAudit?.Sheets.Any(IsManualProjectedSheet) == true;
+
     public async Task ExportAdjustedSitePlanAsync(string outputFilePath, CancellationToken cancellationToken)
     {
         if (!CanExportAdjustedSitePlan)
@@ -450,25 +485,307 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
 
         try
         {
+            ReplaceItems(PlanSetExportAuditLines, []);
+            LastPlanSetExportAudit = null;
+            OnPropertyChanged(nameof(LastPlanSetExportAudit));
+            NotifyPlanSetProjectionConfirmationStateChanged();
+            var placement = BuildAdjustedSitePlanPlacement();
             var result = await adjustedSitePlanExporter!.ExportAsync(
                 floorPlanSourcePath!,
                 sitePlanSourcePath!,
                 outputFilePath,
-                BuildAdjustedSitePlanPlacement(),
+                placement,
                 cancellationToken);
 
-            AutoFitSuggestionStatus = result.Warnings.Count == 0
-                ? $"DXF combinado exportado: {result.OutputFilePath}"
-                : $"DXF combinado exportado: {result.OutputFilePath} ({result.Warnings.Count} avisos).";
-            AutoFitSuggestionPlanDetails = result.Warnings.Count == 0
-                ? $"Se inyectaron {result.InjectedSitePlanEntityCount} entidades del site plan con sus capas."
-                : string.Join(Environment.NewLine, result.Warnings);
+            var canonicalAdjustmentRecord = await TryRecordCanonicalAdjustmentAsync(
+                placement,
+                result.OutputFilePath,
+                cancellationToken);
+            if (!canonicalAdjustmentRecord.Succeeded)
+            {
+                return;
+            }
+
+            var packageExport = await TryExportPlanSetPackageAsync(
+                canonicalAdjustmentRecord.Response,
+                result.OutputFilePath,
+                placement,
+                cancellationToken);
+            if (!packageExport.Succeeded)
+            {
+                return;
+            }
+
+            AutoFitSuggestionStatus = BuildExportStatus(result, packageExport.Audit);
+            AutoFitSuggestionPlanDetails = BuildExportDetails(result, packageExport.Audit);
         }
         catch (Exception exception) when (exception is IOException or InvalidOperationException or UnauthorizedAccessException)
         {
             AutoFitSuggestionStatus = $"No se pudo exportar el DXF combinado: {exception.Message}";
         }
     }
+
+    [RelayCommand(CanExecute = nameof(CanConfirmManualPlanSetProjections))]
+    public async Task ConfirmManualPlanSetProjectionsAndReExportAsync(CancellationToken cancellationToken)
+    {
+        if (!CanConfirmManualPlanSetProjections)
+        {
+            AutoFitSuggestionStatus = "No hay proyecciones manuales del paquete actual para confirmar.";
+            return;
+        }
+
+        var audit = LastPlanSetExportAudit!;
+        var canonicalExportPath = ResolveCanonicalExportPath(audit);
+        if (string.IsNullOrWhiteSpace(canonicalExportPath) ||
+            !planSetVersionId.HasValue ||
+            !canonicalFloorPlanVersionId.HasValue ||
+            !LastCanonicalAdjustmentId.HasValue)
+        {
+            AutoFitSuggestionStatus = "No se puede re-exportar: falta el ajuste canónico o el DXF canónico exportado.";
+            return;
+        }
+
+        try
+        {
+            var manualProjectionIds = audit.Sheets
+                .Where(IsManualProjectedSheet)
+                .Select(sheet => sheet.ProjectionId!.Value)
+                .Distinct()
+                .ToArray();
+            foreach (var projectionId in manualProjectionIds)
+            {
+                await confirmSheetProjectionHandler!.HandleAsync(
+                    new ConfirmSheetAdjustmentProjectionRequest(projectionId),
+                    cancellationToken);
+            }
+
+            var refreshedAudit = await planSetPackageExporter!.HandleAsync(
+                new ExportMultiSheetPlanSetPackageRequest(
+                    planSetVersionId.Value,
+                    canonicalFloorPlanVersionId.Value,
+                    LastCanonicalAdjustmentId.Value,
+                    canonicalExportPath,
+                    BuildPlanSetPackageDirectory(canonicalExportPath),
+                    []),
+                cancellationToken);
+            LastPlanSetExportAudit = refreshedAudit;
+            ReplaceItems(PlanSetExportAuditLines, BuildPlanSetExportAuditLines(refreshedAudit));
+            OnPropertyChanged(nameof(LastPlanSetExportAudit));
+            NotifyPlanSetProjectionConfirmationStateChanged();
+            AutoFitSuggestionStatus = BuildPlanSetReExportStatus(refreshedAudit);
+            AutoFitSuggestionPlanDetails = BuildPlanSetReExportDetails(refreshedAudit);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            AutoFitSuggestionStatus = $"No se pudo confirmar/re-exportar el paquete HousePlanSet: {exception.Message}";
+        }
+    }
+
+    private async Task<(bool Succeeded, RecordCanonicalFloorPlanAdjustmentResponse? Response)> TryRecordCanonicalAdjustmentAsync(
+        AdjustedSitePlanPlacementDto placement,
+        string exportedPath,
+        CancellationToken cancellationToken)
+    {
+        if (canonicalAdjustmentRecorder is null ||
+            !planSetVersionId.HasValue ||
+            !canonicalFloorPlanVersionId.HasValue ||
+            string.IsNullOrWhiteSpace(sitePlanSourcePath))
+        {
+            return (true, null);
+        }
+
+        try
+        {
+            var response = await canonicalAdjustmentRecorder.HandleAsync(
+                new RecordCanonicalFloorPlanAdjustmentRequest(
+                    planSetVersionId.Value,
+                    canonicalFloorPlanVersionId.Value,
+                    sitePlanSourcePath!,
+                    exportedPath,
+                    placement),
+                cancellationToken);
+            LastCanonicalAdjustmentId = response.AdjustmentId;
+            OnPropertyChanged(nameof(LastCanonicalAdjustmentId));
+            NotifyPlanSetProjectionConfirmationStateChanged();
+            return (true, response);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            AutoFitSuggestionStatus = $"DXF combinado exportado: {exportedPath}, pero no se pudo registrar el ajuste canónico: {exception.Message}";
+            return (false, null);
+        }
+    }
+
+    private async Task<(bool Succeeded, MultiSheetExportAuditDto? Audit)> TryExportPlanSetPackageAsync(
+        RecordCanonicalFloorPlanAdjustmentResponse? canonicalAdjustment,
+        string canonicalFloorPlanExportPath,
+        AdjustedSitePlanPlacementDto placement,
+        CancellationToken cancellationToken)
+    {
+        if (planSetPackageExporter is null ||
+            canonicalAdjustment is null ||
+            !planSetVersionId.HasValue ||
+            !canonicalFloorPlanVersionId.HasValue)
+        {
+            return (true, null);
+        }
+
+        try
+        {
+            if (registeredSheetProjector is not null)
+            {
+                await registeredSheetProjector.HandleAsync(
+                    new ProjectRegisteredPlanSetSheetsRequest(
+                        planSetVersionId.Value,
+                        canonicalAdjustment.AdjustmentId,
+                        placement,
+                        canonicalAdjustment.AdjustmentRecipe),
+                    cancellationToken);
+            }
+
+            var audit = await planSetPackageExporter.HandleAsync(
+                new ExportMultiSheetPlanSetPackageRequest(
+                    planSetVersionId.Value,
+                    canonicalFloorPlanVersionId.Value,
+                    canonicalAdjustment.AdjustmentId,
+                    canonicalFloorPlanExportPath,
+                    BuildPlanSetPackageDirectory(canonicalFloorPlanExportPath),
+                    []),
+                cancellationToken);
+            LastPlanSetExportAudit = audit;
+            ReplaceItems(PlanSetExportAuditLines, BuildPlanSetExportAuditLines(audit));
+            OnPropertyChanged(nameof(LastPlanSetExportAudit));
+            NotifyPlanSetProjectionConfirmationStateChanged();
+            return (true, audit);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            AutoFitSuggestionStatus = $"DXF combinado exportado: {canonicalFloorPlanExportPath}, ajuste canonico registrado, pero no se pudo exportar el paquete HousePlanSet: {exception.Message}";
+            return (false, null);
+        }
+    }
+
+    private static string BuildPlanSetPackageDirectory(string canonicalFloorPlanExportPath)
+    {
+        var parentDirectory = Path.GetDirectoryName(canonicalFloorPlanExportPath);
+        if (string.IsNullOrWhiteSpace(parentDirectory))
+        {
+            parentDirectory = Environment.CurrentDirectory;
+        }
+
+        var exportName = Path.GetFileNameWithoutExtension(canonicalFloorPlanExportPath);
+        if (string.IsNullOrWhiteSpace(exportName))
+        {
+            exportName = "house-plan-set";
+        }
+
+        return Path.Combine(parentDirectory, $"{exportName}-plan-set");
+    }
+
+    private static bool IsManualProjectedSheet(ExportedPlanSheetDto sheet)
+        => sheet.ProjectionId.HasValue &&
+           string.Equals(sheet.Status, "RequiresManualConfirmation", StringComparison.Ordinal);
+
+    private static string? ResolveCanonicalExportPath(MultiSheetExportAuditDto audit)
+        => audit.Sheets.FirstOrDefault(sheet =>
+            string.Equals(sheet.SheetKind, "CanonicalFloorPlan", StringComparison.Ordinal))?.StoragePath;
+
+    private void NotifyPlanSetProjectionConfirmationStateChanged()
+    {
+        OnPropertyChanged(nameof(CanConfirmManualPlanSetProjections));
+        ConfirmManualPlanSetProjectionsAndReExportCommand.NotifyCanExecuteChanged();
+    }
+
+    private static string BuildPlanSetReExportStatus(MultiSheetExportAuditDto audit)
+    {
+        var manifest = string.IsNullOrWhiteSpace(audit.PackageManifestPath)
+            ? "manifest pendiente"
+            : audit.PackageManifestPath;
+        return audit.Summary.ManualConfirmationRequiredSheetCount == 0
+            ? $"Proyecciones confirmadas y paquete HousePlanSet listo: {manifest}"
+            : $"Paquete HousePlanSet re-exportado con {audit.Summary.ManualConfirmationRequiredSheetCount} hojas aún en revisión: {manifest}";
+    }
+
+    private static string BuildPlanSetReExportDetails(MultiSheetExportAuditDto audit)
+        => $"HousePlanSet: {audit.Summary.AutomaticallyProjectedSheetCount} hojas auto, {audit.Summary.ManualConfirmationRequiredSheetCount} manual/missing.";
+
+    private static string BuildExportStatus(
+        AdjustedSitePlanExportResult result,
+        MultiSheetExportAuditDto? audit)
+    {
+        if (audit is null)
+        {
+            return result.Warnings.Count == 0
+                ? $"DXF combinado exportado: {result.OutputFilePath}"
+                : $"DXF combinado exportado: {result.OutputFilePath} ({result.Warnings.Count} avisos).";
+        }
+
+        var manifest = string.IsNullOrWhiteSpace(audit.PackageManifestPath)
+            ? "manifest pendiente"
+            : audit.PackageManifestPath;
+        return audit.Summary.ManualConfirmationRequiredSheetCount == 0
+            ? $"DXF combinado exportado y paquete HousePlanSet listo: {manifest}"
+            : $"DXF combinado exportado y paquete HousePlanSet requiere revision: {audit.Summary.ManualConfirmationRequiredSheetCount} hojas ({manifest})";
+    }
+
+    private static string BuildExportDetails(
+        AdjustedSitePlanExportResult result,
+        MultiSheetExportAuditDto? audit)
+    {
+        var dxfDetails = result.Warnings.Count == 0
+            ? $"Se inyectaron {result.InjectedSitePlanEntityCount} entidades del site plan con sus capas."
+            : string.Join(Environment.NewLine, result.Warnings);
+        if (audit is null)
+        {
+            return dxfDetails;
+        }
+
+        var manifest = string.IsNullOrWhiteSpace(audit.PackageManifestPath)
+            ? "manifest pendiente"
+            : audit.PackageManifestPath;
+        return string.Join(
+            Environment.NewLine,
+            dxfDetails,
+            $"HousePlanSet: {audit.Summary.AutomaticallyProjectedSheetCount} hojas auto, {audit.Summary.ManualConfirmationRequiredSheetCount} manual/missing, manifest: {manifest}.");
+    }
+
+    private static IReadOnlyList<string> BuildPlanSetExportAuditLines(MultiSheetExportAuditDto audit)
+    {
+        var lines = audit.Sheets
+            .Select(sheet =>
+            {
+                var confidence = sheet.Confidence.HasValue
+                    ? $" - confidence {FormatConfidence(sheet.Confidence.Value)}"
+                    : string.Empty;
+                var warning = string.IsNullOrWhiteSpace(sheet.Warning)
+                    ? string.Empty
+                    : $" - {sheet.Warning}";
+                var recipe = string.IsNullOrWhiteSpace(sheet.RecipeHandlingSummary)
+                    ? string.Empty
+                    : $" - recipe: {sheet.RecipeHandlingSummary}";
+                var path = string.IsNullOrWhiteSpace(sheet.StoragePath)
+                    ? string.Empty
+                    : $" - {sheet.StoragePath}";
+                return $"{sheet.SheetKind}: {sheet.Status}{confidence}{warning}{recipe}{path}";
+            })
+            .ToList();
+
+        if (audit.QualityReport is not null)
+        {
+            lines.Add(BuildQualityReportLine(audit.QualityReport));
+        }
+
+        return lines;
+    }
+
+    private static string BuildQualityReportLine(PlanSetQualityReportDto report)
+        => $"Quality: registrations {report.RegistrationEventCount}, projections {report.ProjectionEventCount}, lowest registration {FormatOptionalConfidence(report.LowestRegistrationConfidence)}, lowest projection {FormatOptionalConfidence(report.LowestProjectionConfidence)}, manual registrations {report.ManualRegistrationCount}, manual projections {report.ManualProjectionCount}";
+
+    private static string FormatOptionalConfidence(decimal? confidence)
+        => confidence.HasValue ? FormatConfidence(confidence.Value) : "n/a";
+
+    private static string FormatConfidence(decimal confidence)
+        => $"{decimal.Round(confidence * 100m, 0, MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture)}%";
 
     internal AdjustedSitePlanPlacementDto BuildAdjustedSitePlanPlacement()
     {
@@ -1295,7 +1612,12 @@ internal static class SitePlanAdjustmentPreviewProjector
         IAutoFitPlanSuggester? autoFitPlanSuggester = null,
         string? floorPlanSourcePath = null,
         string? sitePlanSourcePath = null,
-        IAdjustedSitePlanExporter? adjustedSitePlanExporter = null)
+        IAdjustedSitePlanExporter? adjustedSitePlanExporter = null,
+        RecordCanonicalFloorPlanAdjustmentHandler? canonicalAdjustmentRecorder = null,
+        ExportMultiSheetPlanSetPackageHandler? planSetPackageExporter = null,
+        Guid? planSetVersionId = null,
+        ProjectRegisteredPlanSetSheetsHandler? registeredSheetProjector = null,
+        ConfirmSheetAdjustmentProjectionHandler? confirmSheetProjectionHandler = null)
     {
         var floorPlanPlacementGeometryPathIds = reviewViewModel.WallCandidates
             .Where(candidate => string.Equals(candidate.Status, "Accepted", StringComparison.OrdinalIgnoreCase))
@@ -1323,6 +1645,9 @@ internal static class SitePlanAdjustmentPreviewProjector
         var autoFitFacts = SitePlanAdjustmentFitAnalyzer.BuildFacts(
             projection.FloorPlanGeometryPaths,
             autoFitFitContext);
+        var canonicalFloorPlanVersionId = version.VersionId == Guid.Empty
+            ? (Guid?)null
+            : version.VersionId;
 
         return new SitePlanAdjustmentViewModel(
             "Ajustar a site plan",
@@ -1352,7 +1677,13 @@ internal static class SitePlanAdjustmentPreviewProjector
             adjustedSitePlanExporter,
             reviewViewModel.PinchGroups,
             sitePlan.BuildableArea,
-            floorPlanPlacementGeometryPathIds);
+            floorPlanPlacementGeometryPathIds,
+            planSetVersionId ?? canonicalFloorPlanVersionId,
+            canonicalFloorPlanVersionId,
+            canonicalAdjustmentRecorder,
+            planSetPackageExporter,
+            registeredSheetProjector,
+            confirmSheetProjectionHandler);
     }
 
     internal static SitePlanAdjustmentSitePlanDisplay FilterSitePlanForAdjustment(SitePlanPreviewDto sitePlan)

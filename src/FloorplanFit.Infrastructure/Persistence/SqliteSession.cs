@@ -4,17 +4,16 @@ namespace FloorplanFit.Infrastructure.Persistence;
 
 public sealed class SqliteSession : IDisposable, IAsyncDisposable
 {
-    private bool committed;
+    private SqliteTransaction? transaction;
 
-    private SqliteSession(SqliteConnection connection, SqliteTransaction transaction)
+    private SqliteSession(SqliteConnection connection)
     {
         Connection = connection;
-        Transaction = transaction;
     }
 
     public SqliteConnection Connection { get; }
 
-    public SqliteTransaction Transaction { get; }
+    public SqliteTransaction Transaction => transaction ??= Connection.BeginTransaction();
 
     public static Task<SqliteSession> OpenAsync(string databasePath, CancellationToken cancellationToken)
     {
@@ -29,16 +28,20 @@ public sealed class SqliteSession : IDisposable, IAsyncDisposable
 
         var connection = new SqliteConnection($"Data Source={databasePath}");
         connection.Open();
-        var transaction = connection.BeginTransaction();
 
-        return Task.FromResult(new SqliteSession(connection, transaction));
+        return Task.FromResult(new SqliteSession(connection));
     }
 
     public Task CommitAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Transaction.Commit();
-        committed = true;
+        if (transaction is not null)
+        {
+            transaction.Commit();
+            transaction.Dispose();
+            transaction = null;
+        }
+
         return Task.CompletedTask;
     }
 
@@ -57,18 +60,20 @@ public sealed class SqliteSession : IDisposable, IAsyncDisposable
 
     private void DisposeCore()
     {
-        if (!committed)
+        if (transaction is not null)
         {
             try
             {
-                Transaction.Rollback();
+                transaction.Rollback();
             }
             catch (InvalidOperationException)
             {
             }
+
+            transaction.Dispose();
+            transaction = null;
         }
 
-        Transaction.Dispose();
         Connection.Dispose();
     }
 }

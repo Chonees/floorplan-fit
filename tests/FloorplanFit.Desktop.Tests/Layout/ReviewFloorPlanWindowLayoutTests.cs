@@ -184,6 +184,158 @@ public sealed class ReviewFloorPlanWindowLayoutTests
     }
 
     [Fact]
+    public void Library_header_removes_ambiguous_dependent_sheet_auto_import_entry()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var mainXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml");
+        var mainCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml.cs");
+        var mainXaml = File.ReadAllText(mainXamlPath);
+        var mainCodeBehind = File.ReadAllText(mainCodeBehindPath);
+
+        Assert.DoesNotContain("Content=\"Auto Import Sheet\"", mainXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ImportDependentSheetButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("Auto sheet import needs type", mainCodeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Library_keeps_site_plan_adjustment_scope_alive_until_leaving_adjustment_screen()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var viewModelPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ViewModels", "LibraryViewModel.cs");
+        var viewModel = File.ReadAllText(viewModelPath);
+
+        Assert.Contains("private IServiceScope? activeSitePlanAdjustmentScope;", viewModel, StringComparison.Ordinal);
+        Assert.Contains("activeSitePlanAdjustmentScope = scope;", viewModel, StringComparison.Ordinal);
+        Assert.Contains("DisposeActiveSitePlanAdjustmentScope();", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("using var scope = scopeFactory.CreateScope();\r\n        var sitePlanReader", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("using var scope = scopeFactory.CreateScope();\n        var sitePlanReader", viewModel, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Library_header_exposes_explicit_dependent_sheet_import_entries()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var mainXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml");
+        var mainCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml.cs");
+        var mainXaml = File.ReadAllText(mainXamlPath);
+        var mainCodeBehind = File.ReadAllText(mainCodeBehindPath);
+
+        Assert.Contains("Content=\"Import Electrical\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Import Roof\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Import Facade\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("ImportElectricalSheetButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("\"ElectricalPlan\"", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("\"RoofPlan\"", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("\"FacadeElevation\"", mainCodeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Library_version_row_exposes_select_button_for_dependent_sheet_import_target()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var mainXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml");
+        var mainCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml.cs");
+        var mainXaml = File.ReadAllText(mainXamlPath);
+        var mainCodeBehind = File.ReadAllText(mainCodeBehindPath);
+
+        Assert.Contains("Content=\"Select\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"SelectVersionButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("SelectVersionButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("viewModel.SelectVersion(item, version);", mainCodeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Library_screen_shows_selected_plan_set_sheets()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var mainXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml");
+        var mainCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml.cs");
+        var mainXaml = File.ReadAllText(mainXamlPath);
+        var mainCodeBehind = File.ReadAllText(mainCodeBehindPath);
+
+        Assert.Contains("SelectedPlanSetSheetsLabel", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{Binding SelectedPlanSetSheets}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("x:DataType=\"planSets:PlanSetSheetDto\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("RegistrationStatus", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("ProjectionStatus", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("RegistrationQualityLabel", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("ProjectionQualityLabel", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"×\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisible=\"{Binding CanUnlink}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"UnlinkDependentSheetButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Register\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisible=\"{Binding CanRegisterDependent}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"RegisterDependentSheetButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Confirm\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisible=\"{Binding CanConfirmRegistration}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"ConfirmSheetRegistrationButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Reject Reg\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisible=\"{Binding CanRejectRegistration}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"RejectSheetRegistrationButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Confirm Projection\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisible=\"{Binding CanConfirmProjection}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"ConfirmSheetProjectionButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"To Electrical\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisible=\"{Binding CanCorrectToElectrical}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"CorrectSheetToElectricalButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"To Roof\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisible=\"{Binding CanCorrectToRoof}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"CorrectSheetToRoofButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"To Facade\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisible=\"{Binding CanCorrectToFacade}\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"CorrectSheetToFacadeButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("UnlinkDependentSheetButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("RegisterDependentSheetButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("ConfirmSheetRegistrationButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("RejectSheetRegistrationButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("ConfirmSheetProjectionButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("CorrectSheetToElectricalButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("CorrectSheetToRoofButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("CorrectSheetToFacadeButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Library_register_action_uses_a_manual_registration_transform_dialog()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var mainCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml.cs");
+        var dialogXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "RegistrationTransformDialog.axaml");
+        var dialogCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "RegistrationTransformDialog.axaml.cs");
+        var mainCodeBehind = File.ReadAllText(mainCodeBehindPath);
+        var dialogXaml = File.ReadAllText(dialogXamlPath);
+        var dialogCodeBehind = File.ReadAllText(dialogCodeBehindPath);
+
+        Assert.Contains("RegistrationTransformDialog", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("ShowDialog<RegistrationTransformDialogResult?>", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("registrationResult.Transform", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("registrationResult.Confidence", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("registrationResult.OverhangInches", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("registrationResult.HorizontalReferenceName", mainCodeBehind, StringComparison.Ordinal);
+
+        Assert.Contains("x:Name=\"ScaleTextBox\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"RotationDegreesTextBox\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TranslateXTextBox\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TranslateYTextBox\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"ConfidenceTextBox\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"OverhangInchesTextBox\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"HorizontalReferenceTextBox\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("RegistrationTransformDialogResult", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("TryParseDecimal", dialogCodeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Site_plan_adjustment_screen_exposes_manual_projection_reexport_action()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml");
+        var xaml = File.ReadAllText(xamlPath);
+
+        Assert.Contains("Confirmar manuales + re-exportar", xaml, StringComparison.Ordinal);
+        Assert.Contains("ConfirmManualPlanSetProjectionsAndReExportCommand", xaml, StringComparison.Ordinal);
+        Assert.Contains("CanConfirmManualPlanSetProjections", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Adjust_to_site_plan_setup_dialog_sizes_to_fit_its_content()
     {
         var solutionRoot = FindSolutionRoot();
@@ -192,6 +344,16 @@ public sealed class ReviewFloorPlanWindowLayoutTests
 
         Assert.Contains("SizeToContent=\"Height\"", dialogXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Height=\"360\"", dialogXaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Adjust_to_site_plan_setup_dialog_uses_solid_gray_background()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var dialogXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "AdjustSitePlanSetupDialog.axaml");
+        var dialogXaml = File.ReadAllText(dialogXamlPath);
+
+        Assert.Contains("Background=\"#FF2F333A\"", dialogXaml, StringComparison.Ordinal);
     }
 
     [Fact]

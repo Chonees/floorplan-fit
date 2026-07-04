@@ -4,7 +4,16 @@ using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Import;
 using FloorplanFit.Application.FloorPlans.Library;
+using FloorplanFit.Application.PlanSets.Adjustment;
+using FloorplanFit.Application.PlanSets.Classification;
+using FloorplanFit.Application.PlanSets.Confirmation;
+using FloorplanFit.Application.PlanSets.Export;
+using FloorplanFit.Application.PlanSets.Import;
+using FloorplanFit.Application.PlanSets.Library;
+using FloorplanFit.Application.PlanSets.Projection;
+using FloorplanFit.Application.PlanSets.Registration;
 using FloorplanFit.Contracts.FloorPlans;
+using FloorplanFit.Contracts.PlanSets;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FloorplanFit.Desktop.ViewModels;
@@ -12,6 +21,7 @@ namespace FloorplanFit.Desktop.ViewModels;
 public sealed partial class LibraryViewModel : ObservableObject
 {
     private readonly IServiceScopeFactory scopeFactory;
+    private IReadOnlyList<PlanSetLibraryItemDto> planSetItems = [];
 
     public LibraryViewModel(IServiceScopeFactory scopeFactory)
     {
@@ -19,6 +29,8 @@ public sealed partial class LibraryViewModel : ObservableObject
     }
 
     public ObservableCollection<FloorPlanLibraryItemDto> Items { get; } = [];
+
+    public ObservableCollection<PlanSetSheetDto> SelectedPlanSetSheets { get; } = [];
 
     [ObservableProperty]
     private FloorPlanLibraryItemDto? selectedItem;
@@ -35,9 +47,15 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     private SitePlanAdjustmentViewModel? activeSitePlanAdjustmentViewModel;
 
+    private IServiceScope? activeSitePlanAdjustmentScope;
+
     public string SelectedVersionLabel => SelectedItem is null || SelectedVersion is null
         ? "No version selected"
         : $"Selected: {SelectedItem.Code} v{SelectedVersion.VersionNumber}";
+
+    public string SelectedPlanSetSheetsLabel => SelectedItem is null || SelectedVersion is null
+        ? "Plan Set Sheets"
+        : $"Plan Set Sheets: {SelectedPlanSetSheets.Count} sheet(s)";
 
     public string ShellTitle => ActiveReviewViewModel is not null
         ? "Floorplan Fit - Edit"
@@ -73,6 +91,353 @@ public sealed partial class LibraryViewModel : ObservableObject
         SelectedItem = Items.FirstOrDefault(item => item.TemplateId == response.Item.TemplateId);
         SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.IsCurrent);
         StatusMessage = $"Imported and extracted {response.Item.Name} v{response.Item.ActiveVersionNumber}";
+    }
+
+    public async Task<ImportPlanSheetResponse?> ImportDependentSheetAsync(
+        string filePath,
+        string? sheetType,
+        string? name,
+        CancellationToken cancellationToken)
+    {
+        if (SelectedItem is null || SelectedVersion is null)
+        {
+            StatusMessage = "Select a floor plan version before importing dependent sheets.";
+            return null;
+        }
+
+        var templateId = SelectedItem.TemplateId;
+        var versionId = SelectedVersion.VersionId;
+        StatusMessage = $"Importing dependent sheet for {SelectedItem.Code} v{SelectedVersion.VersionNumber}...";
+
+        using var scope = scopeFactory.CreateScope();
+        var housePlanSetId = await ResolveHousePlanSetIdAsync(
+            scope.ServiceProvider.GetService<ResolveHousePlanSetHandler>(),
+            SelectedItem.TemplateId,
+            SelectedItem.Code,
+            SelectedItem.Name,
+            cancellationToken);
+        var planSetVersionId = await ResolvePlanSetVersionIdAsync(
+            scope.ServiceProvider.GetService<ResolvePlanSetVersionHandler>(),
+            housePlanSetId ?? SelectedItem.TemplateId,
+            SelectedVersion.VersionId,
+            cancellationToken);
+        if (!planSetVersionId.HasValue)
+        {
+            StatusMessage = "Could not resolve the selected HousePlanSet version.";
+            return null;
+        }
+
+        var handler = scope.ServiceProvider.GetRequiredService<ImportPlanSheetHandler>();
+        var response = await handler.HandleAsync(
+            new ImportPlanSheetRequest(
+                planSetVersionId.Value,
+                sheetType ?? string.Empty,
+                filePath,
+                name),
+            cancellationToken);
+
+        await RefreshItemsAsync(cancellationToken);
+        SelectedItem = Items.FirstOrDefault(item => item.TemplateId == templateId) ?? SelectedItem;
+        SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == versionId)
+            ?? SelectedItem?.Versions.FirstOrDefault(item => item.IsCurrent);
+        StatusMessage = $"Imported {response.SheetType} sheet {response.Name}";
+        return response;
+    }
+
+    public async Task<SheetRegistrationDto?> RegisterDependentSheetAsync(
+        PlanSetSheetDto sheet,
+        SheetRegistrationTransformDto transform,
+        decimal confidence,
+        bool confirmRegistration,
+        decimal overhangInches,
+        string? horizontalReferenceName,
+        CancellationToken cancellationToken)
+    {
+        if (SelectedItem is null || SelectedVersion is null)
+        {
+            StatusMessage = "Select a floor plan version before registering dependent sheets.";
+            return null;
+        }
+
+        var templateId = SelectedItem.TemplateId;
+        var versionId = SelectedVersion.VersionId;
+
+        using var scope = scopeFactory.CreateScope();
+        var housePlanSetId = await ResolveHousePlanSetIdAsync(
+            scope.ServiceProvider.GetService<ResolveHousePlanSetHandler>(),
+            SelectedItem.TemplateId,
+            SelectedItem.Code,
+            SelectedItem.Name,
+            cancellationToken);
+        var planSetVersionId = await ResolvePlanSetVersionIdAsync(
+            scope.ServiceProvider.GetService<ResolvePlanSetVersionHandler>(),
+            housePlanSetId ?? SelectedItem.TemplateId,
+            SelectedVersion.VersionId,
+            cancellationToken);
+        if (!planSetVersionId.HasValue)
+        {
+            StatusMessage = "Could not resolve the selected HousePlanSet version.";
+            return null;
+        }
+
+        var registration = sheet.SheetType switch
+        {
+            "ElectricalPlan" => await scope.ServiceProvider
+                .GetRequiredService<RegisterElectricalSheetHandler>()
+                .HandleAsync(
+                    new RegisterElectricalSheetRequest(
+                        planSetVersionId.Value,
+                        sheet.SheetId,
+                        transform.Scale,
+                        transform.RotationDegrees,
+                        transform.TranslateX,
+                        transform.TranslateY,
+                        confidence,
+                        confirmRegistration),
+                    cancellationToken),
+            "RoofPlan" => await scope.ServiceProvider
+                .GetRequiredService<RegisterRoofSheetHandler>()
+                .HandleAsync(
+                    new RegisterRoofSheetRequest(
+                        planSetVersionId.Value,
+                        sheet.SheetId,
+                        transform.Scale,
+                        transform.RotationDegrees,
+                        transform.TranslateX,
+                        transform.TranslateY,
+                        confidence,
+                        overhangInches,
+                        confirmRegistration),
+                    cancellationToken),
+            "FacadeElevation" => await scope.ServiceProvider
+                .GetRequiredService<RegisterFacadeElevationSheetHandler>()
+                .HandleAsync(
+                    new RegisterFacadeElevationSheetRequest(
+                        planSetVersionId.Value,
+                        sheet.SheetId,
+                        transform.Scale,
+                        transform.TranslateX,
+                        confidence,
+                        confirmRegistration,
+                        horizontalReferenceName),
+                    cancellationToken),
+            _ => throw new ArgumentException("Unsupported dependent sheet type.", nameof(sheet))
+        };
+
+        await RefreshItemsAsync(cancellationToken);
+        SelectedItem = Items.FirstOrDefault(item => item.TemplateId == templateId) ?? SelectedItem;
+        SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == versionId)
+            ?? SelectedVersion;
+        RefreshSelectedPlanSetSheets();
+        StatusMessage = $"Registered {sheet.SheetType} sheet {sheet.Name}: {registration.Status}";
+        return registration;
+    }
+
+    public async Task<SheetRegistrationDto?> ConfirmDependentSheetRegistrationAsync(
+        PlanSetSheetDto sheet,
+        CancellationToken cancellationToken)
+    {
+        if (!sheet.CanConfirmRegistration || !sheet.SheetRegistrationId.HasValue)
+        {
+            StatusMessage = "Only pending dependent sheet registrations can be confirmed here.";
+            return null;
+        }
+
+        var templateId = SelectedItem?.TemplateId;
+        var versionId = SelectedVersion?.VersionId;
+
+        using var scope = scopeFactory.CreateScope();
+        var response = await scope.ServiceProvider
+            .GetRequiredService<ConfirmSheetRegistrationHandler>()
+            .HandleAsync(new ConfirmSheetRegistrationRequest(sheet.SheetRegistrationId.Value), cancellationToken);
+
+        await RefreshItemsAsync(cancellationToken);
+        if (templateId.HasValue)
+        {
+            SelectedItem = Items.FirstOrDefault(item => item.TemplateId == templateId.Value) ?? SelectedItem;
+        }
+
+        if (versionId.HasValue)
+        {
+            SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == versionId.Value)
+                ?? SelectedVersion;
+        }
+
+        RefreshSelectedPlanSetSheets();
+        StatusMessage = $"Confirmed {sheet.SheetType} sheet {sheet.Name}";
+        return response;
+    }
+
+    public async Task<SheetRegistrationDto?> RejectDependentSheetRegistrationAsync(
+        PlanSetSheetDto sheet,
+        CancellationToken cancellationToken)
+    {
+        if (!sheet.CanRejectRegistration || !sheet.SheetRegistrationId.HasValue)
+        {
+            StatusMessage = "Only pending dependent sheet registrations can be rejected here.";
+            return null;
+        }
+
+        var templateId = SelectedItem?.TemplateId;
+        var versionId = SelectedVersion?.VersionId;
+
+        using var scope = scopeFactory.CreateScope();
+        var response = await scope.ServiceProvider
+            .GetRequiredService<RejectSheetRegistrationHandler>()
+            .HandleAsync(new RejectSheetRegistrationRequest(sheet.SheetRegistrationId.Value), cancellationToken);
+
+        await RefreshItemsAsync(cancellationToken);
+        if (templateId.HasValue)
+        {
+            SelectedItem = Items.FirstOrDefault(item => item.TemplateId == templateId.Value) ?? SelectedItem;
+        }
+
+        if (versionId.HasValue)
+        {
+            SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == versionId.Value)
+                ?? SelectedVersion;
+        }
+
+        RefreshSelectedPlanSetSheets();
+        StatusMessage = $"Rejected {sheet.SheetType} registration {sheet.Name}";
+        return response;
+    }
+
+    public async Task<SheetAdjustmentProjectionDto?> ConfirmDependentSheetProjectionAsync(
+        PlanSetSheetDto sheet,
+        CancellationToken cancellationToken)
+    {
+        if (!sheet.CanConfirmProjection || !sheet.SheetProjectionId.HasValue)
+        {
+            StatusMessage = "Only manual-review dependent sheet projections can be confirmed here.";
+            return null;
+        }
+
+        var templateId = SelectedItem?.TemplateId;
+        var versionId = SelectedVersion?.VersionId;
+
+        using var scope = scopeFactory.CreateScope();
+        var response = await scope.ServiceProvider
+            .GetRequiredService<ConfirmSheetAdjustmentProjectionHandler>()
+            .HandleAsync(new ConfirmSheetAdjustmentProjectionRequest(sheet.SheetProjectionId.Value), cancellationToken);
+
+        await RefreshItemsAsync(cancellationToken);
+        if (templateId.HasValue)
+        {
+            SelectedItem = Items.FirstOrDefault(item => item.TemplateId == templateId.Value) ?? SelectedItem;
+        }
+
+        if (versionId.HasValue)
+        {
+            SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == versionId.Value)
+                ?? SelectedVersion;
+        }
+
+        RefreshSelectedPlanSetSheets();
+        StatusMessage = $"Confirmed {sheet.SheetType} projection {sheet.Name}";
+        return response;
+    }
+
+    public async Task UnlinkDependentSheetAsync(PlanSetSheetDto sheet, CancellationToken cancellationToken)
+    {
+        if (!sheet.CanUnlink)
+        {
+            StatusMessage = sheet.IsCanonical
+                ? "Canonical floor plan cannot be unlinked from its plan set."
+                : "Only unregistered, not-projected dependent sheets can be unlinked here.";
+            return;
+        }
+
+        var templateId = SelectedItem?.TemplateId;
+        var versionId = SelectedVersion?.VersionId;
+
+        using var scope = scopeFactory.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IPlanSheetRepository>();
+        var existing = await repository.GetByIdAsync(sheet.SheetId, cancellationToken);
+        if (existing is null)
+        {
+            StatusMessage = $"{sheet.SheetType} sheet {sheet.Name} was already unlinked.";
+            await RefreshItemsAsync(cancellationToken);
+            return;
+        }
+
+        await repository.RemoveAsync(sheet.SheetId, cancellationToken);
+        await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(cancellationToken);
+
+        await RefreshItemsAsync(cancellationToken);
+        if (templateId.HasValue)
+        {
+            SelectedItem = Items.FirstOrDefault(item => item.TemplateId == templateId.Value) ?? SelectedItem;
+        }
+
+        if (versionId.HasValue)
+        {
+            SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == versionId.Value)
+                ?? SelectedVersion;
+        }
+
+        RefreshSelectedPlanSetSheets();
+        StatusMessage = $"Unlinked {sheet.SheetType} sheet {sheet.Name}";
+    }
+
+    public async Task<CorrectPlanSheetTypeResponse?> CorrectDependentSheetTypeAsync(
+        PlanSetSheetDto sheet,
+        string sheetType,
+        CancellationToken cancellationToken)
+    {
+        if (!sheet.CanCorrectSheetType)
+        {
+            StatusMessage = "Only unregistered, not-projected dependent sheets can change sheet type here.";
+            return null;
+        }
+
+        var templateId = SelectedItem?.TemplateId;
+        var versionId = SelectedVersion?.VersionId;
+        if (!templateId.HasValue || !versionId.HasValue || SelectedItem is null)
+        {
+            StatusMessage = "Select a floor plan version before changing dependent sheet type.";
+            return null;
+        }
+
+        using var scope = scopeFactory.CreateScope();
+        var housePlanSetId = await ResolveHousePlanSetIdAsync(
+            scope.ServiceProvider.GetService<ResolveHousePlanSetHandler>(),
+            SelectedItem.TemplateId,
+            SelectedItem.Code,
+            SelectedItem.Name,
+            cancellationToken);
+        var planSetVersionId = await ResolvePlanSetVersionIdAsync(
+            scope.ServiceProvider.GetService<ResolvePlanSetVersionHandler>(),
+            housePlanSetId ?? SelectedItem.TemplateId,
+            versionId.Value,
+            cancellationToken);
+        if (!planSetVersionId.HasValue)
+        {
+            StatusMessage = "Could not resolve the selected HousePlanSet version.";
+            return null;
+        }
+
+        var response = await scope.ServiceProvider
+            .GetRequiredService<CorrectPlanSheetTypeHandler>()
+            .HandleAsync(
+                new CorrectPlanSheetTypeRequest(
+                    planSetVersionId.Value,
+                    sheet.SheetId,
+                    sheetType,
+                    $"Changed from {sheet.SheetType} in library."),
+                cancellationToken);
+
+        await RefreshItemsAsync(cancellationToken);
+        if (templateId.HasValue)
+        {
+            SelectedItem = Items.FirstOrDefault(item => item.TemplateId == templateId.Value) ?? SelectedItem;
+        }
+
+        SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == versionId.Value)
+            ?? SelectedVersion;
+        RefreshSelectedPlanSetSheets();
+        StatusMessage = $"Changed {sheet.SheetType} sheet {sheet.Name} to {response.SheetType}";
+        return response;
     }
 
     public async Task ExtractSelectedAsync(CancellationToken cancellationToken)
@@ -144,6 +509,7 @@ public sealed partial class LibraryViewModel : ObservableObject
             return;
         }
 
+        DisposeActiveSitePlanAdjustmentScope();
         ActiveSitePlanAdjustmentViewModel = null;
         ActiveReviewViewModel = reviewViewModel;
     }
@@ -171,29 +537,99 @@ public sealed partial class LibraryViewModel : ObservableObject
         }
 
         StatusMessage = $"Loading site plan for {item.Code} v{version.VersionNumber}...";
-        using var scope = scopeFactory.CreateScope();
-        var sitePlanReader = scope.ServiceProvider.GetRequiredService<ISitePlanPreviewReader>();
-        var sitePlan = await sitePlanReader.ReadAsync(sitePlanFilePath, cancellationToken);
-        var reviewViewModel = await OpenSelectedReviewAsync(cancellationToken);
-        if (reviewViewModel is null)
+        DisposeActiveSitePlanAdjustmentScope();
+        var scope = scopeFactory.CreateScope();
+        try
+        {
+            var sitePlanReader = scope.ServiceProvider.GetRequiredService<ISitePlanPreviewReader>();
+            var sitePlan = await sitePlanReader.ReadAsync(sitePlanFilePath, cancellationToken);
+            var reviewViewModel = await OpenSelectedReviewAsync(cancellationToken);
+            if (reviewViewModel is null)
+            {
+                return null;
+            }
+
+            var autoFitPlanSuggester = scope.ServiceProvider.GetRequiredService<IAutoFitPlanSuggester>();
+            var adjustedSitePlanExporter = scope.ServiceProvider.GetRequiredService<IAdjustedSitePlanExporter>();
+            var canonicalAdjustmentRecorder = scope.ServiceProvider.GetService<RecordCanonicalFloorPlanAdjustmentHandler>();
+            var planSetPackageExporter = scope.ServiceProvider.GetService<ExportMultiSheetPlanSetPackageHandler>();
+            var registeredSheetProjector = scope.ServiceProvider.GetService<ProjectRegisteredPlanSetSheetsHandler>();
+            var confirmSheetProjectionHandler = scope.ServiceProvider.GetService<ConfirmSheetAdjustmentProjectionHandler>();
+            var housePlanSetResolver = scope.ServiceProvider.GetService<ResolveHousePlanSetHandler>();
+            var planSetVersionResolver = scope.ServiceProvider.GetService<ResolvePlanSetVersionHandler>();
+            var extractionSourceReader = scope.ServiceProvider.GetRequiredService<IFloorPlanExtractionSourceReader>();
+            var extractionSource = await extractionSourceReader.GetByVersionAsync(version.VersionId, cancellationToken);
+            var housePlanSetId = await ResolveHousePlanSetIdAsync(
+                housePlanSetResolver,
+                item.TemplateId,
+                item.Code,
+                item.Name,
+                cancellationToken);
+            var planSetVersionId = await ResolvePlanSetVersionIdAsync(
+                planSetVersionResolver,
+                housePlanSetId ?? item.TemplateId,
+                version.VersionId,
+                cancellationToken);
+            StatusMessage = $"Previewing {item.Code} v{version.VersionNumber} over {sitePlan.FileName}";
+            var adjustmentViewModel = SitePlanAdjustmentPreviewProjector.Build(
+                item,
+                version,
+                reviewViewModel,
+                sitePlan,
+                autoFitPlanSuggester,
+                extractionSource?.ManagedFilePath,
+                sitePlanFilePath,
+                adjustedSitePlanExporter,
+                canonicalAdjustmentRecorder,
+                planSetPackageExporter,
+                planSetVersionId,
+                registeredSheetProjector,
+                confirmSheetProjectionHandler);
+            activeSitePlanAdjustmentScope = scope;
+            return adjustmentViewModel;
+        }
+        finally
+        {
+            if (activeSitePlanAdjustmentScope != scope)
+            {
+                scope.Dispose();
+            }
+        }
+    }
+
+    private static async Task<Guid?> ResolveHousePlanSetIdAsync(
+        ResolveHousePlanSetHandler? resolver,
+        Guid sourceFloorPlanTemplateId,
+        string code,
+        string name,
+        CancellationToken cancellationToken)
+    {
+        if (resolver is null || sourceFloorPlanTemplateId == Guid.Empty)
         {
             return null;
         }
 
-        var autoFitPlanSuggester = scope.ServiceProvider.GetRequiredService<IAutoFitPlanSuggester>();
-        var adjustedSitePlanExporter = scope.ServiceProvider.GetRequiredService<IAdjustedSitePlanExporter>();
-        var extractionSourceReader = scope.ServiceProvider.GetRequiredService<IFloorPlanExtractionSourceReader>();
-        var extractionSource = await extractionSourceReader.GetByVersionAsync(version.VersionId, cancellationToken);
-        StatusMessage = $"Previewing {item.Code} v{version.VersionNumber} over {sitePlan.FileName}";
-        return SitePlanAdjustmentPreviewProjector.Build(
-            item,
-            version,
-            reviewViewModel,
-            sitePlan,
-            autoFitPlanSuggester,
-            extractionSource?.ManagedFilePath,
-            sitePlanFilePath,
-            adjustedSitePlanExporter);
+        var response = await resolver.HandleAsync(
+            new ResolveHousePlanSetRequest(sourceFloorPlanTemplateId, code, name),
+            cancellationToken);
+        return response.HousePlanSetId;
+    }
+
+    private static async Task<Guid?> ResolvePlanSetVersionIdAsync(
+        ResolvePlanSetVersionHandler? resolver,
+        Guid housePlanSetId,
+        Guid canonicalFloorPlanVersionId,
+        CancellationToken cancellationToken)
+    {
+        if (resolver is null || housePlanSetId == Guid.Empty || canonicalFloorPlanVersionId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var response = await resolver.HandleAsync(
+            new ResolvePlanSetVersionRequest(housePlanSetId, canonicalFloorPlanVersionId),
+            cancellationToken);
+        return response.PlanSetVersionId;
     }
 
     public async Task ShowVersionSitePlanAdjustmentAsync(
@@ -219,8 +655,15 @@ public sealed partial class LibraryViewModel : ObservableObject
     public async Task ShowLibraryAsync(CancellationToken cancellationToken)
     {
         ActiveReviewViewModel = null;
+        DisposeActiveSitePlanAdjustmentScope();
         ActiveSitePlanAdjustmentViewModel = null;
         await LoadAsync(cancellationToken);
+    }
+
+    private void DisposeActiveSitePlanAdjustmentScope()
+    {
+        activeSitePlanAdjustmentScope?.Dispose();
+        activeSitePlanAdjustmentScope = null;
     }
 
     public void SelectVersion(FloorPlanLibraryItemDto item, FloorPlanLibraryVersionDto version)
@@ -377,6 +820,47 @@ public sealed partial class LibraryViewModel : ObservableObject
         SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == selectedVersionId)
             ?? SelectedItem?.Versions.FirstOrDefault(item => item.IsCurrent)
             ?? SelectedItem?.Versions.FirstOrDefault();
+        await RefreshPlanSetItemsAsync(scope, cancellationToken);
+        RefreshSelectedPlanSetSheets();
+    }
+
+    private async Task RefreshPlanSetItemsAsync(
+        IServiceScope scope,
+        CancellationToken cancellationToken)
+    {
+        var handler = scope.ServiceProvider.GetService<GetPlanSetLibraryHandler>();
+        planSetItems = handler is null
+            ? []
+            : await handler.HandleAsync(cancellationToken);
+    }
+
+    private void RefreshSelectedPlanSetSheets()
+    {
+        SelectedPlanSetSheets.Clear();
+
+        var selectedPlanSet = FindSelectedPlanSet();
+        if (selectedPlanSet is not null)
+        {
+            foreach (var sheet in selectedPlanSet.Sheets)
+            {
+                SelectedPlanSetSheets.Add(sheet);
+            }
+        }
+
+        OnPropertyChanged(nameof(SelectedPlanSetSheetsLabel));
+    }
+
+    private PlanSetLibraryItemDto? FindSelectedPlanSet()
+    {
+        if (SelectedItem is null)
+        {
+            return null;
+        }
+
+        return planSetItems.FirstOrDefault(planSet =>
+                   planSet.CanonicalFloorPlanVersionId == SelectedVersion?.VersionId) ??
+               planSetItems.FirstOrDefault(planSet =>
+                   string.Equals(planSet.Code, SelectedItem.Code, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task ExtractByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
@@ -419,11 +903,13 @@ public sealed partial class LibraryViewModel : ObservableObject
         SelectedVersion = value?.Versions.FirstOrDefault(item => item.IsCurrent)
             ?? value?.Versions.FirstOrDefault();
         OnPropertyChanged(nameof(SelectedVersionLabel));
+        RefreshSelectedPlanSetSheets();
     }
 
     partial void OnSelectedVersionChanged(FloorPlanLibraryVersionDto? value)
     {
         OnPropertyChanged(nameof(SelectedVersionLabel));
+        RefreshSelectedPlanSetSheets();
     }
 
     partial void OnActiveReviewViewModelChanged(FloorPlanReviewViewModel? value)

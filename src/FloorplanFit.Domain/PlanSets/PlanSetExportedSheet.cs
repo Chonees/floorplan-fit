@@ -13,7 +13,8 @@ public sealed class PlanSetExportedSheet
         string? projectionMethod,
         decimal? confidence,
         string? warning,
-        string? ruleSummary)
+        string? ruleSummary,
+        string? recipeHandlingSummary = null)
     {
         if (id == Guid.Empty)
         {
@@ -45,6 +46,32 @@ public sealed class PlanSetExportedSheet
             throw new ArgumentOutOfRangeException(nameof(confidence), "Sheet confidence must be between 0 and 1.");
         }
 
+        if ((status is PlanSetExportedSheetStatus.ProjectedAutomatically or
+            PlanSetExportedSheetStatus.RequiresManualConfirmation) &&
+            !sheetProjectionId.HasValue)
+        {
+            throw new ArgumentException("Projected sheet status requires a projection id.", nameof(sheetProjectionId));
+        }
+
+        if ((status is PlanSetExportedSheetStatus.Exported or
+            PlanSetExportedSheetStatus.ProjectedAutomatically) &&
+            string.IsNullOrWhiteSpace(storagePath))
+        {
+            throw new ArgumentException("Exported sheet status requires a storage path.", nameof(storagePath));
+        }
+
+        if (status is PlanSetExportedSheetStatus.RequiresManualConfirmation &&
+            !string.IsNullOrWhiteSpace(storagePath))
+        {
+            throw new ArgumentException("Manual confirmation sheets cannot include projection output.", nameof(storagePath));
+        }
+
+        if (status is PlanSetExportedSheetStatus.MissingProjection &&
+            (sheetProjectionId.HasValue || !string.IsNullOrWhiteSpace(storagePath)))
+        {
+            throw new ArgumentException("Missing projection sheets cannot include projection output.", nameof(sheetProjectionId));
+        }
+
         Id = id;
         PlanSetExportId = planSetExportId;
         PlanSheetId = planSheetId;
@@ -56,6 +83,7 @@ public sealed class PlanSetExportedSheet
         Confidence = confidence;
         Warning = string.IsNullOrWhiteSpace(warning) ? null : warning.Trim();
         RuleSummary = string.IsNullOrWhiteSpace(ruleSummary) ? null : ruleSummary.Trim();
+        RecipeHandlingSummary = string.IsNullOrWhiteSpace(recipeHandlingSummary) ? null : recipeHandlingSummary.Trim();
     }
 
     public Guid Id { get; }
@@ -79,4 +107,6 @@ public sealed class PlanSetExportedSheet
     public string? Warning { get; }
 
     public string? RuleSummary { get; }
+
+    public string? RecipeHandlingSummary { get; }
 }

@@ -9,4 +9,5 @@ public sealed record ExportedPlanSheetDto(
     string? ProjectionMethod,
     decimal? Confidence,
     string? Warning,
-    string? RuleSummary);
+    string? RuleSummary,
+    string? RecipeHandlingSummary = null);

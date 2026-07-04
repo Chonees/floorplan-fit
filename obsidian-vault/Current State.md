@@ -1095,3 +1095,11 @@
 - Current truth: the OpenAI adapter catches network request failures and returns an unsuccessful suggestion result; Desktop then uses the existing deterministic fallback options instead of crashing Avalonia/dotnet watch.
 - Verification: focused RED reproduced the unhandled `HttpRequestException`; GREEN passed 1/1; `OpenAiAutoFitPlanSuggesterTests` passed 4/4; Desktop `SuggestAutoFitPlanAsync` tests passed 3/3; `git diff --check` exited 0 with LF-to-CRLF warnings only.
 - See implementation note: `Implementation/2026-06-16 - OpenAI no-internet suggestion fallback.md`.
+
+## 2026-07-03 - HousePlanSet current state summary
+- HousePlanSet flow now treats FloorPlan as canonical and dependent Electrical/Roof/Facade sheets as registered/projected dependents.
+- Desktop library exposes explicit dependent import/register/confirm/reject/unlink/type-correction actions and a Select flow for choosing the canonical floor plan version before importing dependents.
+- Site adjustment export records the canonical FloorPlan adjustment recipe, projects registered dependent sheets, writes package manifests/audits, and supports manual projection confirmation + re-export.
+- Dependent ElectricalPlan DXF export preserves cables, door arcs, normal blocks, dimensions, and fixes ELLIPSE vector projection so small ellipses do not inflate into giant compass artifacts.
+- The right adjustment sidebar is scrollable so long package audit text does not hide Confirmar manuales + re-exportar.
+- SEMINOLE TEST9 verified the canonical recipe route at runtime: FloorPlan adjustment -> saved recipe -> ElectricalPlan projection -> manifest RecipeHandlingSummary with VerticalCompression operations.

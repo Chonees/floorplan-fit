@@ -66,8 +66,10 @@
             Grid.Column="1"
             Classes="panel-card"
             ClipToBounds="True">
-      <Grid RowDefinitions="Auto,Auto,Auto,*"
-            RowSpacing="12">
+      <ScrollViewer x:Name="AdjustmentSidebarScroller"
+                    VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="12">
         <Border Classes="metric-chip">
           <StackPanel Orientation="Horizontal"
                       Spacing="10">
@@ -88,8 +90,7 @@
           </StackPanel>
         </Border>
 
-        <Border Grid.Row="1"
-                Classes="section-card">
+        <Border Classes="section-card">
           <StackPanel Spacing="6"
                       MinWidth="0">
             <TextBlock Classes="muted"
@@ -106,11 +107,19 @@
             <TextBlock Classes="muted"
                        Text="{Binding AutoFitSuggestionPlanDetails}"
                        TextWrapping="Wrap" />
+            <ItemsControl ItemsSource="{Binding PlanSetExportAuditLines}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Classes="muted"
+                             Text="{Binding}"
+                             TextWrapping="Wrap" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
           </StackPanel>
         </Border>
 
-        <StackPanel Grid.Row="2"
-                    Spacing="8">
+        <StackPanel Spacing="8">
           <Button HorizontalAlignment="Stretch"
                   Content="Sugerir ajuste (AI)"
                   Command="{Binding SuggestAutoFitPlanCommand}"
@@ -120,13 +129,14 @@
                   IsEnabled="{Binding CanExportAdjustedSitePlan}"
                   Click="ExportAdjustedSitePlanButton_OnClick"
                   ToolTip.Tip="Genera un DXF con el floor plan ajustado (recortes aplicados) y el site plan con sus capas, listo para CAD." />
+          <Button HorizontalAlignment="Stretch"
+                  Content="Confirmar manuales + re-exportar"
+                  IsEnabled="{Binding CanConfirmManualPlanSetProjections}"
+                  Command="{Binding ConfirmManualPlanSetProjectionsAndReExportCommand}"
+                  ToolTip.Tip="Confirma las proyecciones manuales del último paquete y re-exporta usando el mismo ajuste canónico." />
         </StackPanel>
 
-        <ScrollViewer x:Name="AutoFitOptionsScroller"
-                      Grid.Row="3"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
-          <ItemsControl ItemsSource="{Binding AutoFitSuggestionOptions}">
+        <ItemsControl ItemsSource="{Binding AutoFitSuggestionOptions}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
                 <StackPanel Orientation="Vertical"
@@ -159,8 +169,8 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-        </ScrollViewer>
-      </Grid>
+        </StackPanel>
+      </ScrollViewer>
     </Border>
   </Grid>
 </UserControl>

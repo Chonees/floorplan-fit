@@ -1,0 +1,126 @@
+using FloorplanFit.Application.Abstractions;
+using FloorplanFit.Application.PlanSets.Confirmation;
+using FloorplanFit.Contracts.PlanSets;
+using FloorplanFit.Domain.PlanSets;
+
+namespace FloorplanFit.Application.Tests.PlanSets.Confirmation;
+
+public sealed class RejectSheetRegistrationHandlerTests
+{
+    [Fact]
+    public async Task HandleAsync_rejects_pending_registration()
+    {
+        var clock = new FakeClock(new DateTime(2026, 7, 1, 10, 0, 0, DateTimeKind.Utc));
+        var registration = CreateRegistration(SheetRegistrationStatus.PendingConfirmation, confirmedAtUtc: null);
+        var repository = new CapturingSheetRegistrationRepository(registration);
+        var unitOfWork = new CapturingUnitOfWork();
+        var auditEventRepository = new CapturingPlanSetAuditEventRepository();
+        var handler = new RejectSheetRegistrationHandler(repository, unitOfWork, clock, auditEventRepository);
+
+        var response = await handler.HandleAsync(
+            new RejectSheetRegistrationRequest(registration.Id),
+            CancellationToken.None);
+
+        Assert.True(unitOfWork.Saved);
+        Assert.Equal(registration.Id, response.RegistrationId);
+        Assert.Equal("Rejected", response.Status);
+        Assert.Null(response.ConfirmedAtUtc);
+
+        Assert.NotNull(repository.Updated);
+        Assert.Equal(SheetRegistrationStatus.Rejected, repository.Updated!.Status);
+        Assert.Null(repository.Updated.ConfirmedAtUtc);
+        Assert.Equal(registration.Transform.Scale, repository.Updated.Transform.Scale);
+
+        var auditEvent = Assert.Single(auditEventRepository.Items);
+        Assert.Equal("SheetRegistrationQualityMeasured", auditEvent.EventType);
+        Assert.Equal(registration.Id, auditEvent.AggregateId);
+        Assert.Contains("\"status\":\"Rejected\"", auditEvent.PayloadJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HandleAsync_rejects_confirmed_registration()
+    {
+        var registration = CreateRegistration(
+            SheetRegistrationStatus.Confirmed,
+            confirmedAtUtc: new DateTime(2026, 7, 1, 9, 30, 0, DateTimeKind.Utc));
+        var handler = new RejectSheetRegistrationHandler(
+            new CapturingSheetRegistrationRepository(registration),
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 7, 1, 10, 0, 0, DateTimeKind.Utc)));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(
+            new RejectSheetRegistrationRequest(registration.Id),
+            CancellationToken.None));
+    }
+
+    private static SheetRegistration CreateRegistration(SheetRegistrationStatus status, DateTime? confirmedAtUtc)
+        => new(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            SheetRegistrationMethod.WholeSheetSimilarity,
+            new SheetRegistrationTransform(1.2m, 0.5m, 10m, -2m),
+            0.74m,
+            status,
+            new DateTime(2026, 7, 1, 8, 0, 0, DateTimeKind.Utc),
+            confirmedAtUtc,
+            "Needs visual review",
+            "Whole sheet anchors");
+
+    private sealed class CapturingSheetRegistrationRepository : ISheetRegistrationRepository
+    {
+        private readonly SheetRegistration? registration;
+
+        public CapturingSheetRegistrationRepository(SheetRegistration? registration = null)
+        {
+            this.registration = registration;
+        }
+
+        public SheetRegistration? Updated { get; private set; }
+
+        public Task AddAsync(SheetRegistration registration, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<SheetRegistration?> GetByIdAsync(Guid registrationId, CancellationToken cancellationToken)
+            => Task.FromResult(registration?.Id == registrationId ? registration : null);
+
+        public Task UpdateAsync(SheetRegistration registration, CancellationToken cancellationToken)
+        {
+            Updated = registration;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingUnitOfWork : IUnitOfWork
+    {
+        public bool Saved { get; private set; }
+
+        public Task SaveChangesAsync(CancellationToken cancellationToken)
+        {
+            Saved = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingPlanSetAuditEventRepository : IPlanSetAuditEventRepository
+    {
+        public List<PlanSetAuditEvent> Items { get; } = [];
+
+        public Task AddAsync(PlanSetAuditEvent auditEvent, CancellationToken cancellationToken)
+        {
+            Items.Add(auditEvent);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeClock : IClock
+    {
+        public FakeClock(DateTime utcNow)
+        {
+            UtcNow = utcNow;
+        }
+
+        public DateTime UtcNow { get; }
+    }
+}

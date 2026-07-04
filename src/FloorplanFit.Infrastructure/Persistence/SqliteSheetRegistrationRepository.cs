@@ -103,6 +103,65 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
         return Task.FromResult<SheetRegistration?>(MapRegistration(reader));
     }
 
+    public Task<IReadOnlyList<SheetRegistration>> ListByPlanSetVersionAsync(
+        Guid planSetVersionId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            SELECT id,
+                   plan_set_version_id,
+                   dependent_sheet_id,
+                   canonical_floor_plan_version_id,
+                   method,
+                   transform_json,
+                   confidence,
+                   status,
+                   warning,
+                   rule_summary,
+                   created_at_utc,
+                   confirmed_at_utc
+            FROM sheet_registrations
+            WHERE plan_set_version_id = $plan_set_version_id
+            ORDER BY created_at_utc ASC
+            """);
+        command.Parameters.AddWithValue("$plan_set_version_id", planSetVersionId.ToString());
+
+        using var reader = command.ExecuteReader();
+        var items = new List<SheetRegistration>();
+        while (reader.Read())
+        {
+            items.Add(MapRegistration(reader));
+        }
+
+        return Task.FromResult<IReadOnlyList<SheetRegistration>>(items);
+    }
+
+    public Task UpdateAsync(SheetRegistration registration, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            UPDATE sheet_registrations
+            SET status = $status,
+                confirmed_at_utc = $confirmed_at_utc
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", registration.Id.ToString());
+        command.Parameters.AddWithValue("$status", registration.Status.ToString());
+        command.Parameters.AddWithValue("$confirmed_at_utc", FormatNullableDateTime(registration.ConfirmedAtUtc));
+
+        if (command.ExecuteNonQuery() == 0)
+        {
+            throw new InvalidOperationException("Sheet registration was not found.");
+        }
+
+        return Task.CompletedTask;
+    }
+
     private static string SerializeTransform(SheetRegistrationTransform transform)
     {
         return JsonSerializer.Serialize(

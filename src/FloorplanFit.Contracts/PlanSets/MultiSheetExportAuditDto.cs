@@ -8,4 +8,5 @@ public sealed record MultiSheetExportAuditDto(
     ProjectionAuditSummaryDto Summary,
     IReadOnlyList<ExportedPlanSheetDto> Sheets,
     string? PackageManifestPath,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    PlanSetQualityReportDto? QualityReport = null);

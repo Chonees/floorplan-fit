@@ -12,9 +12,29 @@ public sealed class PlanSheet
         PlanSheetStatus status,
         DateTime createdAtUtc)
     {
+        if (id == Guid.Empty)
+        {
+            throw new ArgumentException("Plan sheet id is required.", nameof(id));
+        }
+
+        if (planSetVersionId == Guid.Empty)
+        {
+            throw new ArgumentException("Plan-set version id is required.", nameof(planSetVersionId));
+        }
+
         if (sheetType is PlanSheetType.Unknown)
         {
             throw new ArgumentException("A dependent plan sheet must have an explicit sheet type.", nameof(sheetType));
+        }
+
+        if (importedDocumentId == Guid.Empty)
+        {
+            throw new ArgumentException("Imported document id is required.", nameof(importedDocumentId));
+        }
+
+        if (measurementContextId == Guid.Empty)
+        {
+            throw new ArgumentException("Measurement context id is required.", nameof(measurementContextId));
         }
 
         if (string.IsNullOrWhiteSpace(name))

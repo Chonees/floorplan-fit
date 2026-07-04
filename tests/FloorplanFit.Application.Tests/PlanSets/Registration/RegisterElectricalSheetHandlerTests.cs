@@ -15,12 +15,14 @@ public sealed class RegisterElectricalSheetHandlerTests
         var clock = new FakeClock(new DateTime(2026, 6, 30, 18, 0, 0, DateTimeKind.Utc));
         var sheetRepository = new FakePlanSheetRepository(electricalSheet);
         var registrationRepository = new CapturingSheetRegistrationRepository();
+        var auditEventRepository = new CapturingPlanSetAuditEventRepository();
         var unitOfWork = new CapturingUnitOfWork();
         var handler = new RegisterElectricalSheetHandler(
             sheetRepository,
             registrationRepository,
             unitOfWork,
-            clock);
+            clock,
+            auditEventRepository);
 
         var response = await handler.HandleAsync(
             new RegisterElectricalSheetRequest(
@@ -54,6 +56,16 @@ public sealed class RegisterElectricalSheetHandlerTests
         Assert.Equal(response.RegistrationId, saved.Id);
         Assert.Equal(SheetRegistrationMethod.WholeSheetSimilarity, saved.Method);
         Assert.Equal(SheetRegistrationStatus.PendingConfirmation, saved.Status);
+
+        var auditEvent = Assert.Single(auditEventRepository.Items);
+        Assert.Equal("SheetRegistration", auditEvent.AggregateType);
+        Assert.Equal(response.RegistrationId, auditEvent.AggregateId);
+        Assert.Equal("SheetRegistrationQualityMeasured", auditEvent.EventType);
+        Assert.Equal(clock.UtcNow, auditEvent.OccurredAtUtc);
+        Assert.Contains("\"method\":\"WholeSheetSimilarity\"", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"confidence\":0.82", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"status\":\"PendingConfirmation\"", auditEvent.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"warning\":\"Needs visual review\"", auditEvent.PayloadJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -111,6 +123,11 @@ public sealed class RegisterElectricalSheetHandlerTests
         {
             return Task.FromResult(sheet.Id == sheetId ? sheet : null);
         }
+
+        public Task RemoveAsync(Guid sheetId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private sealed class CapturingSheetRegistrationRepository : ISheetRegistrationRepository
@@ -136,6 +153,17 @@ public sealed class RegisterElectricalSheetHandlerTests
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
             Saved = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingPlanSetAuditEventRepository : IPlanSetAuditEventRepository
+    {
+        public List<PlanSetAuditEvent> Items { get; } = [];
+
+        public Task AddAsync(PlanSetAuditEvent auditEvent, CancellationToken cancellationToken)
+        {
+            Items.Add(auditEvent);
             return Task.CompletedTask;
         }
     }

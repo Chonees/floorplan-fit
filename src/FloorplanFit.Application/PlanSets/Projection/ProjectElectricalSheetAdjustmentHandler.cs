@@ -1,4 +1,5 @@
-﻿using FloorplanFit.Application.Abstractions;
+using System.Text.Json;
+using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Domain.PlanSets;
@@ -13,17 +14,20 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
     private readonly ISheetAdjustmentProjectionRepository sheetAdjustmentProjectionRepository;
     private readonly IUnitOfWork unitOfWork;
     private readonly IClock clock;
+    private readonly IPlanSetAuditEventRepository? planSetAuditEventRepository;
 
     public ProjectElectricalSheetAdjustmentHandler(
         ISheetRegistrationRepository sheetRegistrationRepository,
         ISheetAdjustmentProjectionRepository sheetAdjustmentProjectionRepository,
         IUnitOfWork unitOfWork,
-        IClock clock)
+        IClock clock,
+        IPlanSetAuditEventRepository? planSetAuditEventRepository = null)
     {
         this.sheetRegistrationRepository = sheetRegistrationRepository;
         this.sheetAdjustmentProjectionRepository = sheetAdjustmentProjectionRepository;
         this.unitOfWork = unitOfWork;
         this.clock = clock;
+        this.planSetAuditEventRepository = planSetAuditEventRepository;
     }
 
     public async Task<SheetAdjustmentProjectionDto> HandleAsync(
@@ -54,7 +58,8 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
             throw new ArgumentException("Only electrical whole-sheet registrations can use electrical projection.", nameof(request));
         }
 
-        var compressionStepCount = request.CanonicalPlacement.CompressionSteps.Count;
+        var canonicalRecipe = request.CanonicalRecipe ?? AdjustmentRecipeSummaryDto.FromPlacement(request.CanonicalPlacement);
+        var compressionStepCount = canonicalRecipe.Operations.Count;
         var status = ResolveStatus(registration, compressionStepCount);
         var warning = ResolveWarning(registration, compressionStepCount, status);
         var projection = new SheetAdjustmentProjection(
@@ -64,28 +69,69 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
             registration.Id,
             request.CanonicalAdjustmentId,
             SheetAdjustmentProjectionMethod.ElectricalWholeSheetSimilarity,
-            ComposeTransform(registration.Transform, request.CanonicalPlacement),
+            ComposeTransform(registration.Transform, canonicalRecipe),
             registration.Confidence,
             status,
             warning,
             compressionStepCount,
-            clock.UtcNow);
+            clock.UtcNow,
+            recipeHandlingSummary: BuildRecipeHandlingSummary("ElectricalPlan", canonicalRecipe));
 
         await sheetAdjustmentProjectionRepository.AddAsync(projection, cancellationToken);
+        await TryRecordProjectionQualityEventAsync(projection, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return ToDto(projection);
     }
 
+    private async Task TryRecordProjectionQualityEventAsync(
+        SheetAdjustmentProjection projection,
+        CancellationToken cancellationToken)
+    {
+        if (planSetAuditEventRepository is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await planSetAuditEventRepository.AddAsync(
+                new PlanSetAuditEvent(
+                    Guid.NewGuid(),
+                    "SheetAdjustmentProjection",
+                    projection.Id,
+                    "SheetAdjustmentProjectionQualityMeasured",
+                    JsonSerializer.Serialize(new
+                    {
+                        planSetVersionId = projection.PlanSetVersionId,
+                        dependentSheetId = projection.DependentSheetId,
+                        sheetRegistrationId = projection.SheetRegistrationId,
+                        canonicalAdjustmentId = projection.CanonicalAdjustmentId,
+                        method = projection.Method.ToString(),
+                        confidence = projection.Confidence,
+                        status = projection.Status.ToString(),
+                        warning = projection.Warning,
+                        canonicalCompressionStepCount = projection.CanonicalCompressionStepCount,
+                        recipeHandlingSummary = projection.RecipeHandlingSummary
+                    }),
+                    projection.CreatedAtUtc),
+                cancellationToken);
+        }
+        catch (Exception)
+        {
+            // ponytail: projection telemetry is best-effort; add durable retries only if analytics becomes business-critical.
+        }
+    }
+
     private static SheetAdjustmentProjectionTransform ComposeTransform(
         SheetRegistrationTransform registrationTransform,
-        AdjustedSitePlanPlacementDto canonicalPlacement)
+        AdjustmentRecipeSummaryDto canonicalRecipe)
     {
         return new SheetAdjustmentProjectionTransform(
-            registrationTransform.Scale * canonicalPlacement.FloorToSiteScale,
+            registrationTransform.Scale * canonicalRecipe.FloorToSiteScale,
             registrationTransform.RotationDegrees,
-            (registrationTransform.TranslateX * canonicalPlacement.FloorToSiteScale) + canonicalPlacement.SiteOffsetX,
-            (registrationTransform.TranslateY * canonicalPlacement.FloorToSiteScale) + canonicalPlacement.SiteOffsetY);
+            (registrationTransform.TranslateX * canonicalRecipe.FloorToSiteScale) + canonicalRecipe.SiteOffsetX,
+            (registrationTransform.TranslateY * canonicalRecipe.FloorToSiteScale) + canonicalRecipe.SiteOffsetY);
     }
 
     private static SheetAdjustmentProjectionStatus ResolveStatus(
@@ -127,6 +173,11 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
         return registration.Warning;
     }
 
+    private static string BuildRecipeHandlingSummary(
+        string sheetKind,
+        AdjustmentRecipeSummaryDto canonicalRecipe)
+        => canonicalRecipe.ToSheetReviewSummary(sheetKind);
+
     private static SheetAdjustmentProjectionDto ToDto(SheetAdjustmentProjection projection)
     {
         return new SheetAdjustmentProjectionDto(
@@ -145,6 +196,8 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
             projection.Status.ToString(),
             projection.Warning,
             projection.CanonicalCompressionStepCount,
-            projection.CreatedAtUtc);
+            projection.CreatedAtUtc,
+            projection.RuleSummary,
+            projection.RecipeHandlingSummary);
     }
 }

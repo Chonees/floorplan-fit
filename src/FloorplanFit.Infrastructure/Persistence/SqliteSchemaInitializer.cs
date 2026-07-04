@@ -59,6 +59,22 @@ public static class SqliteSchemaInitializer
                 UNIQUE(floorplan_template_id, version_number)
             );
 
+            CREATE TABLE IF NOT EXISTS house_plan_sets (
+                id TEXT PRIMARY KEY,
+                source_floorplan_template_id TEXT NOT NULL UNIQUE,
+                code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                created_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS plan_set_versions (
+                id TEXT PRIMARY KEY,
+                house_plan_set_id TEXT NOT NULL,
+                canonical_floor_plan_version_id TEXT NOT NULL UNIQUE,
+                version_number INTEGER NOT NULL,
+                created_at_utc TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS plan_sheets (
                 id TEXT PRIMARY KEY,
                 plan_set_version_id TEXT NOT NULL,
@@ -97,7 +113,19 @@ public static class SqliteSchemaInitializer
                 status TEXT NOT NULL,
                 warning TEXT NULL,
                 rule_summary TEXT NULL,
+                recipe_handling_summary TEXT NULL,
                 canonical_compression_step_count INTEGER NOT NULL,
+                created_at_utc TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS canonical_floor_plan_adjustments (
+                id TEXT PRIMARY KEY,
+                plan_set_version_id TEXT NOT NULL,
+                canonical_floor_plan_version_id TEXT NOT NULL,
+                site_plan_source_path TEXT NOT NULL,
+                canonical_floor_plan_export_path TEXT NOT NULL,
+                placement_json TEXT NOT NULL,
+                adjustment_recipe_json TEXT NOT NULL DEFAULT '{}',
                 created_at_utc TEXT NOT NULL
             );
 
@@ -122,7 +150,8 @@ public static class SqliteSchemaInitializer
                 projection_method TEXT NULL,
                 confidence TEXT NULL,
                 warning TEXT NULL,
-                rule_summary TEXT NULL
+                rule_summary TEXT NULL,
+                recipe_handling_summary TEXT NULL
             );
 
             CREATE TABLE IF NOT EXISTS audit_events (
@@ -534,6 +563,7 @@ public static class SqliteSchemaInitializer
         EnsurePlanSheetsSchema(connection);
         EnsureSheetRegistrationsSchema(connection);
         EnsureSheetAdjustmentProjectionsSchema(connection);
+        EnsureCanonicalFloorPlanAdjustmentsSchema(connection);
         EnsurePlanSetExportsSchema(connection);
         EnsureAuditEventsSchema(connection);
         EnsureRoomLabelsSchema(connection);
@@ -588,8 +618,20 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "sheet_adjustment_projections", "status", "TEXT NOT NULL DEFAULT 'RequiresManualConfirmation'");
         EnsureColumnExists(connection, "sheet_adjustment_projections", "warning", "TEXT NULL");
         EnsureColumnExists(connection, "sheet_adjustment_projections", "rule_summary", "TEXT NULL");
+        EnsureColumnExists(connection, "sheet_adjustment_projections", "recipe_handling_summary", "TEXT NULL");
         EnsureColumnExists(connection, "sheet_adjustment_projections", "canonical_compression_step_count", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumnExists(connection, "sheet_adjustment_projections", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    private static void EnsureCanonicalFloorPlanAdjustmentsSchema(SqliteConnection connection)
+    {
+        EnsureColumnExists(connection, "canonical_floor_plan_adjustments", "plan_set_version_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "canonical_floor_plan_adjustments", "canonical_floor_plan_version_id", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "canonical_floor_plan_adjustments", "site_plan_source_path", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "canonical_floor_plan_adjustments", "canonical_floor_plan_export_path", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumnExists(connection, "canonical_floor_plan_adjustments", "placement_json", "TEXT NOT NULL DEFAULT '{}'");
+        EnsureColumnExists(connection, "canonical_floor_plan_adjustments", "adjustment_recipe_json", "TEXT NOT NULL DEFAULT '{}'");
+        EnsureColumnExists(connection, "canonical_floor_plan_adjustments", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
     }
 
     private static void EnsurePlanSetExportsSchema(SqliteConnection connection)
@@ -611,6 +653,7 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "plan_set_exported_sheets", "confidence", "TEXT NULL");
         EnsureColumnExists(connection, "plan_set_exported_sheets", "warning", "TEXT NULL");
         EnsureColumnExists(connection, "plan_set_exported_sheets", "rule_summary", "TEXT NULL");
+        EnsureColumnExists(connection, "plan_set_exported_sheets", "recipe_handling_summary", "TEXT NULL");
     }
 
     private static void EnsureAuditEventsSchema(SqliteConnection connection)

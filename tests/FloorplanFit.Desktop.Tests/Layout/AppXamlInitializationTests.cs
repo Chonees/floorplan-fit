@@ -151,7 +151,7 @@ public sealed class AppXamlInitializationTests
     }
 
     [Fact]
-    public void Site_plan_adjustment_window_keeps_fit_options_in_a_bounded_sidebar_list()
+    public void Site_plan_adjustment_window_keeps_the_sidebar_scrollable()
     {
         var solutionRoot = FindSolutionRoot();
         var sitePlanAdjustmentXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "SitePlanAdjustmentWindow.axaml");
@@ -159,9 +159,10 @@ public sealed class AppXamlInitializationTests
 
         Assert.Contains("ColumnDefinitions=\"*,400\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Grid.Column=\"1\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"AutoFitOptionsScroller\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"AdjustmentSidebarScroller\"", xaml, StringComparison.Ordinal);
         Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", xaml, StringComparison.Ordinal);
         Assert.Contains("HorizontalScrollBarVisibility=\"Disabled\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("RowDefinitions=\"Auto,Auto,Auto,*\"", xaml, StringComparison.Ordinal);
         Assert.Contains("<StackPanel Orientation=\"Vertical\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Classes.fit-option-applied=\"{Binding IsApplied}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("HorizontalAlignment=\"Stretch\"", xaml, StringComparison.Ordinal);

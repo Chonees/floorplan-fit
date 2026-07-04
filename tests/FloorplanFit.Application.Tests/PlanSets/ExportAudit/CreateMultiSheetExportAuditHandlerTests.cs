@@ -1,4 +1,5 @@
-﻿using FloorplanFit.Application.Abstractions;
+using FloorplanFit.Application.Abstractions;
+using FloorplanFit.Application.PlanSets.DataCollection;
 using FloorplanFit.Application.PlanSets.ExportAudit;
 using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Domain.PlanSets;
@@ -24,12 +25,33 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
             canonicalAdjustmentId,
             SheetAdjustmentProjectionStatus.RequiresManualConfirmation,
             confidence: 0.72m,
-            warning: "Needs review");
+            warning: "Needs review",
+            recipeHandlingSummary: "ElectricalPlan: affine placement applied; local recipe requires review before DXF deformation: HorizontalCompression Right @50 delta 2.");
         var exportRepository = new CapturingPlanSetExportRepository();
         var auditEventRepository = new CapturingPlanSetAuditEventRepository();
         var manifestWriter = new CapturingPlanSetExportManifestWriter("exports/package/manifest.json");
         var unitOfWork = new CapturingUnitOfWork();
         var clock = new FakeClock(new DateTime(2026, 6, 30, 23, 55, 0, DateTimeKind.Utc));
+        var qualityReportHandler = new GetPlanSetQualityReportHandler(
+            new FakePlanSetAuditEventReader(
+                new PlanSetAuditEvent(
+                    Guid.NewGuid(),
+                    "SheetRegistration",
+                    Guid.NewGuid(),
+                    "SheetRegistrationQualityMeasured",
+                    $$"""
+                    {"planSetVersionId":"{{planSetVersionId}}","method":"WholeSheetSimilarity","confidence":0.82,"status":"PendingConfirmation","warning":"Needs visual review","ruleSummary":null}
+                    """,
+                    new DateTime(2026, 6, 30, 23, 40, 0, DateTimeKind.Utc)),
+                new PlanSetAuditEvent(
+                    Guid.NewGuid(),
+                    "SheetAdjustmentProjection",
+                    readyProjection.Id,
+                    "SheetAdjustmentProjectionQualityMeasured",
+                    $$"""
+                    {"planSetVersionId":"{{planSetVersionId}}","method":"ElectricalWholeSheetSimilarity","confidence":0.91,"status":"ReadyForExport","warning":null,"ruleSummary":"WholeSheetSimilarity"}
+                    """,
+                    new DateTime(2026, 6, 30, 23, 50, 0, DateTimeKind.Utc))));
         var handler = new CreateMultiSheetExportAuditHandler(
             new FakeSheetAdjustmentProjectionRepository(readyProjection, manualProjection),
             new FakePlanSheetReader(),
@@ -37,7 +59,8 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
             auditEventRepository,
             manifestWriter,
             unitOfWork,
-            clock);
+            clock,
+            qualityReportHandler);
 
         var response = await handler.HandleAsync(
             new CreateMultiSheetExportAuditRequest(
@@ -59,6 +82,12 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         Assert.Equal(1, response.Summary.ManualConfirmationRequiredSheetCount);
         Assert.Equal(0.72m, response.Summary.LowestConfidence);
         Assert.False(response.Summary.CanExportPackageAutomatically);
+        Assert.NotNull(response.QualityReport);
+        Assert.Equal(1, response.QualityReport!.RegistrationEventCount);
+        Assert.Equal(1, response.QualityReport.ProjectionEventCount);
+        Assert.Equal(0.82m, response.QualityReport.LowestRegistrationConfidence);
+        Assert.Equal(0.91m, response.QualityReport.LowestProjectionConfidence);
+        Assert.Equal(1, response.QualityReport.ManualRegistrationCount);
 
         var canonicalSheet = Assert.Single(response.Sheets, sheet => sheet.SheetKind == "CanonicalFloorPlan");
         Assert.Equal(canonicalFloorPlanVersionId, canonicalSheet.SheetId);
@@ -74,15 +103,22 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         var manualSheet = Assert.Single(response.Sheets, sheet => sheet.ProjectionId == manualProjection.Id);
         Assert.Equal("RequiresManualConfirmation", manualSheet.Status);
         Assert.Equal("Needs review", manualSheet.Warning);
+        var manualRecipeHandling = Assert.IsType<string>(manualSheet.RecipeHandlingSummary);
+        Assert.Contains("HorizontalCompression", manualRecipeHandling);
 
         var savedExport = Assert.Single(exportRepository.Items);
         Assert.Equal(response.ExportId, savedExport.Id);
         Assert.Equal("exports/package/manifest.json", savedExport.PackageManifestPath);
         Assert.Equal(3, savedExport.Sheets.Count);
+        Assert.Contains(savedExport.Sheets, sheet =>
+            sheet.SheetProjectionId == manualProjection.Id &&
+            sheet.RecipeHandlingSummary?.Contains("HorizontalCompression", StringComparison.Ordinal) == true);
 
         var manifestAudit = Assert.Single(manifestWriter.Items);
         Assert.Equal(response.ExportId, manifestAudit.ExportId);
         Assert.Equal(3, manifestAudit.Sheets.Count);
+        Assert.NotNull(manifestAudit.QualityReport);
+        Assert.Equal(1, manifestAudit.QualityReport!.ManualRegistrationCount);
 
         var auditEvent = Assert.Single(auditEventRepository.Items);
         Assert.Equal("PlanSetExport", auditEvent.AggregateType);
@@ -130,7 +166,7 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_with_empty_projection_request_audits_all_dependent_sheets_and_marks_missing_projection()
+    public async Task HandleAsync_with_discovery_audits_all_dependent_sheets_and_marks_missing_projection()
     {
         var planSetVersionId = Guid.NewGuid();
         var canonicalFloorPlanVersionId = Guid.NewGuid();
@@ -165,7 +201,10 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
                 canonicalFloorPlanVersionId,
                 canonicalAdjustmentId,
                 "exports/floor-plan.dxf",
-                []),
+                [new MultiSheetExportProjectionRequestDto(electricalProjection.Id, "exports/electrical.dxf")])
+            {
+                DiscoverAllDependentSheets = true
+            },
             CancellationToken.None);
 
         Assert.Equal("RequiresManualConfirmation", response.Status);
@@ -176,6 +215,7 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         var projectedSheet = Assert.Single(response.Sheets, sheet => sheet.SheetId == electricalSheetId);
         Assert.Equal("ProjectedAutomatically", projectedSheet.Status);
         Assert.Equal(electricalProjection.Id, projectedSheet.ProjectionId);
+        Assert.Equal("exports/electrical.dxf", projectedSheet.StoragePath);
 
         var missingSheet = Assert.Single(response.Sheets, sheet => sheet.SheetId == roofSheetId);
         Assert.Equal("MissingProjection", missingSheet.Status);
@@ -192,7 +232,8 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         SheetAdjustmentProjectionStatus status,
         decimal confidence,
         string? warning,
-        Guid? dependentSheetId = null)
+        Guid? dependentSheetId = null,
+        string? recipeHandlingSummary = null)
     {
         return new SheetAdjustmentProjection(
             Guid.NewGuid(),
@@ -211,7 +252,8 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
             warning,
             canonicalCompressionStepCount: 0,
             new DateTime(2026, 6, 30, 23, 50, 0, DateTimeKind.Utc),
-            ruleSummary: "WholeSheetSimilarity");
+            ruleSummary: "WholeSheetSimilarity",
+            recipeHandlingSummary: recipeHandlingSummary);
     }
 
     private static PlanSetSheetDto CreateSheet(Guid sheetId, string sheetType)
@@ -288,6 +330,26 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
                     }
                     : new Dictionary<Guid, IReadOnlyList<PlanSetSheetDto>>();
 
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class FakePlanSetAuditEventReader : IPlanSetAuditEventReader
+    {
+        private readonly IReadOnlyList<PlanSetAuditEvent> events;
+
+        public FakePlanSetAuditEventReader(params PlanSetAuditEvent[] events)
+        {
+            this.events = events;
+        }
+
+        public Task<IReadOnlyList<PlanSetAuditEvent>> ListQualityEventsByPlanSetVersionAsync(
+            Guid planSetVersionId,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<PlanSetAuditEvent> result = events
+                .Where(auditEvent => auditEvent.PayloadJson.Contains(planSetVersionId.ToString(), StringComparison.OrdinalIgnoreCase))
+                .ToArray();
             return Task.FromResult(result);
         }
     }
