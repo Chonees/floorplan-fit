@@ -1,0 +1,95 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="FloorplanFit.Desktop.RegistrationTransformDialog"
+        RequestedThemeVariant="Dark"
+        Width="560"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Title="Register dependent sheet">
+  <Border Classes="panel-card"
+          Margin="16">
+    <StackPanel Spacing="12">
+      <StackPanel Spacing="4">
+        <TextBlock x:Name="TitleText"
+                   FontSize="20"
+                   FontWeight="SemiBold"
+                   Text="Register dependent sheet" />
+        <TextBlock Classes="muted"
+                   Text="Ingresá el transform conocido. Dejalo en identidad si sólo querés marcarlo para revisión manual."
+                   TextWrapping="Wrap" />
+      </StackPanel>
+
+      <Grid ColumnDefinitions="*,*"
+            ColumnSpacing="10"
+            RowDefinitions="Auto,Auto,Auto">
+        <StackPanel Spacing="4">
+          <TextBlock Classes="caption"
+                     Text="Scale" />
+          <TextBox x:Name="ScaleTextBox"
+                   Text="1" />
+        </StackPanel>
+        <StackPanel Grid.Column="1"
+                    Spacing="4">
+          <TextBlock Classes="caption"
+                     Text="Rotation degrees" />
+          <TextBox x:Name="RotationDegreesTextBox"
+                   Text="0" />
+        </StackPanel>
+        <StackPanel Grid.Row="1"
+                    Spacing="4">
+          <TextBlock Classes="caption"
+                     Text="Translate X" />
+          <TextBox x:Name="TranslateXTextBox"
+                   Text="0" />
+        </StackPanel>
+        <StackPanel Grid.Row="1"
+                    Grid.Column="1"
+                    Spacing="4">
+          <TextBlock Classes="caption"
+                     Text="Translate Y" />
+          <TextBox x:Name="TranslateYTextBox"
+                   Text="0" />
+        </StackPanel>
+        <StackPanel Grid.Row="2"
+                    Spacing="4">
+          <TextBlock Classes="caption"
+                     Text="Confidence 0..1" />
+          <TextBox x:Name="ConfidenceTextBox"
+                   Text="0.25" />
+        </StackPanel>
+        <StackPanel Grid.Row="2"
+                    Grid.Column="1"
+                    Spacing="4">
+          <TextBlock Classes="caption"
+                     Text="Roof overhang inches" />
+          <TextBox x:Name="OverhangInchesTextBox"
+                   Text="0" />
+        </StackPanel>
+      </Grid>
+
+      <StackPanel Spacing="4">
+        <TextBlock Classes="caption"
+                   Text="Facade horizontal reference" />
+        <TextBox x:Name="HorizontalReferenceTextBox"
+                 Watermark="Optional" />
+      </StackPanel>
+
+      <TextBlock x:Name="ValidationText"
+                 Foreground="#FFFF6B6B"
+                 IsVisible="False"
+                 Text="Scale debe ser positivo; confidence entre 0 y 1; overhang no negativo." />
+
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8">
+        <Button Classes="subtle"
+                Content="Cancelar"
+                Click="CancelButton_OnClick" />
+        <Button Classes="primary"
+                Content="Register"
+                Click="RegisterButton_OnClick" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>

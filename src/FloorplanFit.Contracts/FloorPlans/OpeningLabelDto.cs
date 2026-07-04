@@ -1,0 +1,26 @@
+namespace FloorplanFit.Contracts.FloorPlans;
+
+public sealed record OpeningLabelDto(
+    Guid OpeningLabelId,
+    string SourceEntityRef,
+    string SourceLayer,
+    string Kind,
+    string Text,
+    decimal X,
+    decimal Y,
+    decimal Confidence,
+    string? DetectionNotes,
+    int SortOrder,
+    string? SourceEntityKind = null,
+    decimal? TextHeight = null,
+    decimal RotationDegrees = 0m,
+    string? TextStyleName = null,
+    string? HorizontalAlignment = null,
+    string? VerticalAlignment = null,
+    string? AttachmentPoint = null,
+    string? ColorArgb = null,
+    bool HasManualPosition = false,
+    decimal? DetectedX = null,
+    decimal? DetectedY = null,
+    bool HasManualTextHeight = false,
+    decimal? DetectedTextHeight = null);

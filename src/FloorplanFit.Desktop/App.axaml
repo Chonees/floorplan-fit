@@ -2,7 +2,159 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:themes="clr-namespace:Avalonia.Themes.Fluent;assembly=Avalonia.Themes.Fluent"
              x:Class="FloorplanFit.Desktop.App">
+  <Application.Resources>
+    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#D813171E" />
+    <SolidColorBrush x:Key="PanelBrush" Color="#66343A46" />
+    <SolidColorBrush x:Key="SectionBrush" Color="#4C3C4452" />
+    <SolidColorBrush x:Key="BorderBrushMuted" Color="#59FFFFFF" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F5FFFFFF" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#CCFFFFFF" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#333B4654" />
+    <SolidColorBrush x:Key="AccentBrushStrong" Color="#4D4A5566" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#40394550" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#33424D5D" />
+    <SolidColorBrush x:Key="MetricChipBrush" Color="#3D36404C" />
+    <SolidColorBrush x:Key="ButtonBaseBrush" Color="#33374250" />
+    <SolidColorBrush x:Key="ButtonPrimaryBorderBrush" Color="#80FFFFFF" />
+    <SolidColorBrush x:Key="DangerButtonBrush" Color="#33414C5A" />
+    <SolidColorBrush x:Key="ToolActiveBrush" Color="#5A4B5665" />
+    <SolidColorBrush x:Key="ToolActiveCheckedBrush" Color="#5A4A5566" />
+    <SolidColorBrush x:Key="StrongBorderBrush" Color="#B3FFFFFF" />
+    <SolidColorBrush x:Key="InputBrush" Color="#26313C48" />
+  </Application.Resources>
+
   <Application.Styles>
     <themes:FluentTheme />
+
+    <Style Selector="Window">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.caption">
+      <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style Selector="Border.panel-card">
+      <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="Padding" Value="16" />
+      <Setter Property="BoxShadow" Value="0 16 40 0 #33000000" />
+    </Style>
+
+    <Style Selector="Border.section-card">
+      <Setter Property="Background" Value="{DynamicResource SectionBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="12" />
+      <Setter Property="BoxShadow" Value="0 10 24 0 #22000000" />
+    </Style>
+
+    <Style Selector="Border.metric-chip">
+      <Setter Property="Background" Value="{DynamicResource MetricChipBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="12,6" />
+    </Style>
+
+    <Style Selector="Button">
+      <Setter Property="Background" Value="{DynamicResource ButtonBaseBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="14,10" />
+    </Style>
+
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="{DynamicResource AccentBrushStrong}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ButtonPrimaryBorderBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="Button.subtle">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
+    </Style>
+
+    <Style Selector="Button.danger">
+      <Setter Property="Background" Value="{DynamicResource DangerButtonBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ButtonPrimaryBorderBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="Button.tool">
+      <Setter Property="Background" Value="{DynamicResource ButtonBaseBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="10" />
+      <Setter Property="Width" Value="48" />
+      <Setter Property="Height" Value="48" />
+    </Style>
+
+    <Style Selector="Button.tool-active">
+      <Setter Property="Background" Value="{DynamicResource ToolActiveBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}" />
+    </Style>
+
+    <Style Selector="ToggleButton.folder-toggle">
+      <Setter Property="Background" Value="{DynamicResource SectionBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="14,12" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+
+    <Style Selector="ToggleButton.folder-toggle:checked">
+      <Setter Property="Background" Value="{DynamicResource ToolActiveCheckedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}" />
+    </Style>
+
+    <Style Selector="ToggleSwitch.preview-switch">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{DynamicResource InputBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
+
+    <Style Selector="ComboBox">
+      <Setter Property="Background" Value="{DynamicResource InputBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrushMuted}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
+
+    <Style Selector="ListBox">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
   </Application.Styles>
 </Application>

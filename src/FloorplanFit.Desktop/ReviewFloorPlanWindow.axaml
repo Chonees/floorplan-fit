@@ -1,0 +1,615 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:viewModels="using:FloorplanFit.Desktop.ViewModels"
+        xmlns:contracts="using:FloorplanFit.Contracts.FloorPlans"
+        xmlns:controls="using:FloorplanFit.Desktop.Controls"
+        x:Class="FloorplanFit.Desktop.ReviewFloorPlanWindow"
+        x:DataType="viewModels:FloorPlanReviewViewModel"
+        x:Name="Root"
+        KeyDown="ReviewFloorPlanWindow_OnKeyDown">
+  <Grid RowDefinitions="*"
+        Margin="12">
+    <Grid ColumnDefinitions="*,440,64"
+          ColumnSpacing="16"
+          Margin="0">
+      <Border Classes="panel-card"
+              ClipToBounds="True">
+        <Grid RowDefinitions="Auto,Auto,*"
+              RowSpacing="8"
+              ClipToBounds="True">
+          <Border Classes="metric-chip"
+                  HorizontalAlignment="Right">
+            <StackPanel Orientation="Horizontal"
+                        Spacing="10">
+              <TextBlock FontWeight="SemiBold"
+                         Text="Cotas"
+                         VerticalAlignment="Center" />
+              <ToggleSwitch Classes="preview-switch"
+                            IsChecked="{Binding ArePreviewDimensionsVisible}"
+                            OnContent="Visibles"
+                            OffContent="Ocultas"
+                            ToolTip.Tip="Mostr? u ocult? visualmente todas las cotas del preview." />
+            </StackPanel>
+          </Border>
+
+          <Border Grid.Row="1"
+                  x:Name="FitToolPalette"
+                  IsVisible="{Binding IsFitToolSelected}"
+                  Classes="section-card"
+                  ClipToBounds="True">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*"
+                  ColumnSpacing="14">
+              <StackPanel Spacing="2"
+                          VerticalAlignment="Center">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Herramientas Fit" />
+                <TextBlock Classes="caption"
+                           Text="Reglas de ajuste" />
+                <TextBlock Classes="caption"
+                           Text="Elegí una herramienta y tocá el plano" />
+              </StackPanel>
+
+              <StackPanel Grid.Column="1"
+                          Orientation="Horizontal"
+                          Spacing="6"
+                          VerticalAlignment="Center">
+                <TextBlock Classes="caption"
+                           Text="Eje"
+                           VerticalAlignment="Center" />
+                <ComboBox Width="96"
+                          ItemsSource="{Binding PinchAxisOptions}"
+                          SelectedItem="{Binding SelectedPinchAxis}" />
+              </StackPanel>
+
+              <StackPanel Grid.Column="2"
+                          Orientation="Horizontal"
+                          Spacing="6"
+                          VerticalAlignment="Center">
+                <TextBlock Classes="caption"
+                           Text="in"
+                           VerticalAlignment="Center" />
+                <TextBox Width="78"
+                         Text="{Binding NewPinchMaxTrimInches}" />
+              </StackPanel>
+
+              <StackPanel Grid.Column="3"
+                          x:Name="FitToolbarCommands"
+                          Orientation="Horizontal"
+                          HorizontalAlignment="Left"
+                          IsEnabled="{Binding CanPublishCuration}"
+                          Spacing="8">
+                <Button Classes="tool"
+                        Classes.tool-active="{Binding IsManualWallLinePlacementArmed}"
+                        Tag="Agregar pared"
+                        ToolTip.Tip="Agregar pared"
+                        Click="AddManualWallLineButton_OnClick">
+                  <Path Width="18"
+                        Height="18"
+                        Stretch="Uniform"
+                        Stroke="{DynamicResource TextPrimaryBrush}"
+                        StrokeThickness="2"
+                        StrokeLineCap="Round"
+                        Data="M4,18 L20,6 M6,16 L8,18 M10,12 L12,14 M14,8 L16,10" />
+                </Button>
+                <Button Classes="tool"
+                        Classes.tool-active="{Binding IsPinchPlacementArmed}"
+                        Tag="Agregar ajuste"
+                        ToolTip.Tip="Marcar pinch"
+                        Click="AddPinchButton_OnClick">
+                  <Path Width="18"
+                        Height="18"
+                        Stretch="Uniform"
+                        Fill="{DynamicResource TextPrimaryBrush}"
+                        Data="M12,2 A4,4 0 0 1 16,6 C16,9 12,14 12,14 C12,14 8,9 8,6 A4,4 0 0 1 12,2 Z M12,5 A1.5,1.5 0 1 0 12,8 A1.5,1.5 0 0 0 12,5 Z M11,14 H13 V22 H11 Z" />
+                </Button>
+                <Button Classes="tool"
+                        ToolTip.Tip="Crear franja"
+                        Click="AddMeasurementCorridorButton_OnClick">
+                  <Path Width="18"
+                        Height="18"
+                        Stretch="Uniform"
+                        Fill="{DynamicResource TextPrimaryBrush}"
+                        Data="M3,7 H21 V9 H3 Z M3,15 H21 V17 H3 Z M6,5 V19 M18,5 V19" />
+                </Button>
+                <Button Classes="tool"
+                        Classes.tool-active="{Binding IsMeasurementNodePlacementArmed}"
+                        ToolTip.Tip="Elegir nodo"
+                        Click="AddMeasurementNodeButton_OnClick">
+                  <Path Width="18"
+                        Height="18"
+                        Stretch="Uniform"
+                        Fill="{DynamicResource TextPrimaryBrush}"
+                        Data="M12,4 A4,4 0 1 1 12,12 A4,4 0 0 1 12,4 Z M4,20 H20 M12,12 V20" />
+                </Button>
+                <Button Classes="tool"
+                        ToolTip.Tip="Quitar pinch"
+                        Tag="Quitar ajuste"
+                        IsEnabled="{Binding CanRemoveSelectedPinch}"
+                        Click="RemovePinchButton_OnClick">
+                  <Path Width="18"
+                        Height="18"
+                        Stretch="Uniform"
+                        Fill="{DynamicResource TextPrimaryBrush}"
+                        Data="M6,7 H18 M9,7 V5 H15 V7 M8,9 V19 H16 V9 M10,11 V17 M14,11 V17" />
+                </Button>
+                <Button Classes="tool danger"
+                        ToolTip.Tip="Eliminar seleccionado (Supr)"
+                        IsEnabled="{Binding CanDeleteSelectedItem}"
+                        Click="DeleteSelectedItemButton_OnClick">
+                  <Path Width="18"
+                        Height="18"
+                        Stretch="Uniform"
+                        Fill="{DynamicResource TextPrimaryBrush}"
+                        Data="M6,7 H18 M9,7 V5 H15 V7 M8,9 V19 H16 V9 M10,11 V17 M14,11 V17" />
+                </Button>
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <controls:FloorPlanPreviewControl Grid.Row="2"
+                                            MinHeight="0"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Stretch"
+                                            ClipToBounds="True"
+                                            GeometryPathClicked="PreviewControl_OnGeometryPathClicked"
+                                            RoomLabelClicked="PreviewControl_OnRoomLabelClicked"
+                                            OpeningLabelClicked="PreviewControl_OnOpeningLabelClicked"
+                                            MovableArtifactMoved="PreviewControl_OnMovableArtifactMoved"
+                                            DimensionClicked="PreviewControl_OnDimensionClicked"
+                                            DimensionEdited="PreviewControl_OnDimensionEdited"
+                                            ManualWallLinePointClicked="PreviewControl_OnManualWallLinePointClicked"
+                                            ManualWallLinePreviewPointChanged="PreviewControl_OnManualWallLinePreviewPointChanged"
+                                            GeometryPaths="{Binding GeometryPaths}"
+                                            HighlightGeometryPathId="{Binding HighlightGeometryPathId}"
+                                            PinchMarkers="{Binding PinchMarkers}"
+                                            RoomLabels="{Binding RoomLabels}"
+                                            HighlightRoomLabelId="{Binding SelectedRoomLabelId}"
+                                            WallCandidates="{Binding WallCandidates}"
+                                            OpeningCandidates="{Binding OpeningCandidates}"
+                                            OpeningLabels="{Binding OpeningLabels}"
+                                            HighlightOpeningLabelId="{Binding SelectedOpeningLabelId}"
+                                             Dimensions="{Binding Dimensions}"
+                                             MeasurementContext="{Binding MeasurementContext}"
+                                             DimensionBindings="{Binding DimensionBindings}"
+                                             DimensionAssociations="{Binding DimensionAssociations}"
+                                             MeasurementCorridors="{Binding MeasurementCorridors}"
+                                             MeasurementNodes="{Binding MeasurementNodes}"
+                                             DimensionIntervalBindings="{Binding DimensionIntervalBindings}"
+                                             ArticulationBands="{Binding ArticulationBands}"
+                                             SelectedMeasurementCorridorId="{Binding SelectedMeasurementCorridorId}"
+                                             SelectedMeasurementNodeId="{Binding SelectedMeasurementNodeId}"
+                                             SelectedMeasurementStartNodeId="{Binding SelectedMeasurementStartNodeId}"
+                                             SelectedMeasurementEndNodeId="{Binding SelectedMeasurementEndNodeId}"
+                                             HighlightDimensionId="{Binding SelectedDimensionId}"
+                                             AreDimensionsVisible="{Binding ArePreviewDimensionsVisible}"
+                                             FixedPlanComponents="{Binding FixedPlanComponents}"
+                                             ProtectedDetailAssemblies="{Binding ProtectedDetailAssemblies}"
+                                             CuratedPlanArtifacts="{Binding VisibleCuratedPlanArtifacts}"
+                                            PreviewPinchGroupId="{Binding SelectedPinchGroupId}"
+                                            PreviewAxisTag="{Binding SelectedPinchAxis}"
+                                            ManualWallLineDraft="{Binding ManualWallLineDraft}"
+                                            IsManualWallLinePlacementArmed="{Binding IsManualWallLinePlacementArmed}"
+                                            IsPinchPlacementArmed="{Binding IsPinchPlacementArmed}" />
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="1"
+              Classes="panel-card">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="12">
+              <Border x:Name="FitExistingPanel"
+                      Classes="section-card"
+                      IsVisible="{Binding IsFitToolSelected}">
+                <StackPanel Spacing="12">
+                  <StackPanel Spacing="2">
+                    <TextBlock FontSize="18"
+                               FontWeight="SemiBold"
+                               Text="Existente" />
+                    <TextBlock Classes="muted"
+                               Text="Seleccioná rápido lo creado. Crear franja se hace tocando el ícono con una línea seleccionada."
+                               TextWrapping="Wrap" />
+                  </StackPanel>
+
+                  <Border Classes="section-card">
+                    <StackPanel Spacing="10">
+                      <StackPanel Spacing="2">
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="Grupos de pinches" />
+                        <TextBlock Classes="muted"
+                                   Text="Elegi el ajuste activo, crea un grupo automatico y marca sus pinches desde el plano."
+                                   TextWrapping="Wrap" />
+                      </StackPanel>
+
+                      <ComboBox ItemsSource="{Binding PinchGroups}"
+                                SelectedItem="{Binding SelectedPinchGroup}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="contracts:PinchGroupDto">
+                            <StackPanel Spacing="2">
+                              <TextBlock FontWeight="SemiBold"
+                                         Text="{Binding Name}" />
+                              <TextBlock Classes="caption"
+                                         Text="{Binding AxisTag}" />
+                            </StackPanel>
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+
+                      <Button Classes="subtle"
+                              Content="Crear grupo de pinches"
+                              IsEnabled="{Binding CanPublishCuration}"
+                              Click="AddPinchGroupButton_OnClick" />
+
+                      <Button Classes="subtle"
+                              Content="Renombrar grupo"
+                              IsEnabled="{Binding CanRenameSelectedPinchGroup}"
+                              Click="RenamePinchGroupButton_OnClick" />
+
+                      <Button Classes="danger"
+                              Content="Eliminar grupo de pinches"
+                              IsEnabled="{Binding CanRemoveSelectedPinchGroup}"
+                              Click="RemovePinchGroupButton_OnClick" />
+
+                      <StackPanel Spacing="6">
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="Pinches de este grupo" />
+                        <ListBox ItemsSource="{Binding SelectedPinchGroupMarkers}"
+                                 SelectedItem="{Binding SelectedPinchMarker}"
+                                 MaxHeight="120">
+                          <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="contracts:PinchMarkerDto">
+                              <StackPanel Spacing="2">
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{Binding SortOrder, StringFormat='Pinch {0}'}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding MaxTrimInches, StringFormat='Max: {0} in'}" />
+                              </StackPanel>
+                            </DataTemplate>
+                          </ListBox.ItemTemplate>
+                        </ListBox>
+                      </StackPanel>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="section-card">
+                    <StackPanel Spacing="10">
+                      <StackPanel Spacing="2">
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="Grupos de A y B" />
+                        <TextBlock Classes="muted"
+                                   Text="Elegí una franja, agregá nodos y abajo decí cuál es A y cuál es B."
+                                   TextWrapping="Wrap" />
+                      </StackPanel>
+
+                      <StackPanel Spacing="6">
+                        <ComboBox ItemsSource="{Binding MeasurementNodeGroupOptions}"
+                                  SelectedItem="{Binding SelectedMeasurementNodeGroupOption}">
+                          <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="viewModels:MeasurementNodeGroupOptionViewModel">
+                              <StackPanel Spacing="2">
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{Binding Name}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding Details}" />
+                              </StackPanel>
+                            </DataTemplate>
+                          </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Grid ColumnDefinitions="*,Auto"
+                              ColumnSpacing="8">
+                          <StackPanel Spacing="4">
+                            <TextBlock Classes="caption"
+                                       Text="Tipo de franja" />
+                            <ComboBox ItemsSource="{Binding PinchAxisOptions}"
+                                      SelectedItem="{Binding SelectedMeasurementCorridorAxis}"
+                                      IsEnabled="{Binding HasSelectedMeasurementCorridor}" />
+                          </StackPanel>
+                          <Button Grid.Column="1"
+                                  Classes="subtle"
+                                  Content="Cambiar tipo"
+                                  VerticalAlignment="Bottom"
+                                  IsEnabled="{Binding CanChangeSelectedMeasurementCorridorAxis}"
+                                  Click="ChangeMeasurementCorridorAxisButton_OnClick" />
+                        </Grid>
+                        <Button Classes="danger"
+                                Content="Eliminar franja"
+                                IsEnabled="{Binding CanRemoveSelectedMeasurementCorridor}"
+                                Click="RemoveMeasurementCorridorButton_OnClick" />
+                      </StackPanel>
+
+                      <StackPanel Spacing="6">
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="Nodos de esta franja" />
+                        <ListBox ItemsSource="{Binding SelectedMeasurementGroupNodeOptions}"
+                                 SelectedItem="{Binding SelectedMeasurementGroupNodeOption}"
+                                 MaxHeight="150">
+                          <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="viewModels:MeasurementNodeGroupNodeOptionViewModel">
+                              <StackPanel Spacing="2">
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{Binding Name}" />
+                                <TextBlock Classes="caption"
+                                           Text="{Binding Details}" />
+                              </StackPanel>
+                            </DataTemplate>
+                          </ListBox.ItemTemplate>
+                        </ListBox>
+                        <Button Classes="danger"
+                                Content="Eliminar nodo"
+                                IsEnabled="{Binding CanRemoveSelectedMeasurementNode}"
+                                Click="RemoveMeasurementNodeButton_OnClick" />
+                      </StackPanel>
+
+                      <StackPanel Spacing="6">
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="Elegí qué mide la cota" />
+                        <Grid ColumnDefinitions="*,*"
+                              ColumnSpacing="8">
+                          <StackPanel Spacing="4">
+                            <TextBlock Classes="caption"
+                                       Text="A" />
+                            <ComboBox ItemsSource="{Binding SelectedMeasurementGroupNodeOptions}"
+                                      SelectedItem="{Binding SelectedMeasurementStartNodeOption}">
+                              <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="viewModels:MeasurementNodeGroupNodeOptionViewModel">
+                                  <StackPanel Spacing="2">
+                                    <TextBlock FontWeight="SemiBold"
+                                               Text="{Binding Name}" />
+                                    <TextBlock Classes="caption"
+                                               Text="{Binding Details}" />
+                                  </StackPanel>
+                                </DataTemplate>
+                              </ComboBox.ItemTemplate>
+                            </ComboBox>
+                          </StackPanel>
+
+                          <StackPanel Grid.Column="1"
+                                      Spacing="4">
+                            <TextBlock Classes="caption"
+                                       Text="B" />
+                            <ComboBox ItemsSource="{Binding SelectedMeasurementGroupNodeOptions}"
+                                      SelectedItem="{Binding SelectedMeasurementEndNodeOption}">
+                              <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="viewModels:MeasurementNodeGroupNodeOptionViewModel">
+                                  <StackPanel Spacing="2">
+                                    <TextBlock FontWeight="SemiBold"
+                                               Text="{Binding Name}" />
+                                    <TextBlock Classes="caption"
+                                               Text="{Binding Details}" />
+                                  </StackPanel>
+                                </DataTemplate>
+                              </ComboBox.ItemTemplate>
+                            </ComboBox>
+                          </StackPanel>
+                        </Grid>
+                      </StackPanel>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="section-card">
+                    <StackPanel Spacing="8">
+                      <TextBlock FontWeight="SemiBold"
+                                 Text="Cota vinculada" />
+                      <TextBlock Text="{Binding SelectedDimensionIntervalBindingSummary}"
+                                 TextWrapping="Wrap" />
+                      <Button Classes="primary"
+                              Content="Guardar qué mide"
+                              IsEnabled="{Binding CanSaveSelectedDimensionIntervalBinding}"
+                              Click="SaveDimensionIntervalBindingButton_OnClick" />
+                      <Button Classes="subtle"
+                              Content="Volver a medida fija"
+                              IsEnabled="{Binding CanRestoreSelectedDimensionIntervalBinding}"
+                              Click="RestoreDimensionIntervalBindingButton_OnClick" />
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="section-card"
+                      IsVisible="{Binding IsOverviewToolSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="caption"
+                             Text="{Binding SelectedArtifactTypeLabel}" />
+                  <TextBlock FontSize="18"
+                             FontWeight="SemiBold"
+                             Text="{Binding SelectedArtifactTitle}"
+                             TextWrapping="Wrap" />
+                  <TextBlock Classes="muted"
+                             Text="{Binding SelectedArtifactSubtitle}"
+                             TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding SelectedArtifactDetails}"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+
+              <Border Classes="section-card"
+                      IsVisible="{Binding IsPositionToolSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock FontWeight="SemiBold"
+                             Text="Position" />
+                  <TextBlock x:Name="SelectedArtifactPositionSummary"
+                             Text="{Binding SelectedArtifactPositionSummary}"
+                             TextWrapping="Wrap" />
+                  <Button Classes="subtle"
+                          IsEnabled="{Binding CanRestoreSelectedArtifactPosition}"
+                          Content="Restore Detected Position"
+                          Click="RestorePositionButton_OnClick" />
+                </StackPanel>
+              </Border>
+
+              <Border Classes="section-card"
+                      IsVisible="{Binding IsTextToolSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock FontWeight="SemiBold"
+                             Text="Label Size Editor" />
+                  <TextBlock Classes="caption"
+                             Text="{Binding SelectedLabelTextHeightSummary}"
+                             x:Name="SelectedLabelTextHeightSummary" />
+                  <TextBlock Classes="caption"
+                             Text="Label Size (mm)" />
+                  <TextBox Text="{Binding EditableSelectedLabelTextHeight}"
+                           IsEnabled="{Binding HasSelectedResizableLabel}" />
+                  <StackPanel Orientation="Horizontal"
+                              Spacing="8">
+                    <Button Content="Save Label Size"
+                            IsEnabled="{Binding CanSaveSelectedLabelTextHeight}"
+                            Click="SaveLabelSizeButton_OnClick" />
+                    <Button Classes="subtle"
+                            Content="Restore Detected Size"
+                            IsEnabled="{Binding CanRestoreSelectedLabelTextHeight}"
+                            Click="RestoreLabelSizeButton_OnClick" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="section-card"
+                      IsVisible="{Binding IsClassificationToolSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock FontWeight="SemiBold"
+                             Text="Classification Editor" />
+                  <StackPanel Orientation="Horizontal"
+                              Spacing="8">
+                    <Border Width="12"
+                            Height="12"
+                            CornerRadius="6"
+                            Background="{Binding SelectedCuratedArtifactColorArgb}" />
+                    <TextBlock Classes="caption"
+                               Text="{Binding SelectedCuratedArtifactDecisionSummary}" />
+                  </StackPanel>
+                  <TextBlock Classes="caption"
+                             Text="{Binding SelectedCuratedArtifactDetectedSummary}"
+                             TextWrapping="Wrap" />
+                  <TextBlock Classes="caption"
+                             Text="{Binding SelectedCuratedArtifactResolvedSummary}"
+                             TextWrapping="Wrap" />
+                  <TextBlock Classes="caption"
+                             Text="Family" />
+                  <ComboBox ItemsSource="{Binding CuratedArtifactFamilyOptions}"
+                            SelectedItem="{Binding EditableCuratedArtifactFamily}"
+                            IsEnabled="{Binding HasSelectedCuratedArtifact}" />
+                  <TextBlock Classes="caption"
+                             Text="Category" />
+                  <ComboBox ItemsSource="{Binding EditableCuratedArtifactCategoryOptions}"
+                            SelectedItem="{Binding EditableCuratedArtifactCategory}"
+                            IsEnabled="{Binding HasSelectedCuratedArtifact}" />
+                  <TextBlock Classes="caption"
+                             Text="Type" />
+                  <ComboBox ItemsSource="{Binding EditableCuratedArtifactTypeOptions}"
+                            SelectedItem="{Binding EditableCuratedArtifactType}"
+                            IsEnabled="{Binding HasSelectedCuratedArtifact}" />
+                  <StackPanel Orientation="Horizontal"
+                              Spacing="8">
+                    <Button Content="Save Classification"
+                            IsEnabled="{Binding CanSaveSelectedCuratedArtifactClassification}"
+                            Click="SaveClassificationButton_OnClick" />
+                    <Button Classes="subtle"
+                            Content="Restore Detected Classification"
+                            IsEnabled="{Binding CanRestoreSelectedCuratedArtifactClassification}"
+                            Click="RestoreClassificationButton_OnClick" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="section-card"
+                      IsVisible="{Binding IsActionsToolSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock FontWeight="SemiBold"
+                             Text="Acciones de selección" />
+                  <Button Content="Exportar DXF"
+                          Click="ExportAdjustedDxfButton_OnClick" />
+                  <Button Classes="danger"
+                          IsEnabled="{Binding HasSelectedArtifact}"
+                          Content="Excluir del curado"
+                          Click="ExcludeSelectedArtifactButton_OnClick" />
+                </StackPanel>
+              </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <Border Grid.Column="2"
+              Classes="panel-card"
+              Padding="8"
+              x:Name="InspectorToolBar">
+        <StackPanel Spacing="10"
+                    HorizontalAlignment="Center">
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsOverviewToolSelected}"
+                  Tag="Overview"
+                  ToolTip.Tip="Overview"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M3,11 L11,3 19,11 V20 H13 V14 H9 V20 H3 Z" />
+          </Button>
+
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsPositionToolSelected}"
+                  Tag="Position"
+                  ToolTip.Tip="Position"
+                  IsEnabled="{Binding CanUsePositionTool}"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M11,2 L14,5 11,8 V6 H8 V11 H6 V6 H3 V11 H1 V4 H8 V2 Z M13,13 H20 V15 H13 V13 Z M13,17 H20 V19 H13 V17 Z" />
+          </Button>
+
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsTextToolSelected}"
+                  Tag="Text"
+                  ToolTip.Tip="Label tools"
+                  IsEnabled="{Binding CanUseTextTool}"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M3,4 H21 V7 H19 V6 H14 V20 H10 V6 H5 V7 H3 Z" />
+          </Button>
+
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsClassificationToolSelected}"
+                  Tag="Classification"
+                  ToolTip.Tip="Classification"
+                  IsEnabled="{Binding CanUseClassificationTool}"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M4,4 H10 V10 H4 Z M14,4 H20 V10 H14 Z M4,14 H10 V20 H4 Z M14,14 H20 V20 H14 Z" />
+          </Button>
+
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsActionsToolSelected}"
+                  Tag="Actions"
+                  ToolTip.Tip="Actions"
+                  IsEnabled="{Binding CanUseActionsTool}"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M4,5 H20 V7 H4 Z M4,11 H20 V13 H4 Z M4,17 H20 V19 H4 Z" />
+          </Button>
+
+          <Button Classes="tool"
+                  Classes.tool-active="{Binding IsFitToolSelected}"
+                  Tag="Fit"
+                  ToolTip.Tip="Fit constraints"
+                  Click="InspectorToolButton_OnClick">
+            <Path Width="18"
+                  Height="18"
+                  Stretch="Uniform"
+                  Fill="{DynamicResource TextPrimaryBrush}"
+                  Data="M4,4 H20 V8 H18 V6 H6 V18 H8 V20 H4 Z M12,10 H20 V12 H12 Z M10,14 H20 V16 H10 Z M14,18 H20 V20 H14 Z" />
+          </Button>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

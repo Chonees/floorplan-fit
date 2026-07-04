@@ -26,7 +26,8 @@ public sealed class IxMiliaDxfGateway : IDxfGateway
             sourceUnit,
             ToMillimetersFactor(sourceUnit),
             DxfAcadVersionStrings.VersionToString(dxfFile.Header.Version),
-            BuildGeometryFingerprint(boundingBox));
+            BuildGeometryFingerprint(boundingBox),
+            ExtractLayerNames(dxfFile));
 
         return Task.FromResult(document);
     }
@@ -99,6 +100,18 @@ public sealed class IxMiliaDxfGateway : IDxfGateway
     {
         return FormattableString.Invariant(
             $"bbox:{FormatDouble(boundingBox.MinimumPoint.X)},{FormatDouble(boundingBox.MinimumPoint.Y)},{FormatDouble(boundingBox.MaximumPoint.X)},{FormatDouble(boundingBox.MaximumPoint.Y)}");
+    }
+
+    private static IReadOnlyList<string> ExtractLayerNames(DxfFile dxfFile)
+    {
+        return dxfFile.Layers.Select(layer => layer.Name)
+            .Concat(dxfFile.Entities.Select(entity => entity.Layer))
+            .Concat(dxfFile.Blocks.Select(block => block.Layer))
+            .Concat(dxfFile.Blocks.SelectMany(block => block.Entities).Select(entity => entity.Layer))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static string FormatDouble(double value)

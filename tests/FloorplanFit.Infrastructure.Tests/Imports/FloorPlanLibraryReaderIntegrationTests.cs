@@ -1,5 +1,7 @@
 using FloorplanFit.Application.FloorPlans.Import;
+using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Contracts.FloorPlans;
+using FloorplanFit.Domain.FloorPlans;
 using FloorplanFit.Infrastructure.Dxf;
 using FloorplanFit.Infrastructure.Persistence;
 using FloorplanFit.Infrastructure.Runtime;
@@ -53,6 +55,150 @@ public sealed class FloorPlanLibraryReaderIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task ListAsync_returns_extracted_when_the_current_version_has_wall_candidates()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-library-reader-{Guid.NewGuid():N}");
+        var solutionRoot = RepositoryPaths.FindSolutionRoot();
+        var sourcePath = Path.Combine(solutionRoot, "PLANS", "originalFloorPlans", "SANTA-BARBARA.dxf");
+        var now = new DateTime(2026, 4, 30, 12, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            await ExecuteImportAsync(workspace, sourcePath, now);
+            await SeedExtractionAsync(workspace, now.AddMinutes(5));
+
+            var item = await ReadSingleLibraryItemAsync(workspace);
+
+            Assert.Equal("Extracted", item.Status);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ListAsync_returns_curated_draft_when_the_current_version_has_a_draft_curation()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-library-reader-{Guid.NewGuid():N}");
+        var solutionRoot = RepositoryPaths.FindSolutionRoot();
+        var sourcePath = Path.Combine(solutionRoot, "PLANS", "originalFloorPlans", "SANTA-BARBARA.dxf");
+        var now = new DateTime(2026, 4, 30, 13, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            await ExecuteImportAsync(workspace, sourcePath, now);
+            await SeedDraftCurationAsync(workspace, now.AddMinutes(5));
+
+            var item = await ReadSingleLibraryItemAsync(workspace);
+
+            Assert.Equal("Curated Draft", item.Status);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ListAsync_returns_published_when_the_template_has_an_active_published_curation()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-library-reader-{Guid.NewGuid():N}");
+        var solutionRoot = RepositoryPaths.FindSolutionRoot();
+        var sourcePath = Path.Combine(solutionRoot, "PLANS", "originalFloorPlans", "SANTA-BARBARA.dxf");
+        var now = new DateTime(2026, 4, 30, 14, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            await ExecuteImportAsync(workspace, sourcePath, now);
+            await SeedPublishedCurationAsync(workspace, now.AddMinutes(5));
+
+            var item = await ReadSingleLibraryItemAsync(workspace);
+
+            Assert.Equal("Published", item.Status);
+            Assert.NotNull(item.ActivePublishedCurationId);
+            var version = Assert.Single(item.Versions);
+            Assert.Equal(1, version.ActivePublishedCurationVersion);
+            Assert.Equal(1, version.PublishedCurationCount);
+            Assert.Equal(1, version.LatestPublishedCurationVersion);
+            Assert.Null(version.LatestDraftCurationVersion);
+            Assert.Equal("Published v1", version.CurationHistoryLabel);
+            Assert.False(version.CanExtract);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ListAsync_surfaces_latest_published_and_draft_curation_versions()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-library-reader-{Guid.NewGuid():N}");
+        var solutionRoot = RepositoryPaths.FindSolutionRoot();
+        var sourcePath = Path.Combine(solutionRoot, "PLANS", "originalFloorPlans", "SANTA-BARBARA.dxf");
+        var now = new DateTime(2026, 6, 18, 14, 0, 0, DateTimeKind.Utc);
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            await ExecuteImportAsync(workspace, sourcePath, now);
+            await SeedPublishedCurationAsync(workspace, now.AddMinutes(5));
+            await SeedDraftCurationAsync(workspace, now.AddMinutes(10));
+
+            var item = await ReadSingleLibraryItemAsync(workspace);
+            var version = Assert.Single(item.Versions);
+
+            Assert.Equal("Curated Draft", version.Status);
+            Assert.Equal(1, version.ActivePublishedCurationVersion);
+            Assert.Equal(1, version.PublishedCurationCount);
+            Assert.Equal(1, version.LatestPublishedCurationVersion);
+            Assert.Equal(2, version.LatestDraftCurationVersion);
+            Assert.Equal("Published v1 · Draft v2", version.CurationHistoryLabel);
+            Assert.False(version.CanExtract);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static async Task<ImportFloorPlanResponse> ExecuteImportAsync(
         AppWorkspace workspace,
         string sourcePath,
@@ -73,6 +219,107 @@ public sealed class FloorPlanLibraryReaderIntegrationTests
             new ImportFloorPlanResultFactory());
 
         return await handler.HandleAsync(new ImportFloorPlanRequest(sourcePath), CancellationToken.None);
+    }
+
+    private static async Task SeedExtractionAsync(AppWorkspace workspace, DateTime now)
+    {
+        await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+        var template = await new SqliteFloorPlanTemplateRepository(session).GetByCodeAsync("santa-barbara", CancellationToken.None)
+            ?? throw new InvalidOperationException("Expected imported template.");
+        var versionId = template.CurrentVersionId ?? throw new InvalidOperationException("Expected current version id.");
+
+        var run = new WallExtractionRun(
+            Guid.NewGuid(),
+            versionId,
+            status: "Completed",
+            startedAtUtc: now,
+            finishedAtUtc: now,
+            extractorVersion: "ixmilia-wall-layer-v1",
+            errorMessage: null);
+
+        await new SqliteWallExtractionRunRepository(session).AddAsync(run, CancellationToken.None);
+        await new SqliteExtractedWallCandidateRepository(session).AddRangeAsync(
+        [
+            new ExtractedWallCandidate(
+                Guid.NewGuid(),
+                run.Id,
+                "LINE:1",
+                "WALLS",
+                Guid.Empty,
+                null,
+                0.95m,
+                null,
+                ExtractedWallCandidateStatus.Accepted,
+                1)
+        ],
+        [
+            new DetectedWallCandidate(
+                "LINE:1",
+                "WALLS",
+                [new GeometryPoint(0m, 0m), new GeometryPoint(120m, 0m)],
+                null,
+                0.95m,
+                null)
+        ],
+        CancellationToken.None);
+
+        await session.CommitAsync(CancellationToken.None);
+    }
+
+    private static async Task SeedDraftCurationAsync(AppWorkspace workspace, DateTime now)
+    {
+        await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+        var template = await new SqliteFloorPlanTemplateRepository(session).GetByCodeAsync("santa-barbara", CancellationToken.None)
+            ?? throw new InvalidOperationException("Expected imported template.");
+        var versionId = template.CurrentVersionId ?? throw new InvalidOperationException("Expected current version id.");
+
+        var curationRepository = new SqliteFloorPlanCurationRepository(session);
+        var nextVersion = await curationRepository.GetNextCurationVersionAsync(versionId, CancellationToken.None);
+        await curationRepository.AddAsync(
+            new FloorPlanCuration(
+                Guid.NewGuid(),
+                versionId,
+                nextVersion,
+                FloorPlanCurationStatus.Draft,
+                template.ActivePublishedCurationId,
+                notes: "draft",
+                createdAtUtc: now,
+                publishedAtUtc: null),
+            CancellationToken.None);
+
+        await session.CommitAsync(CancellationToken.None);
+    }
+
+    private static async Task SeedPublishedCurationAsync(AppWorkspace workspace, DateTime now)
+    {
+        await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+        var templateRepository = new SqliteFloorPlanTemplateRepository(session);
+        var template = await templateRepository.GetByCodeAsync("santa-barbara", CancellationToken.None)
+            ?? throw new InvalidOperationException("Expected imported template.");
+        var versionId = template.CurrentVersionId ?? throw new InvalidOperationException("Expected current version id.");
+
+        var published = new FloorPlanCuration(
+            Guid.NewGuid(),
+            versionId,
+            curationVersion: 1,
+            FloorPlanCurationStatus.Published,
+            basedOnCurationId: null,
+            notes: "published",
+            createdAtUtc: now,
+            publishedAtUtc: now.AddMinutes(1));
+
+        await new SqliteFloorPlanCurationRepository(session).AddAsync(published, CancellationToken.None);
+        template.SetActivePublishedCuration(published.Id);
+        await templateRepository.UpdateAsync(template, CancellationToken.None);
+        await session.CommitAsync(CancellationToken.None);
+    }
+
+    private static async Task<FloorPlanLibraryItemDto> ReadSingleLibraryItemAsync(AppWorkspace workspace)
+    {
+        await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+        var reader = new SqliteFloorPlanLibraryReader(session);
+        var items = await reader.ListAsync(CancellationToken.None);
+        return Assert.Single(items);
     }
 
     private sealed class FixedClock : Application.Abstractions.IClock
