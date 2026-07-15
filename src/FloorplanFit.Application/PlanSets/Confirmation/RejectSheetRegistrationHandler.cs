@@ -63,7 +63,8 @@ public sealed class RejectSheetRegistrationHandler
             registration.CreatedAtUtc,
             confirmedAtUtc: null,
             registration.Warning,
-            registration.RuleSummary);
+            registration.RuleSummary,
+            registration.WholePlanRegistrationProof);
 
         await sheetRegistrationRepository.UpdateAsync(rejected, cancellationToken);
         await TryRecordRegistrationQualityEventAsync(rejected, cancellationToken);

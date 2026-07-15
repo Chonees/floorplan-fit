@@ -4,19 +4,39 @@ namespace FloorplanFit.Infrastructure.Persistence;
 
 public static class SqliteSchemaInitializer
 {
+    public const int CurrentSchemaVersion = 2;
+
     public static Task InitializeAsync(string databasePath, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var databaseDirectory = Path.GetDirectoryName(databasePath);
-
-        if (!string.IsNullOrWhiteSpace(databaseDirectory))
+        using var connection = SqliteConnectionPolicy.Open(databasePath);
+        var schemaVersion = ReadUserVersion(connection);
+        if (schemaVersion > CurrentSchemaVersion)
         {
-            Directory.CreateDirectory(databaseDirectory);
+            throw new InvalidOperationException(
+                $"Database schema version {schemaVersion} is newer than supported version {CurrentSchemaVersion}. " +
+                "The database was not modified.");
         }
 
-        using var connection = new SqliteConnection($"Data Source={databasePath}");
-        connection.Open();
+        if (schemaVersion == CurrentSchemaVersion)
+        {
+            EnsureSheetRegistrationsSchema(connection);
+            return Task.CompletedTask;
+        }
+
+        if (schemaVersion == 1)
+        {
+            EnsureSheetRegistrationsSchema(connection);
+            RepairSheetRegistrationCanonicalIds(connection);
+            return Task.CompletedTask;
+        }
+
+        if (schemaVersion != 0)
+        {
+            throw new InvalidOperationException(
+                $"No SQLite migration path exists from schema version {schemaVersion} to {CurrentSchemaVersion}.");
+        }
 
         using var command = connection.CreateCommand();
         command.CommandText = """
@@ -97,6 +117,7 @@ public static class SqliteSchemaInitializer
                 status TEXT NOT NULL,
                 warning TEXT NULL,
                 rule_summary TEXT NULL,
+                whole_plan_registration_proof_json TEXT NULL,
                 created_at_utc TEXT NOT NULL,
                 confirmed_at_utc TEXT NULL
             );
@@ -577,7 +598,166 @@ public static class SqliteSchemaInitializer
         EnsurePinchMarkersSchema(connection);
         EnsureFloorPlanVersionsSoftDeleteSchema(connection);
         EnsureDeletionPipelineIndexes(connection);
+        cancellationToken.ThrowIfCancellationRequested();
+        RepairSheetRegistrationCanonicalIds(connection);
         return Task.CompletedTask;
+    }
+
+    private static int ReadUserVersion(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version";
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
+    private static void SetUserVersion(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        int version)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"PRAGMA user_version = {version}";
+        command.ExecuteNonQuery();
+    }
+
+    private static void RepairSheetRegistrationCanonicalIds(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+
+        var invalidRegistrationCount = ExecuteScalarInt32(
+            connection,
+            transaction,
+            """
+            SELECT COUNT(*)
+            FROM sheet_registrations AS registration
+            LEFT JOIN plan_set_versions AS version
+                ON version.id = registration.plan_set_version_id
+            LEFT JOIN plan_sheets AS sheet
+                ON sheet.id = registration.dependent_sheet_id
+            WHERE version.id IS NULL
+               OR sheet.id IS NULL
+               OR sheet.plan_set_version_id <> registration.plan_set_version_id
+            """);
+        if (invalidRegistrationCount > 0)
+        {
+            throw new InvalidOperationException(
+                $"Cannot migrate {invalidRegistrationCount} sheet registration(s) with invalid PlanSet ownership. " +
+                "Existing data was preserved.");
+        }
+
+        var invalidCanonicalCount = ExecuteScalarInt32(
+            connection,
+            transaction,
+            """
+            SELECT COUNT(*)
+            FROM plan_set_versions AS version
+            LEFT JOIN floorplan_versions AS floorplan
+                ON floorplan.id = version.canonical_floor_plan_version_id
+            WHERE floorplan.id IS NULL
+               OR floorplan.deleted_at_utc IS NOT NULL
+            """);
+        if (invalidCanonicalCount > 0)
+        {
+            throw new InvalidOperationException(
+                $"Cannot migrate {invalidCanonicalCount} PlanSet version(s) without a live canonical FloorPlan. " +
+                "Existing data was preserved.");
+        }
+
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            """
+            UPDATE sheet_registrations
+            SET canonical_floor_plan_version_id = (
+                SELECT version.canonical_floor_plan_version_id
+                FROM plan_set_versions AS version
+                WHERE version.id = sheet_registrations.plan_set_version_id
+            )
+            WHERE canonical_floor_plan_version_id <> (
+                SELECT version.canonical_floor_plan_version_id
+                FROM plan_set_versions AS version
+                WHERE version.id = sheet_registrations.plan_set_version_id
+            )
+            """);
+
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            """
+            CREATE INDEX IF NOT EXISTS idx_plan_set_versions_canonical_floorplan
+                ON plan_set_versions(canonical_floor_plan_version_id);
+            CREATE INDEX IF NOT EXISTS idx_sheet_registrations_plan_set_version
+                ON sheet_registrations(plan_set_version_id);
+            CREATE INDEX IF NOT EXISTS idx_sheet_registrations_dependent_sheet
+                ON sheet_registrations(dependent_sheet_id);
+
+            CREATE TRIGGER IF NOT EXISTS validate_sheet_registration_identity_insert
+            BEFORE INSERT ON sheet_registrations
+            BEGIN
+                SELECT CASE WHEN NOT EXISTS (
+                    SELECT 1
+                    FROM plan_set_versions AS version
+                    INNER JOIN plan_sheets AS sheet
+                        ON sheet.id = NEW.dependent_sheet_id
+                       AND sheet.plan_set_version_id = version.id
+                    WHERE version.id = NEW.plan_set_version_id
+                      AND version.canonical_floor_plan_version_id = NEW.canonical_floor_plan_version_id
+                ) THEN RAISE(ABORT, 'Invalid sheet registration PlanSet identity') END;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS validate_sheet_registration_identity_update
+            BEFORE UPDATE OF plan_set_version_id, dependent_sheet_id, canonical_floor_plan_version_id
+                ON sheet_registrations
+            BEGIN
+                SELECT CASE WHEN NOT EXISTS (
+                    SELECT 1
+                    FROM plan_set_versions AS version
+                    INNER JOIN plan_sheets AS sheet
+                        ON sheet.id = NEW.dependent_sheet_id
+                       AND sheet.plan_set_version_id = version.id
+                    WHERE version.id = NEW.plan_set_version_id
+                      AND version.canonical_floor_plan_version_id = NEW.canonical_floor_plan_version_id
+                ) THEN RAISE(ABORT, 'Invalid sheet registration PlanSet identity') END;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS prevent_canonical_floorplan_version_soft_delete
+            BEFORE UPDATE OF deleted_at_utc ON floorplan_versions
+            WHEN NEW.deleted_at_utc IS NOT NULL
+             AND EXISTS (
+                 SELECT 1
+                 FROM plan_set_versions
+                 WHERE canonical_floor_plan_version_id = OLD.id
+             )
+            BEGIN
+                SELECT RAISE(ABORT, 'Canonical HousePlanSet FloorPlan version cannot be deleted');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS prevent_canonical_floorplan_version_hard_delete
+            BEFORE DELETE ON floorplan_versions
+            WHEN EXISTS (
+                SELECT 1
+                FROM plan_set_versions
+                WHERE canonical_floor_plan_version_id = OLD.id
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'Canonical HousePlanSet FloorPlan version cannot be deleted');
+            END;
+            """);
+
+        SetUserVersion(connection, transaction, CurrentSchemaVersion);
+        transaction.Commit();
+    }
+
+    private static int ExecuteScalarInt32(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string sql)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        return Convert.ToInt32(command.ExecuteScalar());
     }
 
     private static void EnsurePlanSheetsSchema(SqliteConnection connection)
@@ -602,6 +782,7 @@ public static class SqliteSchemaInitializer
         EnsureColumnExists(connection, "sheet_registrations", "status", "TEXT NOT NULL DEFAULT 'PendingConfirmation'");
         EnsureColumnExists(connection, "sheet_registrations", "warning", "TEXT NULL");
         EnsureColumnExists(connection, "sheet_registrations", "rule_summary", "TEXT NULL");
+        EnsureColumnExists(connection, "sheet_registrations", "whole_plan_registration_proof_json", "TEXT NULL");
         EnsureColumnExists(connection, "sheet_registrations", "created_at_utc", "TEXT NOT NULL DEFAULT ''");
         EnsureColumnExists(connection, "sheet_registrations", "confirmed_at_utc", "TEXT NULL");
     }
@@ -1160,7 +1341,7 @@ public static class SqliteSchemaInitializer
             return;
         }
 
-        RecreatePinchMarkersTable(connection);
+        ThrowUnsupportedPinchMarkersSchema(columnNames);
     }
 
     private static void MigrateAxisTaggedPinchMarkers(SqliteConnection connection)
@@ -1249,8 +1430,7 @@ public static class SqliteSchemaInitializer
     {
         if (!TableExists(connection, "pinch_groups") || !TableExists(connection, "curated_walls"))
         {
-            RecreatePinchMarkersTable(connection);
-            return;
+            ThrowUnsupportedPinchMarkersSchema(GetColumnNames(connection, "pinch_markers"));
         }
 
         using var transaction = connection.BeginTransaction();
@@ -1311,12 +1491,11 @@ public static class SqliteSchemaInitializer
         return Convert.ToInt32(command.ExecuteScalar()) > 0;
     }
 
-    private static void RecreatePinchMarkersTable(SqliteConnection connection)
+    private static void ThrowUnsupportedPinchMarkersSchema(IEnumerable<string> columnNames)
     {
-        using var transaction = connection.BeginTransaction();
-        ExecuteNonQuery(connection, transaction, "DROP TABLE IF EXISTS pinch_markers");
-        CreatePinchMarkersTable(connection, transaction);
-        transaction.Commit();
+        var observedColumns = string.Join(", ", columnNames.Order(StringComparer.OrdinalIgnoreCase));
+        throw new InvalidOperationException(
+            $"Unsupported pinch_markers schema. Existing data was preserved. Observed columns: {observedColumns}.");
     }
 
     private static void CreatePinchMarkersTable(SqliteConnection connection, SqliteTransaction transaction)

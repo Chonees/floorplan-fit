@@ -31,6 +31,7 @@ public sealed class ConfirmSheetRegistrationHandlerTests
         Assert.Equal(clock.UtcNow, repository.Updated.ConfirmedAtUtc);
         Assert.Equal(registration.Transform.Scale, repository.Updated.Transform.Scale);
         Assert.Equal(registration.Warning, repository.Updated.Warning);
+        Assert.Same(registration.WholePlanRegistrationProof, repository.Updated.WholePlanRegistrationProof);
 
         var auditEvent = Assert.Single(auditEventRepository.Items);
         Assert.Equal("SheetRegistrationQualityMeasured", auditEvent.EventType);
@@ -52,11 +53,14 @@ public sealed class ConfirmSheetRegistrationHandlerTests
     }
 
     private static SheetRegistration CreateRegistration(SheetRegistrationStatus status, DateTime? confirmedAtUtc)
-        => new(
+    {
+        var dependentSheetId = Guid.NewGuid();
+        var canonicalFloorPlanVersionId = Guid.NewGuid();
+        return new(
             Guid.NewGuid(),
             Guid.NewGuid(),
-            Guid.NewGuid(),
-            Guid.NewGuid(),
+            dependentSheetId,
+            canonicalFloorPlanVersionId,
             SheetRegistrationMethod.WholeSheetSimilarity,
             new SheetRegistrationTransform(1.2m, 0.5m, 10m, -2m),
             0.74m,
@@ -64,7 +68,19 @@ public sealed class ConfirmSheetRegistrationHandlerTests
             new DateTime(2026, 7, 1, 8, 0, 0, DateTimeKind.Utc),
             confirmedAtUtc,
             "Needs visual review",
-            "Whole sheet anchors");
+            "Whole sheet anchors",
+            new WholePlanRegistrationProof(
+                WholePlanRegistrationProof.CurrentVersion,
+                Passed: true,
+                canonicalFloorPlanVersionId,
+                dependentSheetId,
+                new string('a', 64),
+                new string('b', 64),
+                HorizontalCoverage: 0.94m,
+                VerticalCoverage: 0.91m,
+                RootMeanSquareResidual: 0.01m,
+                MaximumResidual: 0.02m));
+    }
 
     private sealed class CapturingSheetRegistrationRepository : ISheetRegistrationRepository
     {

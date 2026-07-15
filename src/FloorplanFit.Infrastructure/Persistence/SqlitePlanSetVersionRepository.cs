@@ -44,6 +44,27 @@ public sealed class SqlitePlanSetVersionRepository : IPlanSetVersionRepository
         return Task.CompletedTask;
     }
 
+    public Task<PlanSetVersion?> GetByIdAsync(
+        Guid planSetVersionId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = session.Connection.CreateCommand();
+        command.Transaction = session.Transaction;
+        command.CommandText =
+            """
+            SELECT id, house_plan_set_id, canonical_floor_plan_version_id, version_number, created_at_utc
+            FROM plan_set_versions
+            WHERE id = $id
+            LIMIT 1
+            """;
+        command.Parameters.AddWithValue("$id", planSetVersionId.ToString());
+
+        using var reader = command.ExecuteReader();
+        return Task.FromResult(reader.Read() ? Map(reader) : null);
+    }
+
     public Task<PlanSetVersion?> GetByCanonicalFloorPlanVersionAsync(
         Guid canonicalFloorPlanVersionId,
         CancellationToken cancellationToken)
@@ -67,11 +88,14 @@ public sealed class SqlitePlanSetVersionRepository : IPlanSetVersionRepository
             return Task.FromResult<PlanSetVersion?>(null);
         }
 
-        return Task.FromResult<PlanSetVersion?>(new PlanSetVersion(
+        return Task.FromResult<PlanSetVersion?>(Map(reader));
+    }
+
+    private static PlanSetVersion Map(Microsoft.Data.Sqlite.SqliteDataReader reader)
+        => new(
             Guid.Parse(reader.GetString(0)),
             Guid.Parse(reader.GetString(1)),
             Guid.Parse(reader.GetString(2)),
             reader.GetInt32(3),
-            DateTime.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
-    }
+            DateTime.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
 }

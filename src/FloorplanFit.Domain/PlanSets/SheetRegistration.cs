@@ -14,7 +14,8 @@ public sealed class SheetRegistration
         DateTime createdAtUtc,
         DateTime? confirmedAtUtc,
         string? warning,
-        string? ruleSummary = null)
+        string? ruleSummary = null,
+        WholePlanRegistrationProof? wholePlanRegistrationProof = null)
     {
         if (id == Guid.Empty)
         {
@@ -73,6 +74,7 @@ public sealed class SheetRegistration
         ConfirmedAtUtc = confirmedAtUtc;
         Warning = string.IsNullOrWhiteSpace(warning) ? null : warning.Trim();
         RuleSummary = string.IsNullOrWhiteSpace(ruleSummary) ? null : ruleSummary.Trim();
+        WholePlanRegistrationProof = wholePlanRegistrationProof;
     }
 
     public Guid Id { get; }
@@ -98,4 +100,6 @@ public sealed class SheetRegistration
     public string? Warning { get; }
 
     public string? RuleSummary { get; }
+
+    public WholePlanRegistrationProof? WholePlanRegistrationProof { get; }
 }

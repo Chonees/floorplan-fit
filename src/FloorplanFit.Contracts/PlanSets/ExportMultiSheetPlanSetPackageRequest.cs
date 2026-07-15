@@ -1,3 +1,5 @@
+using FloorplanFit.Contracts.FloorPlans;
+
 namespace FloorplanFit.Contracts.PlanSets;
 
 public sealed record ExportMultiSheetPlanSetPackageRequest(
@@ -6,4 +8,9 @@ public sealed record ExportMultiSheetPlanSetPackageRequest(
     Guid CanonicalAdjustmentId,
     string CanonicalFloorPlanExportPath,
     string PackageDirectory,
-    IReadOnlyList<Guid> DependentProjectionIds);
+    IReadOnlyList<Guid> DependentProjectionIds)
+{
+    public AdjustedSitePlanPlacementDto? CanonicalPlacement { get; init; }
+
+    public AdjustmentRecipeSummaryDto? CanonicalRecipe { get; init; }
+}

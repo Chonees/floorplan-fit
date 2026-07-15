@@ -11,8 +11,11 @@
         Width="1280"
         Height="800"
         Title="{Binding ShellTitle}">
+  <Window.Resources>
+    <views:PendingRegistrationActionVisibilityConverter x:Key="PendingRegistrationActionVisibility" />
+  </Window.Resources>
   <Grid>
-    <Grid RowDefinitions="Auto,Auto,Auto,*"
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*"
           Margin="24"
           IsVisible="{Binding IsLibraryScreenVisible}">
       <TextBlock FontSize="24"
@@ -20,7 +23,7 @@
                  Text="Floorplan Library" />
 
       <Grid Grid.Row="1"
-            ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
+            ColumnDefinitions="Auto,Auto,Auto,Auto,*"
             ColumnSpacing="12"
             Margin="0,16,0,16">
         <Button Name="ImportButton"
@@ -42,12 +45,15 @@
         <TextBlock Grid.Column="4"
                    VerticalAlignment="Center"
                    Text="{Binding SelectedVersionLabel}" />
-        <TextBlock Grid.Column="5"
-                   VerticalAlignment="Center"
-                   Text="{Binding StatusMessage}" />
       </Grid>
 
-      <Border Grid.Row="2"
+      <TextBlock Grid.Row="2"
+                 Classes="muted"
+                 Margin="0,0,0,12"
+                 TextWrapping="Wrap"
+                 Text="{Binding StatusMessage}" />
+
+      <Border Grid.Row="3"
               Classes="section-card"
               Padding="10"
               Margin="0,0,0,12">
@@ -57,74 +63,101 @@
           <ItemsControl ItemsSource="{Binding SelectedPlanSetSheets}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="planSets:PlanSetSheetDto">
-                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
-                      ColumnSpacing="12"
-                      Margin="0,0,0,4">
-                  <TextBlock Grid.Column="0"
-                             FontWeight="SemiBold"
-                             Text="{Binding SheetType}" />
-                  <TextBlock Grid.Column="1"
-                             Text="{Binding Name}" />
-                  <TextBlock Grid.Column="2"
-                             Classes="muted"
-                             Text="{Binding RegistrationStatus}" />
-                  <TextBlock Grid.Column="3"
-                             Classes="muted"
-                             Text="{Binding ProjectionStatus}" />
-                  <TextBlock Grid.Column="4"
-                             Classes="muted"
-                             Text="{Binding RegistrationQualityLabel}" />
-                  <TextBlock Grid.Column="5"
-                             Classes="muted"
-                             Text="{Binding ProjectionQualityLabel}" />
-                  <Button Grid.Column="6"
-                          Padding="6,0"
-                          Content="Register"
-                          IsVisible="{Binding CanRegisterDependent}"
-                          Click="RegisterDependentSheetButton_OnClick" />
-                  <Button Grid.Column="7"
-                          Padding="6,0"
-                          Content="Confirm"
-                          IsVisible="{Binding CanConfirmRegistration}"
-                          Click="ConfirmSheetRegistrationButton_OnClick" />
-                  <Button Grid.Column="8"
-                          Padding="6,0"
-                          Content="Reject Reg"
-                          IsVisible="{Binding CanRejectRegistration}"
-                          Click="RejectSheetRegistrationButton_OnClick" />
-                  <Button Grid.Column="9"
-                          Padding="6,0"
-                          Content="Confirm Projection"
-                          IsVisible="{Binding CanConfirmProjection}"
-                          Click="ConfirmSheetProjectionButton_OnClick" />
-                  <Button Grid.Column="10"
-                          Padding="6,0"
-                          Content="To Electrical"
-                          IsVisible="{Binding CanCorrectToElectrical}"
-                          Click="CorrectSheetToElectricalButton_OnClick" />
-                  <Button Grid.Column="11"
-                          Padding="6,0"
-                          Content="To Roof"
-                          IsVisible="{Binding CanCorrectToRoof}"
-                          Click="CorrectSheetToRoofButton_OnClick" />
-                  <Button Grid.Column="12"
-                          Padding="6,0"
-                          Content="To Facade"
-                          IsVisible="{Binding CanCorrectToFacade}"
-                          Click="CorrectSheetToFacadeButton_OnClick" />
-                  <Button Grid.Column="13"
-                          Padding="6,0"
-                          Content="?"
-                          IsVisible="{Binding CanUnlink}"
-                          Click="UnlinkDependentSheetButton_OnClick" />
-                </Grid>
+                <Border Classes="panel-card"
+                        Padding="8"
+                        Margin="0,0,0,6">
+                  <Grid RowDefinitions="Auto,Auto"
+                        RowSpacing="6">
+                    <WrapPanel Orientation="Horizontal">
+                      <TextBlock Margin="0,0,10,0"
+                                 FontWeight="SemiBold"
+                                 Text="{Binding SheetType}" />
+                      <TextBlock Margin="0,0,10,0"
+                                 MaxWidth="260"
+                                 TextTrimming="CharacterEllipsis"
+                                 Text="{Binding Name}" />
+                      <TextBlock Margin="0,0,10,0"
+                                 Classes="muted"
+                                 Text="{Binding RegistrationStatus}" />
+                      <TextBlock Margin="0,0,10,0"
+                                 MaxWidth="170"
+                                 TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding RegistrationQualityLabel}"
+                                 Classes="muted"
+                                 Text="{Binding RegistrationMethod}" />
+                      <TextBlock Margin="0,0,10,0"
+                                 Classes="muted"
+                                 Text="{Binding RegistrationConfidence, StringFormat='{}conf {0:0.##}'}" />
+                      <TextBlock Margin="0,0,10,0"
+                                 Classes="muted"
+                                 Text="{Binding ProjectionStatus}" />
+                      <TextBlock Margin="0,0,10,0"
+                                 MaxWidth="170"
+                                 TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding ProjectionQualityLabel}"
+                                 Classes="muted"
+                                 Text="{Binding ProjectionMethod}" />
+                      <TextBlock Classes="muted"
+                                 Text="{Binding ProjectionConfidence, StringFormat='{}conf {0:0.##}'}" />
+                    </WrapPanel>
+
+                    <WrapPanel Grid.Row="1"
+                               Orientation="Horizontal">
+                      <Button Margin="0,0,8,0"
+                              Padding="8,2"
+                              Content="Register"
+                              IsVisible="{Binding CanRegisterDependent}"
+                              Click="RegisterDependentSheetButton_OnClick" />
+                      <Button Margin="0,0,8,0"
+                              Padding="8,2"
+                              Classes="primary"
+                              Content="Revisar y confirmar"
+                              IsVisible="{Binding Converter={StaticResource PendingRegistrationActionVisibility}, ConverterParameter=Electrical}"
+                              Click="ReviewSheetRegistrationButton_OnClick" />
+                      <Button Margin="0,0,8,0"
+                              Padding="8,2"
+                              Content="Confirm"
+                              IsVisible="{Binding Converter={StaticResource PendingRegistrationActionVisibility}, ConverterParameter=NonElectrical}"
+                              Click="ConfirmSheetRegistrationButton_OnClick" />
+                      <Button Margin="0,0,8,0"
+                              Padding="8,2"
+                              Content="Reject Reg"
+                              IsVisible="{Binding CanRejectRegistration}"
+                              Click="RejectSheetRegistrationButton_OnClick" />
+                      <Button Margin="0,0,8,0"
+                              Padding="8,2"
+                              Content="Confirm Projection"
+                              IsVisible="{Binding CanConfirmProjection}"
+                              Click="ConfirmSheetProjectionButton_OnClick" />
+                      <Button Margin="0,0,8,0"
+                              Padding="8,2"
+                              Content="To Electrical"
+                              IsVisible="{Binding CanCorrectToElectrical}"
+                              Click="CorrectSheetToElectricalButton_OnClick" />
+                      <Button Margin="0,0,8,0"
+                              Padding="8,2"
+                              Content="To Roof"
+                              IsVisible="{Binding CanCorrectToRoof}"
+                              Click="CorrectSheetToRoofButton_OnClick" />
+                      <Button Margin="0,0,8,0"
+                              Padding="8,2"
+                              Content="To Facade"
+                              IsVisible="{Binding CanCorrectToFacade}"
+                              Click="CorrectSheetToFacadeButton_OnClick" />
+                      <Button Padding="8,2"
+                              Content="×"
+                              IsVisible="{Binding CanUnlink}"
+                              Click="UnlinkDependentSheetButton_OnClick" />
+                    </WrapPanel>
+                  </Grid>
+                </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </StackPanel>
       </Border>
 
-      <ScrollViewer Grid.Row="3"
+      <ScrollViewer Grid.Row="4"
                     HorizontalScrollBarVisibility="Disabled"
                     VerticalScrollBarVisibility="Auto">
         <ItemsControl ItemsSource="{Binding Items}">

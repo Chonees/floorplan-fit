@@ -42,6 +42,24 @@ public sealed class PlanSetSheetDtoTests
     }
 
     [Fact]
+    public void Confirmed_ready_for_export_electrical_sheet_can_be_unlinked_for_safe_replacement()
+    {
+        var sheet = new PlanSetSheetDto(
+            Guid.NewGuid(),
+            "ElectricalPlan",
+            "Electrical",
+            Guid.NewGuid(),
+            SourceFloorPlanVersionId: Guid.NewGuid(),
+            IsCanonical: false,
+            RegistrationStatus: "Confirmed",
+            ProjectionStatus: "ReadyForExport",
+            SheetRegistrationId: Guid.NewGuid(),
+            SheetProjectionId: Guid.NewGuid());
+
+        Assert.True(sheet.CanUnlink);
+    }
+
+    [Fact]
     public void Quality_labels_summarize_method_confidence_and_warning()
     {
         var sheet = new PlanSetSheetDto(

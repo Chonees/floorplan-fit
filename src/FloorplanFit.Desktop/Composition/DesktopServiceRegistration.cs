@@ -50,6 +50,7 @@ public static class DesktopServiceRegistration
         services.AddSingleton<IAdjustedDxfExporter, IxMiliaAdjustedDxfExporter>();
         services.AddSingleton<IAdjustedSitePlanExporter, IxMiliaAdjustedSitePlanExporter>();
         services.AddSingleton<IProjectedPlanSheetExporter, ProjectedPlanSheetDxfExporter>();
+        services.AddSingleton<IElectricalFloorRegistrationEstimator, DxfElectricalFloorRegistrationEstimator>();
         services.AddSingleton<IFileHashService, Sha256FileHashService>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<ImportFloorPlanResultFactory>();
@@ -124,6 +125,7 @@ public static class DesktopServiceRegistration
         services.AddScoped<FloorplanFit.Application.PlanSets.Library.ResolveHousePlanSetHandler>();
         services.AddScoped<FloorplanFit.Application.PlanSets.Library.ResolvePlanSetVersionHandler>();
         services.AddScoped<FloorplanFit.Application.PlanSets.Library.GetPlanSetLibraryHandler>();
+        services.AddScoped<FloorplanFit.Application.PlanSets.Library.UnlinkPlanSheetHandler>();
         services.AddScoped<ExtractWallCandidatesHandler>();
         services.AddScoped<GetFloorPlanLibraryHandler>();
         services.AddScoped<RemoveFloorPlanVersionHandler>();

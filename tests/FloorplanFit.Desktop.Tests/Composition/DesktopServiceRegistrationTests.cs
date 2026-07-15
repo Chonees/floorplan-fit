@@ -52,6 +52,8 @@ public sealed class DesktopServiceRegistrationTests
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<PublishFloorPlanCurationHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<ExtractWallCandidatesHandler>());
             Assert.IsType<OpenAiAutoFitPlanSuggester>(scope.ServiceProvider.GetRequiredService<IAutoFitPlanSuggester>());
+            Assert.IsType<DxfElectricalFloorRegistrationEstimator>(
+                scope.ServiceProvider.GetRequiredService<IElectricalFloorRegistrationEstimator>());
             Assert.Same(DxfExtractionProfile.PointeHomes, scope.ServiceProvider.GetRequiredService<DxfExtractionProfile>());
         }
         finally

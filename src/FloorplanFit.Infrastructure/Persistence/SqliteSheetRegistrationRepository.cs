@@ -37,6 +37,7 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
                 status,
                 warning,
                 rule_summary,
+                whole_plan_registration_proof_json,
                 created_at_utc,
                 confirmed_at_utc)
             VALUES (
@@ -50,6 +51,7 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
                 $status,
                 $warning,
                 $rule_summary,
+                $whole_plan_registration_proof_json,
                 $created_at_utc,
                 $confirmed_at_utc)
             """);
@@ -63,6 +65,11 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
         command.Parameters.AddWithValue("$status", registration.Status.ToString());
         command.Parameters.AddWithValue("$warning", (object?)registration.Warning ?? DBNull.Value);
         command.Parameters.AddWithValue("$rule_summary", (object?)registration.RuleSummary ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$whole_plan_registration_proof_json",
+            registration.WholePlanRegistrationProof is null
+                ? DBNull.Value
+                : SerializeWholePlanProof(registration.WholePlanRegistrationProof));
         command.Parameters.AddWithValue("$created_at_utc", registration.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$confirmed_at_utc", FormatNullableDateTime(registration.ConfirmedAtUtc));
         command.ExecuteNonQuery();
@@ -86,6 +93,7 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
                    status,
                    warning,
                    rule_summary,
+                   whole_plan_registration_proof_json,
                    created_at_utc,
                    confirmed_at_utc
             FROM sheet_registrations
@@ -121,6 +129,7 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
                    status,
                    warning,
                    rule_summary,
+                   whole_plan_registration_proof_json,
                    created_at_utc,
                    confirmed_at_utc
             FROM sheet_registrations
@@ -139,6 +148,21 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
         return Task.FromResult<IReadOnlyList<SheetRegistration>>(items);
     }
 
+    public Task RemoveByDependentSheetIdAsync(Guid dependentSheetId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            DELETE FROM sheet_registrations
+            WHERE dependent_sheet_id = $dependent_sheet_id
+            """);
+        command.Parameters.AddWithValue("$dependent_sheet_id", dependentSheetId.ToString());
+        command.ExecuteNonQuery();
+
+        return Task.CompletedTask;
+    }
+
     public Task UpdateAsync(SheetRegistration registration, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -147,12 +171,18 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
             """
             UPDATE sheet_registrations
             SET status = $status,
-                confirmed_at_utc = $confirmed_at_utc
+                confirmed_at_utc = $confirmed_at_utc,
+                whole_plan_registration_proof_json = $whole_plan_registration_proof_json
             WHERE id = $id
             """);
         command.Parameters.AddWithValue("$id", registration.Id.ToString());
         command.Parameters.AddWithValue("$status", registration.Status.ToString());
         command.Parameters.AddWithValue("$confirmed_at_utc", FormatNullableDateTime(registration.ConfirmedAtUtc));
+        command.Parameters.AddWithValue(
+            "$whole_plan_registration_proof_json",
+            registration.WholePlanRegistrationProof is null
+                ? DBNull.Value
+                : SerializeWholePlanProof(registration.WholePlanRegistrationProof));
 
         if (command.ExecuteNonQuery() == 0)
         {
@@ -196,13 +226,54 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
             DeserializeTransform(reader.GetString(5)),
             decimal.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
             Enum.Parse<SheetRegistrationStatus>(reader.GetString(7)),
-            DateTime.Parse(reader.GetString(10), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-            reader.IsDBNull(11)
+            DateTime.Parse(reader.GetString(11), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            reader.IsDBNull(12)
                 ? null
-                : DateTime.Parse(reader.GetString(11), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                : DateTime.Parse(reader.GetString(12), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
             reader.IsDBNull(8) ? null : reader.GetString(8),
-            reader.IsDBNull(9) ? null : reader.GetString(9));
+            reader.IsDBNull(9) ? null : reader.GetString(9),
+            reader.IsDBNull(10) ? null : DeserializeWholePlanProof(reader.GetString(10)));
     }
+
+    private static WholePlanRegistrationProof? DeserializeWholePlanProof(string json)
+    {
+        try
+        {
+            var proof = JsonSerializer.Deserialize<StoredWholePlanRegistrationProof>(json, JsonOptions);
+            return proof is null
+                ? null
+                : new WholePlanRegistrationProof(
+                    proof.Version,
+                    proof.Passed,
+                    proof.CanonicalFloorPlanVersionId,
+                    proof.DependentSheetId,
+                    proof.CanonicalSourceSha256,
+                    proof.DependentSourceSha256,
+                    proof.HorizontalCoverage,
+                    proof.VerticalCoverage,
+                    proof.RootMeanSquareResidual,
+                    proof.MaximumResidual);
+        }
+        catch (Exception exception) when (exception is JsonException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static string SerializeWholePlanProof(WholePlanRegistrationProof proof)
+        => JsonSerializer.Serialize(
+            new StoredWholePlanRegistrationProof(
+                proof.Version,
+                proof.Passed,
+                proof.CanonicalFloorPlanVersionId,
+                proof.DependentSheetId,
+                proof.CanonicalSourceSha256,
+                proof.DependentSourceSha256,
+                proof.HorizontalCoverage,
+                proof.VerticalCoverage,
+                proof.RootMeanSquareResidual,
+                proof.MaximumResidual),
+            JsonOptions);
 
     private static object FormatNullableDateTime(DateTime? value)
     {
@@ -224,4 +295,16 @@ public sealed class SqliteSheetRegistrationRepository : ISheetRegistrationReposi
         decimal RotationDegrees,
         decimal TranslateX,
         decimal TranslateY);
+
+    private sealed record StoredWholePlanRegistrationProof(
+        int Version,
+        bool Passed,
+        Guid CanonicalFloorPlanVersionId,
+        Guid DependentSheetId,
+        string CanonicalSourceSha256,
+        string DependentSourceSha256,
+        decimal HorizontalCoverage,
+        decimal VerticalCoverage,
+        decimal RootMeanSquareResidual,
+        decimal MaximumResidual);
 }

@@ -841,6 +841,7 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
 
                 using var command = connection.CreateCommand();
                 command.CommandText = """
+                    PRAGMA user_version = 0;
                     DROP TABLE pinch_markers;
                     DROP TABLE pinch_groups;
 
@@ -1018,6 +1019,7 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
 
                 using var command = connection.CreateCommand();
                 command.CommandText = """
+                    PRAGMA user_version = 0;
                     DROP TABLE pinch_markers;
                     DELETE FROM pinch_groups;
 
@@ -1107,6 +1109,7 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
 
                 using var command = connection.CreateCommand();
                 command.CommandText = """
+                    PRAGMA user_version = 0;
                     DROP TABLE pinch_markers;
                     DELETE FROM pinch_groups;
 

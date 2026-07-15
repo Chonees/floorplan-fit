@@ -190,6 +190,21 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
         return Task.FromResult<IReadOnlyList<SheetAdjustmentProjection>>(items);
     }
 
+    public Task RemoveByDependentSheetIdAsync(Guid dependentSheetId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            DELETE FROM sheet_adjustment_projections
+            WHERE dependent_sheet_id = $dependent_sheet_id
+            """);
+        command.Parameters.AddWithValue("$dependent_sheet_id", dependentSheetId.ToString());
+        command.ExecuteNonQuery();
+
+        return Task.CompletedTask;
+    }
+
     public Task UpdateAsync(SheetAdjustmentProjection projection, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -197,11 +212,17 @@ public sealed class SqliteSheetAdjustmentProjectionRepository : ISheetAdjustment
         using var command = CreateCommand(
             """
             UPDATE sheet_adjustment_projections
-            SET status = $status
+            SET status = $status,
+                warning = $warning,
+                rule_summary = $rule_summary,
+                recipe_handling_summary = $recipe_handling_summary
             WHERE id = $id
             """);
         command.Parameters.AddWithValue("$id", projection.Id.ToString());
         command.Parameters.AddWithValue("$status", projection.Status.ToString());
+        command.Parameters.AddWithValue("$warning", (object?)projection.Warning ?? DBNull.Value);
+        command.Parameters.AddWithValue("$rule_summary", (object?)projection.RuleSummary ?? DBNull.Value);
+        command.Parameters.AddWithValue("$recipe_handling_summary", (object?)projection.RecipeHandlingSummary ?? DBNull.Value);
 
         if (command.ExecuteNonQuery() == 0)
         {

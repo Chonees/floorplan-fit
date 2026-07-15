@@ -9,6 +9,7 @@ namespace FloorplanFit.Application.PlanSets.Registration;
 public sealed class RegisterRoofSheetHandler
 {
     private readonly IPlanSheetRepository planSheetRepository;
+    private readonly IPlanSetVersionRepository planSetVersionRepository;
     private readonly ISheetRegistrationRepository sheetRegistrationRepository;
     private readonly IUnitOfWork unitOfWork;
     private readonly IClock clock;
@@ -16,12 +17,14 @@ public sealed class RegisterRoofSheetHandler
 
     public RegisterRoofSheetHandler(
         IPlanSheetRepository planSheetRepository,
+        IPlanSetVersionRepository planSetVersionRepository,
         ISheetRegistrationRepository sheetRegistrationRepository,
         IUnitOfWork unitOfWork,
         IClock clock,
         IPlanSetAuditEventRepository? planSetAuditEventRepository = null)
     {
         this.planSheetRepository = planSheetRepository;
+        this.planSetVersionRepository = planSetVersionRepository;
         this.sheetRegistrationRepository = sheetRegistrationRepository;
         this.unitOfWork = unitOfWork;
         this.clock = clock;
@@ -49,6 +52,10 @@ public sealed class RegisterRoofSheetHandler
             throw new ArgumentOutOfRangeException(nameof(request.OverhangInches), "Roof overhang cannot be negative.");
         }
 
+        var planSetVersion = await planSetVersionRepository.GetByIdAsync(
+            request.PlanSetVersionId,
+            cancellationToken) ?? throw new InvalidOperationException("Plan set version was not found.");
+
         var sheet = await planSheetRepository.GetByIdAsync(request.RoofSheetId, cancellationToken);
         if (sheet is null)
         {
@@ -71,7 +78,7 @@ public sealed class RegisterRoofSheetHandler
             Guid.NewGuid(),
             request.PlanSetVersionId,
             request.RoofSheetId,
-            request.PlanSetVersionId,
+            planSetVersion.CanonicalFloorPlanVersionId,
             SheetRegistrationMethod.RoofFootprintWithOverhang,
             new SheetRegistrationTransform(
                 request.Scale,

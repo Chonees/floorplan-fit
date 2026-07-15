@@ -11,7 +11,7 @@ namespace FloorplanFit.Application.Tests.PlanSets.Adjustment;
 public sealed class CanonicalAdjustmentRecipeRouteTests
 {
     [Fact]
-    public async Task Route_records_recipe_projects_dependent_sheet_and_reports_review()
+    public async Task Route_records_recipe_projects_dependent_sheet_and_reports_recipe_ready_for_export()
     {
         var planSetVersionId = Guid.NewGuid();
         var canonicalFloorPlanVersionId = Guid.NewGuid();
@@ -69,7 +69,7 @@ public sealed class CanonicalAdjustmentRecipeRouteTests
             CancellationToken.None);
 
         var projection = Assert.Single(projected.Projections);
-        Assert.Equal("RequiresManualConfirmation", projection.Status);
+        Assert.Equal("ReadyForExport", projection.Status);
         Assert.Equal(3m, projection.Transform.Scale);
         Assert.Equal(110m, projection.Transform.TranslateX);
         Assert.Equal(194m, projection.Transform.TranslateY);
@@ -92,11 +92,11 @@ public sealed class CanonicalAdjustmentRecipeRouteTests
                 canonicalFloorPlanVersionId,
                 canonicalAdjustment.AdjustmentId,
                 canonicalAdjustment.CanonicalFloorPlanExportPath,
-                [new MultiSheetExportProjectionRequestDto(projection.ProjectionId)]),
+                [new MultiSheetExportProjectionRequestDto(projection.ProjectionId, "exports/electrical.dxf")]),
             CancellationToken.None);
 
         var electricalSheet = Assert.Single(audit.Sheets, sheet => sheet.ProjectionId == projection.ProjectionId);
-        Assert.Equal("RequiresManualConfirmation", electricalSheet.Status);
+        Assert.Equal("ProjectedAutomatically", electricalSheet.Status);
         var auditRecipe = Assert.IsType<string>(electricalSheet.RecipeHandlingSummary);
         Assert.Contains("HorizontalCompression", auditRecipe, StringComparison.Ordinal);
         var manifestRecipe = Assert.IsType<string>(
@@ -184,6 +184,28 @@ public sealed class CanonicalAdjustmentRecipeRouteTests
     private sealed class CapturingPlanSetExportManifestWriter : IPlanSetExportManifestWriter
     {
         public MultiSheetExportAuditDto? Audit { get; private set; }
+
+        public PlanSetVerificationReportDto BuildVerificationReport(MultiSheetExportAuditDto audit)
+        {
+            var dependentCount = Math.Max(0, audit.Sheets.Count - 1);
+            var check = new PlanSetVerificationCheckDto(
+                PlanSetVerificationCheckStatus.Passed,
+                dependentCount,
+                dependentCount,
+                0,
+                0);
+            return new PlanSetVerificationReportDto(
+                PlanSetVerificationReportDto.CurrentSchemaVersion,
+                new PlanSetVerificationOutputDto(audit.Sheets.Count, audit.Sheets.Count, []),
+                check,
+                new PlanSetVerificationOperationDto(0, 0, 0, 0),
+                new PlanSetVerificationOperationDto(0, 0, 0, 0),
+                check,
+                check,
+                check,
+                check,
+                []);
+        }
 
         public Task<string> WriteAsync(MultiSheetExportAuditDto audit, CancellationToken cancellationToken)
         {

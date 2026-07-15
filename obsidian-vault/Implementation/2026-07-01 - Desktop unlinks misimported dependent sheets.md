@@ -1,5 +1,7 @@
 ﻿# 2026-07-01 - Desktop unlinks misimported dependent sheets
 
+> **Superseded for confirmed/projected sheets.** `replaced_by`: [[2026-07-14 - Confirmed ElectricalPlan unlink leaves active workflow references]]. This record remains accurate for the original unregistered/not-projected-only slice.
+
 ## What
 - Added a direct `×` action in the selected HousePlanSet sheet list for dependent sheets that are `Unregistered / NotProjected`.
 - The canonical `FloorPlan` row does not expose unlink.

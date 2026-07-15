@@ -15,7 +15,15 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        var workspaceRoot = Path.Combine(AppContext.BaseDirectory, "workspace");
+        var localApplicationDataRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var workspaceRoot = AppWorkspaceDurability.GetStableWorkspaceRoot(localApplicationDataRoot);
+        var backupRoot = AppWorkspaceDurability.GetBackupRoot(localApplicationDataRoot);
+        var legacyWorkspaceRoot = Path.Combine(AppContext.BaseDirectory, "workspace");
+
+        AppWorkspaceDurability.CopyLegacyWorkspaceIfNeeded(
+            legacyWorkspaceRoot,
+            workspaceRoot,
+            CancellationToken.None);
 
         Host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder(args)
             .ConfigureServices(services => services.AddDesktopSlice1(workspaceRoot))
@@ -23,6 +31,11 @@ internal static class Program
 
         var workspace = Host.Services.GetRequiredService<AppWorkspace>();
         workspace.EnsureCreated();
+        AppWorkspaceDurability.CreatePreMigrationBackupIfNeeded(
+            workspace,
+            backupRoot,
+            SqliteSchemaInitializer.CurrentSchemaVersion,
+            CancellationToken.None);
         SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None)
             .GetAwaiter()
             .GetResult();

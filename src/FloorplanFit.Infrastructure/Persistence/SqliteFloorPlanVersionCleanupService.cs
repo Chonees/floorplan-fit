@@ -17,8 +17,7 @@ public sealed class SqliteFloorPlanVersionCleanupService : IFloorPlanVersionClea
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        using var connection = new SqliteConnection($"Data Source={workspace.DatabasePath}");
-        connection.Open();
+        using var connection = SqliteConnectionPolicy.Open(workspace.DatabasePath);
 
         var pendingVersionIds = LoadPendingVersionIds(connection);
         if (pendingVersionIds.Count == 0)
@@ -101,8 +100,48 @@ public sealed class SqliteFloorPlanVersionCleanupService : IFloorPlanVersionClea
         var extractedDimensionFilter =
             $"(SELECT id FROM extracted_dimensions WHERE wall_extraction_run_id IN {runFilter})";
 
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            $"""
+            CREATE TEMP TABLE IF NOT EXISTS cleanup_geometry_paths (
+                id TEXT PRIMARY KEY
+            );
+            DELETE FROM cleanup_geometry_paths;
+            INSERT OR IGNORE INTO cleanup_geometry_paths (id)
+            SELECT geometry_path_id FROM pinch_markers
+                WHERE floorplan_curation_id IN {curationFilter} AND geometry_path_id IS NOT NULL
+            UNION
+            SELECT guide_geometry_path_id FROM measurement_corridors
+                WHERE floorplan_curation_id IN {curationFilter} AND guide_geometry_path_id IS NOT NULL
+            UNION
+            SELECT geometry_path_id FROM measurement_nodes
+                WHERE floorplan_curation_id IN {curationFilter} AND geometry_path_id IS NOT NULL
+            UNION
+            SELECT geometry_path_id FROM floorplan_dimension_binding_override_anchors
+                WHERE floorplan_curation_id IN {curationFilter} AND geometry_path_id IS NOT NULL
+            UNION
+            SELECT geometry_path_id FROM extracted_wall_candidates
+                WHERE wall_extraction_run_id IN {runFilter} AND geometry_path_id IS NOT NULL
+            UNION
+            SELECT geometry_path_id FROM extracted_opening_candidates
+                WHERE wall_extraction_run_id IN {runFilter} AND geometry_path_id IS NOT NULL
+            UNION
+            SELECT p.geometry_path_id FROM extracted_fixed_plan_component_paths AS p
+                WHERE p.fixed_plan_component_id IN {fixedComponentFilter}
+            UNION
+            SELECT p.geometry_path_id FROM extracted_protected_detail_assembly_paths AS p
+                WHERE p.protected_detail_assembly_id IN {protectedDetailFilter};
+            """,
+            ("$version_id", versionId));
+
         var statements = new[]
         {
+            $"DELETE FROM floorplan_dimension_binding_override_anchors WHERE floorplan_curation_id IN {curationFilter}",
+            $"DELETE FROM floorplan_dimension_binding_overrides WHERE floorplan_curation_id IN {curationFilter}",
+            $"DELETE FROM floorplan_dimension_interval_bindings WHERE floorplan_curation_id IN {curationFilter}",
+            $"DELETE FROM measurement_nodes WHERE floorplan_curation_id IN {curationFilter}",
+            $"DELETE FROM measurement_corridors WHERE floorplan_curation_id IN {curationFilter}",
             $"DELETE FROM pinch_markers WHERE floorplan_curation_id IN {curationFilter}",
             $"DELETE FROM pinch_groups WHERE floorplan_curation_id IN {curationFilter}",
             $"DELETE FROM floorplan_dimension_override_primitives WHERE floorplan_curation_id IN {curationFilter}",
@@ -125,47 +164,51 @@ public sealed class SqliteFloorPlanVersionCleanupService : IFloorPlanVersionClea
             $"DELETE FROM extracted_dimensions WHERE wall_extraction_run_id IN {runFilter}",
             "DELETE FROM wall_extraction_runs WHERE floorplan_version_id = $version_id",
 
-            $"""
+            """
             DELETE FROM geometry_segments
             WHERE geometry_path_id IN (
-                SELECT geometry_path_id FROM pinch_markers WHERE floorplan_curation_id IN {curationFilter}
-                UNION
-                SELECT geometry_path_id FROM extracted_wall_candidates
-                    WHERE wall_extraction_run_id IN {runFilter} AND geometry_path_id IS NOT NULL
-                UNION
-                SELECT geometry_path_id FROM extracted_opening_candidates
-                    WHERE wall_extraction_run_id IN {runFilter} AND geometry_path_id IS NOT NULL
-                UNION
-                SELECT p.geometry_path_id FROM extracted_fixed_plan_component_paths p
-                    JOIN extracted_fixed_plan_components c ON c.id = p.fixed_plan_component_id
-                    WHERE c.wall_extraction_run_id IN {runFilter}
-                UNION
-                SELECT p.geometry_path_id FROM extracted_protected_detail_assembly_paths p
-                    JOIN extracted_protected_detail_assemblies a ON a.id = p.protected_detail_assembly_id
-                    WHERE a.wall_extraction_run_id IN {runFilter}
+                SELECT candidate.id
+                FROM cleanup_geometry_paths AS candidate
+                WHERE NOT EXISTS (SELECT 1 FROM pinch_markers WHERE geometry_path_id = candidate.id)
+                  AND NOT EXISTS (SELECT 1 FROM measurement_corridors WHERE guide_geometry_path_id = candidate.id)
+                  AND NOT EXISTS (SELECT 1 FROM measurement_nodes WHERE geometry_path_id = candidate.id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM floorplan_dimension_binding_override_anchors
+                      WHERE geometry_path_id = candidate.id
+                  )
+                  AND NOT EXISTS (SELECT 1 FROM extracted_wall_candidates WHERE geometry_path_id = candidate.id)
+                  AND NOT EXISTS (SELECT 1 FROM extracted_opening_candidates WHERE geometry_path_id = candidate.id)
+                  AND NOT EXISTS (SELECT 1 FROM extracted_fixed_plan_component_paths WHERE geometry_path_id = candidate.id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM extracted_protected_detail_assembly_paths
+                      WHERE geometry_path_id = candidate.id
+                  )
             )
             """,
 
-            $"""
+            """
             DELETE FROM geometry_paths
             WHERE id IN (
-                SELECT geometry_path_id FROM pinch_markers WHERE floorplan_curation_id IN {curationFilter}
-                UNION
-                SELECT geometry_path_id FROM extracted_wall_candidates
-                    WHERE wall_extraction_run_id IN {runFilter} AND geometry_path_id IS NOT NULL
-                UNION
-                SELECT geometry_path_id FROM extracted_opening_candidates
-                    WHERE wall_extraction_run_id IN {runFilter} AND geometry_path_id IS NOT NULL
-                UNION
-                SELECT p.geometry_path_id FROM extracted_fixed_plan_component_paths p
-                    JOIN extracted_fixed_plan_components c ON c.id = p.fixed_plan_component_id
-                    WHERE c.wall_extraction_run_id IN {runFilter}
-                UNION
-                SELECT p.geometry_path_id FROM extracted_protected_detail_assembly_paths p
-                    JOIN extracted_protected_detail_assemblies a ON a.id = p.protected_detail_assembly_id
-                    WHERE a.wall_extraction_run_id IN {runFilter}
+                SELECT candidate.id
+                FROM cleanup_geometry_paths AS candidate
+                WHERE NOT EXISTS (SELECT 1 FROM pinch_markers WHERE geometry_path_id = candidate.id)
+                  AND NOT EXISTS (SELECT 1 FROM measurement_corridors WHERE guide_geometry_path_id = candidate.id)
+                  AND NOT EXISTS (SELECT 1 FROM measurement_nodes WHERE geometry_path_id = candidate.id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM floorplan_dimension_binding_override_anchors
+                      WHERE geometry_path_id = candidate.id
+                  )
+                  AND NOT EXISTS (SELECT 1 FROM extracted_wall_candidates WHERE geometry_path_id = candidate.id)
+                  AND NOT EXISTS (SELECT 1 FROM extracted_opening_candidates WHERE geometry_path_id = candidate.id)
+                  AND NOT EXISTS (SELECT 1 FROM extracted_fixed_plan_component_paths WHERE geometry_path_id = candidate.id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM extracted_protected_detail_assembly_paths
+                      WHERE geometry_path_id = candidate.id
+                  )
             )
             """,
+
+            "DELETE FROM cleanup_geometry_paths",
 
             "DELETE FROM floorplan_versions WHERE id = $version_id"
         };

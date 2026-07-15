@@ -20,4 +20,7 @@ public interface ISheetAdjustmentProjectionRepository
         Guid planSetVersionId,
         CancellationToken cancellationToken)
         => throw new NotSupportedException();
+
+    Task RemoveByDependentSheetIdAsync(Guid dependentSheetId, CancellationToken cancellationToken)
+        => throw new NotSupportedException();
 }

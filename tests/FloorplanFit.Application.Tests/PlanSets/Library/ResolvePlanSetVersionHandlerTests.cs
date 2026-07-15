@@ -1,5 +1,6 @@
 using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.PlanSets.Library;
+using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Domain.PlanSets;
 
 namespace FloorplanFit.Application.Tests.PlanSets.Library;
@@ -77,6 +78,11 @@ public sealed class ResolvePlanSetVersionHandlerTests
             Items.Add(version);
             return Task.CompletedTask;
         }
+
+        public Task<PlanSetVersion?> GetByIdAsync(
+            Guid planSetVersionId,
+            CancellationToken cancellationToken)
+            => Task.FromResult(Items.FirstOrDefault(item => item.Id == planSetVersionId));
 
         public Task<PlanSetVersion?> GetByCanonicalFloorPlanVersionAsync(
             Guid canonicalFloorPlanVersionId,

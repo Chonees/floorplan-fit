@@ -19,15 +19,7 @@ public sealed class SqliteSession : IDisposable, IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var databaseDirectory = Path.GetDirectoryName(databasePath);
-
-        if (!string.IsNullOrWhiteSpace(databaseDirectory))
-        {
-            Directory.CreateDirectory(databaseDirectory);
-        }
-
-        var connection = new SqliteConnection($"Data Source={databasePath}");
-        connection.Open();
+        var connection = SqliteConnectionPolicy.Open(databasePath);
 
         return Task.FromResult(new SqliteSession(connection));
     }

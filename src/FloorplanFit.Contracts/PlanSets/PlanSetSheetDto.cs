@@ -26,10 +26,7 @@ public sealed record PlanSetSheetDto(
     private bool HasEditableRegistration =>
         RegistrationStatus is "Unregistered" or "Rejected";
 
-    public bool CanUnlink =>
-        !IsCanonical &&
-        HasEditableRegistration &&
-        ProjectionStatus == "NotProjected";
+    public bool CanUnlink => !IsCanonical;
 
     public bool CanRegisterDependent =>
         !IsCanonical &&

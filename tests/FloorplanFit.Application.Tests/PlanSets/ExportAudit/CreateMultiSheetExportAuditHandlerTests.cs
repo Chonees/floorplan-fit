@@ -29,7 +29,9 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
             recipeHandlingSummary: "ElectricalPlan: affine placement applied; local recipe requires review before DXF deformation: HorizontalCompression Right @50 delta 2.");
         var exportRepository = new CapturingPlanSetExportRepository();
         var auditEventRepository = new CapturingPlanSetAuditEventRepository();
-        var manifestWriter = new CapturingPlanSetExportManifestWriter("exports/package/manifest.json");
+        var manifestWriter = new CapturingPlanSetExportManifestWriter(
+            "exports/package/manifest.json",
+            CreateBlockedVerification(PlanSetVerificationReasonCode.MissingExpectedOutput));
         var unitOfWork = new CapturingUnitOfWork();
         var clock = new FakeClock(new DateTime(2026, 6, 30, 23, 55, 0, DateTimeKind.Utc));
         var qualityReportHandler = new GetPlanSetQualityReportHandler(
@@ -191,7 +193,9 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
                 ]),
             exportRepository,
             new CapturingPlanSetAuditEventRepository(),
-            new CapturingPlanSetExportManifestWriter("exports/package/manifest.json"),
+            new CapturingPlanSetExportManifestWriter(
+                "exports/package/manifest.json",
+                CreateBlockedVerification(PlanSetVerificationReasonCode.MissingExpectedOutput)),
             new CapturingUnitOfWork(),
             new FakeClock(new DateTime(2026, 6, 30, 23, 55, 0, DateTimeKind.Utc)));
 
@@ -225,6 +229,151 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         var saved = Assert.Single(exportRepository.Items);
         Assert.Contains(saved.Sheets, sheet => sheet.PlanSheetId == roofSheetId && sheet.Status == PlanSetExportedSheetStatus.MissingProjection);
     }
+
+    [Fact]
+    public async Task HandleAsync_green_verification_report_is_the_only_path_to_ready_for_export()
+    {
+        var repository = new CapturingPlanSetExportRepository();
+        var reportBuiltBeforePersistence = false;
+        var writer = new CapturingPlanSetExportManifestWriter(
+            "exports/package/manifest.json",
+            CreateGreenVerification(),
+            () => reportBuiltBeforePersistence = repository.Items.Count == 0);
+        var projection = CreateReadyProjection();
+
+        var response = await CreateHandler(repository, writer, projection).HandleAsync(
+            CreateRequest(projection),
+            CancellationToken.None);
+
+        Assert.True(reportBuiltBeforePersistence);
+        Assert.True(response.Verification?.IsGreen);
+        Assert.Equal("ReadyForExport", response.Status);
+        Assert.True(response.Summary.CanExportPackageAutomatically);
+        Assert.Equal(PlanSetExportStatus.ReadyForExport, Assert.Single(repository.Items).Status);
+    }
+
+    [Fact]
+    public async Task HandleAsync_mismatch_verification_report_cannot_be_ready_for_export()
+    {
+        var repository = new CapturingPlanSetExportRepository();
+        var writer = new CapturingPlanSetExportManifestWriter(
+            "exports/package/manifest.json",
+            CreateBlockedVerification(PlanSetVerificationReasonCode.FinalOutputCongruenceMismatch));
+        var projection = CreateReadyProjection();
+
+        var response = await CreateHandler(repository, writer, projection).HandleAsync(
+            CreateRequest(projection),
+            CancellationToken.None);
+
+        Assert.False(response.Verification?.IsGreen);
+        Assert.Equal("RequiresManualConfirmation", response.Status);
+        Assert.False(response.Summary.CanExportPackageAutomatically);
+        Assert.Equal(PlanSetExportStatus.RequiresManualConfirmation, Assert.Single(repository.Items).Status);
+    }
+
+    [Fact]
+    public async Task HandleAsync_missing_required_evidence_cannot_be_ready_for_export()
+    {
+        var repository = new CapturingPlanSetExportRepository();
+        var writer = new CapturingPlanSetExportManifestWriter(
+            "exports/package/manifest.json",
+            CreateBlockedVerification(PlanSetVerificationReasonCode.MissingRequiredEvidence));
+        var projection = CreateReadyProjection();
+
+        var response = await CreateHandler(repository, writer, projection).HandleAsync(
+            CreateRequest(projection),
+            CancellationToken.None);
+
+        Assert.Equal(PlanSetVerificationDecision.Blocked, response.Verification?.Decision);
+        Assert.Contains(
+            response.Verification!.Reasons,
+            reason => reason.Code == PlanSetVerificationReasonCode.MissingRequiredEvidence);
+        Assert.Equal("RequiresManualConfirmation", response.Status);
+    }
+
+    [Fact]
+    public async Task HandleAsync_unsupported_capability_cannot_be_ready_for_export()
+    {
+        var repository = new CapturingPlanSetExportRepository();
+        var writer = new CapturingPlanSetExportManifestWriter(
+            "exports/package/manifest.json",
+            CreateBlockedVerification(PlanSetVerificationReasonCode.UnsupportedCapability));
+        var projection = CreateReadyProjection();
+
+        var response = await CreateHandler(repository, writer, projection).HandleAsync(
+            CreateRequest(projection),
+            CancellationToken.None);
+
+        Assert.Equal(PlanSetVerificationCheckStatus.Unsupported, response.Verification?.Capabilities.Status);
+        Assert.Equal("RequiresManualConfirmation", response.Status);
+    }
+
+    private static CreateMultiSheetExportAuditHandler CreateHandler(
+        CapturingPlanSetExportRepository repository,
+        CapturingPlanSetExportManifestWriter writer,
+        SheetAdjustmentProjection projection)
+        => new(
+            new FakeSheetAdjustmentProjectionRepository(projection),
+            new FakePlanSheetReader(),
+            repository,
+            new CapturingPlanSetAuditEventRepository(),
+            writer,
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 7, 13, 12, 0, 0, DateTimeKind.Utc)));
+
+    private static SheetAdjustmentProjection CreateReadyProjection()
+        => CreateProjection(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            SheetAdjustmentProjectionStatus.ReadyForExport,
+            confidence: 0.95m,
+            warning: null);
+
+    private static CreateMultiSheetExportAuditRequest CreateRequest(SheetAdjustmentProjection projection)
+        => new(
+            projection.PlanSetVersionId,
+            Guid.NewGuid(),
+            projection.CanonicalAdjustmentId,
+            "exports/floor-plan.dxf",
+            [new MultiSheetExportProjectionRequestDto(projection.Id, "exports/electrical.dxf")]);
+
+    private static PlanSetVerificationReportDto CreateGreenVerification()
+        => new(
+            SchemaVersion: PlanSetVerificationReportDto.CurrentSchemaVersion,
+            new PlanSetVerificationOutputDto(2, 2, []),
+            PassedCheck(1),
+            new PlanSetVerificationOperationDto(0, 0, 0, 0),
+            new PlanSetVerificationOperationDto(0, 0, 0, 0),
+            PassedCheck(1),
+            PassedCheck(1),
+            PassedCheck(1),
+            PassedCheck(1),
+            Reasons: []);
+
+    private static PlanSetVerificationReportDto CreateBlockedVerification(PlanSetVerificationReasonCode code)
+    {
+        var failedCheck = code == PlanSetVerificationReasonCode.UnsupportedCapability
+            ? new PlanSetVerificationCheckDto(PlanSetVerificationCheckStatus.Unsupported, 1, 0, 1, 0)
+            : new PlanSetVerificationCheckDto(PlanSetVerificationCheckStatus.Failed, 1, 0, 1, 0);
+        return new PlanSetVerificationReportDto(
+            PlanSetVerificationReportDto.CurrentSchemaVersion,
+            code == PlanSetVerificationReasonCode.MissingExpectedOutput
+                ? new PlanSetVerificationOutputDto(2, 1, [Guid.NewGuid()])
+                : new PlanSetVerificationOutputDto(2, 2, []),
+            code == PlanSetVerificationReasonCode.MissingRequiredEvidence
+                ? new PlanSetVerificationCheckDto(PlanSetVerificationCheckStatus.InsufficientData, 1, 0, 0, 1)
+                : PassedCheck(1),
+            new PlanSetVerificationOperationDto(0, 0, 0, 0),
+            new PlanSetVerificationOperationDto(0, 0, 0, 0),
+            PassedCheck(1),
+            PassedCheck(1),
+            code == PlanSetVerificationReasonCode.FinalOutputCongruenceMismatch ? failedCheck : PassedCheck(1),
+            code == PlanSetVerificationReasonCode.UnsupportedCapability ? failedCheck : PassedCheck(1),
+            [new PlanSetVerificationReasonDto(code, "test", null, "Focused gate regression.")]);
+    }
+
+    private static PlanSetVerificationCheckDto PassedCheck(int count)
+        => new(PlanSetVerificationCheckStatus.Passed, count, count, 0, 0);
 
     private static SheetAdjustmentProjection CreateProjection(
         Guid planSetVersionId,
@@ -387,13 +536,26 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
     private sealed class CapturingPlanSetExportManifestWriter : IPlanSetExportManifestWriter
     {
         private readonly string manifestPath;
+        private readonly PlanSetVerificationReportDto verificationReport;
+        private readonly Action? onBuildVerification;
 
-        public CapturingPlanSetExportManifestWriter(string manifestPath)
+        public CapturingPlanSetExportManifestWriter(
+            string manifestPath,
+            PlanSetVerificationReportDto? verificationReport = null,
+            Action? onBuildVerification = null)
         {
             this.manifestPath = manifestPath;
+            this.verificationReport = verificationReport ?? CreateGreenVerification();
+            this.onBuildVerification = onBuildVerification;
         }
 
         public List<MultiSheetExportAuditDto> Items { get; } = [];
+
+        public PlanSetVerificationReportDto BuildVerificationReport(MultiSheetExportAuditDto audit)
+        {
+            onBuildVerification?.Invoke();
+            return verificationReport;
+        }
 
         public Task<string> WriteAsync(MultiSheetExportAuditDto audit, CancellationToken cancellationToken)
         {

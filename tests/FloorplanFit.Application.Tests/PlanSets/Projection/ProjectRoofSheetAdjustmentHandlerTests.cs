@@ -84,6 +84,40 @@ public sealed class ProjectRoofSheetAdjustmentHandlerTests
         Assert.Contains("overhang", response.Warning, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task HandleAsync_marks_compressed_roof_projection_unsupported()
+    {
+        var registration = CreateRoofRegistration("PreserveOverhangInches=18");
+        var projectionRepository = new CapturingSheetAdjustmentProjectionRepository();
+        var handler = new ProjectRoofSheetAdjustmentHandler(
+            new FakeSheetRegistrationRepository(registration),
+            projectionRepository,
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 6, 30, 22, 0, 0, DateTimeKind.Utc)));
+
+        var response = await handler.HandleAsync(
+            new ProjectRoofSheetAdjustmentRequest(
+                registration.Id,
+                Guid.NewGuid(),
+                new AdjustedSitePlanPlacementDto(
+                    FloorToSiteScale: 1m,
+                    SiteOffsetX: 0m,
+                    SiteOffsetY: 0m,
+                    CompressionSteps:
+                    [
+                        new AdjustedCompressionStepDto(
+                            "Height",
+                            "Top",
+                            [new AdjustedCompressionMarkerDto(100m, 1m)])
+                    ])),
+            CancellationToken.None);
+
+        Assert.Equal("Unsupported", response.Status);
+        Assert.Contains("canonical compression", response.Warning, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("manual confirmation", response.Warning, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(SheetAdjustmentProjectionStatus.Unsupported, Assert.Single(projectionRepository.Items).Status);
+    }
+
     private static SheetRegistration CreateRoofRegistration(string? ruleSummary)
     {
         return new SheetRegistration(

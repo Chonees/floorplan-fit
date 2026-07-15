@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FloorplanFit.Application.Abstractions;
@@ -36,6 +37,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     private readonly ProjectRegisteredPlanSetSheetsHandler? registeredSheetProjector;
     private readonly ConfirmSheetAdjustmentProjectionHandler? confirmSheetProjectionHandler;
     private IReadOnlyList<AdjustedCompressionStepDto> appliedCompressionSteps = [];
+    private IReadOnlyList<FloorPlanAdjustmentOperationImpactDto> appliedFloorPlanImpactAudit = [];
     private readonly IReadOnlyList<PinchMarkerDto> pinchMarkers;
     private readonly IReadOnlyList<PinchGroupDto> pinchGroups;
     private readonly IReadOnlyList<MeasurementCorridorDto> measurementCorridors;
@@ -268,6 +270,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         var openingLabels = autoFitBaselineOpeningLabels.ToArray();
         var dimensions = autoFitBaselineDimensions.ToArray();
         var recordedSteps = new List<AdjustedCompressionStepDto>();
+        var recordedFloorPlanImpactAudit = new List<FloorPlanAdjustmentOperationImpactDto>();
 
         foreach (var step in option.Plan.Steps)
         {
@@ -282,6 +285,10 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
             // the real wall coordinate, independent of compressions applied before it.
             var baselineTransform = BuildCompressionTransform(step, autoFitBaselineGeometryPaths) ?? transform;
             recordedSteps.Add(ToSourceCompressionStep(baselineTransform));
+            recordedFloorPlanImpactAudit.AddRange(BuildFloorPlanImpactAudits(
+                baselineTransform,
+                autoFitBaselineGeometryPaths,
+                recordedFloorPlanImpactAudit.Count));
 
             var sourceGeometryBeforeStep = geometry;
             geometry = geometry.Select(path => TransformPath(path, transform)).ToArray();
@@ -331,6 +338,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         ReplaceItems(Dimensions, dimensions);
         ChangedNumberDimensionIds = ResolveAffectedDimensionIds(option.Plan, autoFitBaselineDimensions, dimensions);
         appliedCompressionSteps = recordedSteps;
+        appliedFloorPlanImpactAudit = recordedFloorPlanImpactAudit;
 
         foreach (var autoFitOption in AutoFitSuggestionOptions)
         {
@@ -566,7 +574,11 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
                     LastCanonicalAdjustmentId.Value,
                     canonicalExportPath,
                     BuildPlanSetPackageDirectory(canonicalExportPath),
-                    []),
+                    [])
+                {
+                    CanonicalPlacement = audit.CanonicalPlacement,
+                    CanonicalRecipe = audit.CanonicalRecipe
+                },
                 cancellationToken);
             LastPlanSetExportAudit = refreshedAudit;
             ReplaceItems(PlanSetExportAuditLines, BuildPlanSetExportAuditLines(refreshedAudit));
@@ -650,7 +662,11 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
                     canonicalAdjustment.AdjustmentId,
                     canonicalFloorPlanExportPath,
                     BuildPlanSetPackageDirectory(canonicalFloorPlanExportPath),
-                    []),
+                    [])
+                {
+                    CanonicalPlacement = placement,
+                    CanonicalRecipe = canonicalAdjustment.AdjustmentRecipe
+                },
                 cancellationToken);
             LastPlanSetExportAudit = audit;
             ReplaceItems(PlanSetExportAuditLines, BuildPlanSetExportAuditLines(audit));
@@ -697,36 +713,38 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     }
 
     private static string BuildPlanSetReExportStatus(MultiSheetExportAuditDto audit)
-    {
-        var manifest = string.IsNullOrWhiteSpace(audit.PackageManifestPath)
-            ? "manifest pendiente"
-            : audit.PackageManifestPath;
-        return audit.Summary.ManualConfirmationRequiredSheetCount == 0
-            ? $"Proyecciones confirmadas y paquete HousePlanSet listo: {manifest}"
-            : $"Paquete HousePlanSet re-exportado con {audit.Summary.ManualConfirmationRequiredSheetCount} hojas aún en revisión: {manifest}";
-    }
+        => IsVerifiedReady(audit)
+            ? "Proyecciones confirmadas y paquete HousePlanSet listo."
+            : $"Paquete HousePlanSet re-exportado pero NO esta listo: {BuildVerificationReasonSummary(audit)}";
 
     private static string BuildPlanSetReExportDetails(MultiSheetExportAuditDto audit)
         => $"HousePlanSet: {audit.Summary.AutomaticallyProjectedSheetCount} hojas auto, {audit.Summary.ManualConfirmationRequiredSheetCount} manual/missing.";
 
-    private static string BuildExportStatus(
+    internal static string BuildExportStatus(
         AdjustedSitePlanExportResult result,
         MultiSheetExportAuditDto? audit)
     {
         if (audit is null)
         {
             return result.Warnings.Count == 0
-                ? $"DXF combinado exportado: {result.OutputFilePath}"
-                : $"DXF combinado exportado: {result.OutputFilePath} ({result.Warnings.Count} avisos).";
+                ? $"DXF combinado exportado: {Path.GetFileName(result.OutputFilePath)}"
+                : $"DXF combinado exportado: {Path.GetFileName(result.OutputFilePath)} ({result.Warnings.Count} avisos).";
         }
 
-        var manifest = string.IsNullOrWhiteSpace(audit.PackageManifestPath)
-            ? "manifest pendiente"
-            : audit.PackageManifestPath;
-        return audit.Summary.ManualConfirmationRequiredSheetCount == 0
-            ? $"DXF combinado exportado y paquete HousePlanSet listo: {manifest}"
-            : $"DXF combinado exportado y paquete HousePlanSet requiere revision: {audit.Summary.ManualConfirmationRequiredSheetCount} hojas ({manifest})";
+        return IsVerifiedReady(audit)
+            ? "DXF combinado exportado y paquete HousePlanSet listo."
+            : $"DXF combinado exportado; paquete HousePlanSet NO listo: {BuildVerificationReasonSummary(audit)}";
     }
+
+    private static bool IsVerifiedReady(MultiSheetExportAuditDto audit)
+        => audit.Verification?.IsGreen == true;
+
+    private static string BuildVerificationReasonSummary(MultiSheetExportAuditDto audit)
+        => audit.Verification is null
+            ? "falta el reporte tipado de verificacion"
+            : audit.Verification.Reasons.Count == 0
+                ? "el reporte tipado no paso todos los gates"
+                : string.Join(", ", audit.Verification.Reasons.Select(reason => reason.Code));
 
     private static string BuildExportDetails(
         AdjustedSitePlanExportResult result,
@@ -740,35 +758,26 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
             return dxfDetails;
         }
 
-        var manifest = string.IsNullOrWhiteSpace(audit.PackageManifestPath)
-            ? "manifest pendiente"
-            : audit.PackageManifestPath;
         return string.Join(
             Environment.NewLine,
             dxfDetails,
-            $"HousePlanSet: {audit.Summary.AutomaticallyProjectedSheetCount} hojas auto, {audit.Summary.ManualConfirmationRequiredSheetCount} manual/missing, manifest: {manifest}.");
+            $"HousePlanSet: {audit.Summary.AutomaticallyProjectedSheetCount} hoja(s) auto, {audit.Summary.ManualConfirmationRequiredSheetCount} manual/missing.");
     }
 
-    private static IReadOnlyList<string> BuildPlanSetExportAuditLines(MultiSheetExportAuditDto audit)
+    internal static IReadOnlyList<string> BuildPlanSetExportAuditLines(MultiSheetExportAuditDto audit)
     {
-        var lines = audit.Sheets
-            .Select(sheet =>
-            {
-                var confidence = sheet.Confidence.HasValue
-                    ? $" - confidence {FormatConfidence(sheet.Confidence.Value)}"
-                    : string.Empty;
-                var warning = string.IsNullOrWhiteSpace(sheet.Warning)
-                    ? string.Empty
-                    : $" - {sheet.Warning}";
-                var recipe = string.IsNullOrWhiteSpace(sheet.RecipeHandlingSummary)
-                    ? string.Empty
-                    : $" - recipe: {sheet.RecipeHandlingSummary}";
-                var path = string.IsNullOrWhiteSpace(sheet.StoragePath)
-                    ? string.Empty
-                    : $" - {sheet.StoragePath}";
-                return $"{sheet.SheetKind}: {sheet.Status}{confidence}{warning}{recipe}{path}";
-            })
+        var segmentLine = TryBuildSegmentCongruenceLine(audit);
+        var lines = audit.HumanSummary
+            .Select(line => segmentLine is not null &&
+                            line.StartsWith("Segment congruence:", StringComparison.OrdinalIgnoreCase)
+                ? segmentLine
+                : line)
             .ToList();
+        var finalOutputLine = TryBuildFinalOutputCongruenceLine(audit);
+        if (finalOutputLine is not null)
+        {
+            lines.Add(finalOutputLine);
+        }
 
         if (audit.QualityReport is not null)
         {
@@ -778,8 +787,188 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         return lines;
     }
 
+    private static string? TryBuildSegmentCongruenceLine(MultiSheetExportAuditDto audit)
+    {
+        if (string.IsNullOrWhiteSpace(audit.PackageManifestPath))
+        {
+            return null;
+        }
+
+        var auditPath = Path.Combine(
+            Path.GetDirectoryName(audit.PackageManifestPath) ?? string.Empty,
+            "audit",
+            "outline-segment-congruence-audit.json");
+        if (!File.Exists(auditPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(auditPath));
+            if (!document.RootElement.TryGetProperty("sheets", out var sheets))
+            {
+                return null;
+            }
+
+            var enumerator = sheets.EnumerateArray();
+            if (!enumerator.MoveNext())
+            {
+                return null;
+            }
+
+            var sheet = enumerator.Current;
+            if (!sheet.TryGetProperty("segmentCongruence", out var segment))
+            {
+                return null;
+            }
+
+            var status = GetJsonString(segment, "Status");
+            var missing = GetJsonInt(segment, "MissingInElectricalCount");
+            var required = GetJsonInt(segment, "RequiredOutlineSegmentCount");
+            var advisoryMissing = GetJsonInt(segment, "AdvisoryMissingInternalWallRunCount");
+            var advisoryExtra = GetJsonInt(segment, "AdvisoryExtraElectricalWallRunCount");
+
+            return status switch
+            {
+                "SegmentCongruent" =>
+                    $"Segment congruence: OK; outline estructural cubierto ({required} runs obligatorios). Diferencias internas advisory: faltan {advisoryMissing}, extras {advisoryExtra}.",
+                "InsufficientData" =>
+                    $"Segment congruence: datos insuficientes; {GetJsonString(segment, "Reason") ?? "falta evidencia estructural comparable"}.",
+                _ =>
+                    $"Segment congruence: NO OK; bordes/corners con problema: {BuildSegmentProblemList(segment)}; faltan {missing} runs obligatorios del outline en Electrical. Revisar outline-segment-congruence-audit.json antes de declarar automático."
+            };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryBuildFinalOutputCongruenceLine(MultiSheetExportAuditDto audit)
+    {
+        if (string.IsNullOrWhiteSpace(audit.PackageManifestPath))
+        {
+            return null;
+        }
+
+        var auditPath = Path.Combine(
+            Path.GetDirectoryName(audit.PackageManifestPath) ?? string.Empty,
+            "audit",
+            "final-output-congruence-audit.json");
+        if (!File.Exists(auditPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(auditPath));
+            if (!document.RootElement.TryGetProperty("sheets", out var sheets))
+            {
+                return null;
+            }
+
+            var enumerator = sheets.EnumerateArray();
+            if (!enumerator.MoveNext() ||
+                !enumerator.Current.TryGetProperty("finalOutputCongruence", out var finalOutput))
+            {
+                return null;
+            }
+
+            var status = GetJsonString(finalOutput, "Status");
+            var widthMismatch = GetJsonDecimal(finalOutput, "WidthMismatchInches");
+            var heightMismatch = GetJsonDecimal(finalOutput, "HeightMismatchInches");
+            var rawWidthMismatch = GetJsonDecimal(finalOutput, "RawWidthMismatchInches");
+            var rawHeightMismatch = GetJsonDecimal(finalOutput, "RawHeightMismatchInches");
+            var floorBounds = finalOutput.TryGetProperty("FloorStructuralBounds", out var floor)
+                ? floor
+                : default;
+            var electricalBounds = finalOutput.TryGetProperty("ElectricalStructuralBounds", out var electrical)
+                ? electrical
+                : default;
+            var floorWidth = floor.ValueKind == JsonValueKind.Object ? GetJsonDecimal(floor, "Width") : null;
+            var floorHeight = floor.ValueKind == JsonValueKind.Object ? GetJsonDecimal(floor, "Height") : null;
+            var electricalWidth = electrical.ValueKind == JsonValueKind.Object ? GetJsonDecimal(electrical, "Width") : null;
+            var electricalHeight = electrical.ValueKind == JsonValueKind.Object ? GetJsonDecimal(electrical, "Height") : null;
+            var rawNote = rawWidthMismatch is null && rawHeightMismatch is null
+                ? string.Empty
+                : $" Raw visible bounds mismatch: ancho {FormatNullableInches(rawWidthMismatch)}, alto {FormatNullableInches(rawHeightMismatch)}.";
+
+            return status == "FinalOutputCongruent"
+                ? $"Final output overlay: OK; huella soportada FloorPlan {FormatNullableInches(floorWidth)} x {FormatNullableInches(floorHeight)}, Electrical {FormatNullableInches(electricalWidth)} x {FormatNullableInches(electricalHeight)}.{rawNote}"
+                : $"Final output overlay: NO OK; huella soportada FloorPlan {FormatNullableInches(floorWidth)} x {FormatNullableInches(floorHeight)}, Electrical {FormatNullableInches(electricalWidth)} x {FormatNullableInches(electricalHeight)}, mismatch ancho {FormatNullableInches(widthMismatch)}, alto {FormatNullableInches(heightMismatch)}.{rawNote} Revisar final-output-congruence-audit.json.";
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string? GetJsonString(JsonElement element, string propertyName)
+        => element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static int GetJsonInt(JsonElement element, string propertyName)
+        => element.TryGetProperty(propertyName, out var value) &&
+           value.ValueKind == JsonValueKind.Number &&
+           value.TryGetInt32(out var number)
+            ? number
+            : 0;
+
+    private static decimal? GetJsonDecimal(JsonElement element, string propertyName)
+        => element.TryGetProperty(propertyName, out var value) &&
+           value.ValueKind == JsonValueKind.Number &&
+           value.TryGetDecimal(out var number)
+            ? number
+            : null;
+
+    private static string BuildSegmentProblemList(JsonElement segment)
+    {
+        var problems = new List<string>();
+        if (segment.TryGetProperty("OutlineEdges", out var edges) && edges.ValueKind == JsonValueKind.Array)
+        {
+            problems.AddRange(edges
+                .EnumerateArray()
+                .Where(edge => GetJsonInt(edge, "MissingCount") > 0)
+                .Select(edge => GetJsonString(edge, "Edge"))
+                .Where(edge => !string.IsNullOrWhiteSpace(edge))
+                .Select(edge => edge!));
+        }
+
+        if (segment.TryGetProperty("CornerCoverage", out var corners) && corners.ValueKind == JsonValueKind.Array)
+        {
+            problems.AddRange(corners
+                .EnumerateArray()
+                .Where(corner => corner.TryGetProperty("IsCovered", out var covered) &&
+                                 covered.ValueKind == JsonValueKind.False)
+                .Select(corner => GetJsonString(corner, "Corner"))
+                .Where(corner => !string.IsNullOrWhiteSpace(corner))
+                .Select(corner => corner!));
+        }
+
+        return problems.Count == 0 ? "detalle no identificado" : string.Join(", ", problems);
+    }
+
     private static string BuildQualityReportLine(PlanSetQualityReportDto report)
-        => $"Quality: registrations {report.RegistrationEventCount}, projections {report.ProjectionEventCount}, lowest registration {FormatOptionalConfidence(report.LowestRegistrationConfidence)}, lowest projection {FormatOptionalConfidence(report.LowestProjectionConfidence)}, manual registrations {report.ManualRegistrationCount}, manual projections {report.ManualProjectionCount}";
+        => $"Confianza de datos: registro {FormatOptionalConfidence(report.LowestRegistrationConfidence)}, proyeccion {FormatOptionalConfidence(report.LowestProjectionConfidence)}, revisiones manuales {report.ManualRegistrationCount + report.ManualProjectionCount}.";
 
     private static string FormatOptionalConfidence(decimal? confidence)
         => confidence.HasValue ? FormatConfidence(confidence.Value) : "n/a";
@@ -796,7 +985,52 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
             siteOffsetX,
             siteOffsetY,
             appliedCompressionSteps,
-            BuildAdjustedDimensionPatches(siteOffsetX, siteOffsetY));
+            BuildAdjustedDimensionPatches(siteOffsetX, siteOffsetY))
+        {
+            InputAudit = BuildAdjustmentInputAudit(),
+            FloorPlanImpactAudit = appliedFloorPlanImpactAudit
+        };
+    }
+
+    private AdjustmentInputAuditDto? BuildAdjustmentInputAudit()
+    {
+        if (autoFitSuggestionFacts is null)
+        {
+            return null;
+        }
+
+        var fitGeometry = autoFitFitContext is null
+            ? autoFitBaselineGeometryPaths
+            : SitePlanAdjustmentFitAnalyzer.ResolveFitGeometryPaths(
+                autoFitBaselineGeometryPaths,
+                autoFitFitContext.PlacementGeometryPathIds);
+        var footprint = StructuralFootprint.Resolve(fitGeometry);
+        var bounds = footprint is { } resolvedFootprint
+            ? new AutoFitGeometryBounds(
+                resolvedFootprint.MinX,
+                resolvedFootprint.MinY,
+                resolvedFootprint.MaxX,
+                resolvedFootprint.MaxY)
+            : TryGetGeometryBounds(fitGeometry);
+        if (bounds is null)
+        {
+            return null;
+        }
+
+        var deficit = autoFitSuggestionFacts.Deficit;
+        var originalWidth = ConvertSiteUnitsToInches(bounds.Value.MaxX - bounds.Value.MinX);
+        var originalHeight = ConvertSiteUnitsToInches(bounds.Value.MaxY - bounds.Value.MinY);
+        var widthDelta = decimal.Round(deficit.WidthInches, 3, MidpointRounding.AwayFromZero);
+        var heightDelta = decimal.Round(deficit.HeightInches, 3, MidpointRounding.AwayFromZero);
+
+        return new AdjustmentInputAuditDto(
+            originalWidth,
+            originalHeight,
+            decimal.Max(0m, decimal.Round(originalWidth - widthDelta, 3, MidpointRounding.AwayFromZero)),
+            decimal.Max(0m, decimal.Round(originalHeight - heightDelta, 3, MidpointRounding.AwayFromZero)),
+            widthDelta,
+            heightDelta,
+            "SitePlanAdjustmentPreview");
     }
 
     private IReadOnlyList<DimensionDto> BuildAdjustedDimensionPatches(decimal siteOffsetX, decimal siteOffsetY)
@@ -916,6 +1150,100 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
                 .ToArray());
     }
 
+    private IReadOnlyList<FloorPlanAdjustmentOperationImpactDto> BuildFloorPlanImpactAudits(
+        AutoFitCompressionTransform transform,
+        IReadOnlyList<GeometryPathDto> geometry,
+        int operationIndexOffset)
+    {
+        var isWidth = !IsHeight(transform.AxisTag);
+        var offsetAxis = isWidth
+            ? projectionOffsetX + ManualOffsetX
+            : projectionOffsetY + ManualOffsetY;
+        var axisTag = NormalizeAxis(transform.AxisTag);
+        var edge = transform.Edge.ToString();
+        var kind = IsHeight(transform.AxisTag)
+            ? "VerticalCompression"
+            : "HorizontalCompression";
+
+        return transform.Markers
+            .Select((marker, index) =>
+            {
+                var impacted = CountImpactedGeometry(geometry, transform, marker);
+                var expectedDelta = Round(marker.TrimSourceUnits / projectionScale);
+                var status = impacted.AffectedVertices > 0
+                    ? "Applied"
+                    : "NoGeometryAffected";
+                var operationIndex = operationIndexOffset + index;
+
+                return new FloorPlanAdjustmentOperationImpactDto(
+                    $"operation-{operationIndex}",
+                    operationIndex,
+                    kind,
+                    axisTag,
+                    edge,
+                    Round((marker.Coordinate - offsetAxis) / projectionScale),
+                    expectedDelta,
+                    impacted.AffectedEntities,
+                    impacted.AffectedVertices,
+                    impacted.AffectedVertices > 0 ? expectedDelta : 0m,
+                    impacted.AffectedVertices > 0 ? expectedDelta : 0m,
+                    status,
+                    impacted.AffectedVertices > 0
+                        ? null
+                        : "No floor-plan geometry vertex was on the affected side of this pinch marker.");
+            })
+            .ToArray();
+    }
+
+    private static (int AffectedEntities, int AffectedVertices) CountImpactedGeometry(
+        IReadOnlyList<GeometryPathDto> geometry,
+        AutoFitCompressionTransform transform,
+        AutoFitCompressionMarker marker)
+    {
+        var affectedEntities = 0;
+        var affectedVertices = 0;
+
+        foreach (var path in geometry)
+        {
+            var pathAffectedVertices = path.Segments.Sum(segment =>
+                CountIfAffected(segment.StartX, segment.StartY, transform, marker) +
+                CountIfAffected(segment.EndX, segment.EndY, transform, marker));
+            if (pathAffectedVertices == 0)
+            {
+                continue;
+            }
+
+            affectedEntities++;
+            affectedVertices += pathAffectedVertices;
+        }
+
+        return (affectedEntities, affectedVertices);
+    }
+
+    private static int CountIfAffected(
+        decimal x,
+        decimal y,
+        AutoFitCompressionTransform transform,
+        AutoFitCompressionMarker marker)
+    {
+        if (string.Equals(transform.AxisTag, "Width", StringComparison.OrdinalIgnoreCase))
+        {
+            return transform.Edge switch
+            {
+                AutoFitCompressionEdge.Right when x >= marker.Coordinate => 1,
+                AutoFitCompressionEdge.Left when x <= marker.Coordinate => 1,
+                _ => 0
+            };
+        }
+
+        return transform.Edge switch
+        {
+            AutoFitCompressionEdge.Top when y >= marker.Coordinate => 1,
+            AutoFitCompressionEdge.Bottom when y <= marker.Coordinate => 1,
+            _ => 0
+        };
+    }
+
     private static void ReplaceItems<T>(ObservableCollection<T> target, IEnumerable<T> source)
     {
         target.Clear();
@@ -928,6 +1256,9 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
 
     private static decimal Round(decimal value)
         => decimal.Round(value, 6, MidpointRounding.AwayFromZero);
+
+    private decimal ConvertSiteUnitsToInches(decimal value)
+        => decimal.Round((value * sitePlanToMillimetersFactor) / MillimetersPerInch, 3, MidpointRounding.AwayFromZero);
 
     private static string BuildInitialAutoFitStatus(AutoFitSuggestionFacts? facts)
     {
@@ -1063,6 +1394,9 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
 
     private static string FormatInches(decimal value)
         => $"{value.ToString("0.###", CultureInfo.InvariantCulture)}\"";
+
+    private static string FormatNullableInches(decimal? value)
+        => value.HasValue ? FormatInches(value.Value) : "n/a";
 
     private static string LocalizeAxis(string axisTag, bool capitalize = false)
     {

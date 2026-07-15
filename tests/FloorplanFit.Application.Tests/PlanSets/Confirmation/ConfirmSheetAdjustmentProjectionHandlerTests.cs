@@ -45,6 +45,51 @@ public sealed class ConfirmSheetAdjustmentProjectionHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_marks_compression_recipe_as_confirmed_for_recipe_aware_export()
+    {
+        var projection = CreateProjection(
+            SheetAdjustmentProjectionStatus.RequiresManualConfirmation,
+            recipeHandlingSummary: "ElectricalPlan: affine placement applied; local recipe requires review before DXF deformation: HorizontalCompression Right @50 delta 2.");
+        var registration = CreateRegistration(projection.SheetRegistrationId, SheetRegistrationStatus.Confirmed);
+        var repository = new CapturingSheetAdjustmentProjectionRepository(projection);
+        var handler = new ConfirmSheetAdjustmentProjectionHandler(
+            repository,
+            new FakeSheetRegistrationRepository(registration),
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 7, 1, 9, 30, 0, DateTimeKind.Utc)));
+
+        var response = await handler.HandleAsync(
+            new ConfirmSheetAdjustmentProjectionRequest(projection.Id),
+            CancellationToken.None);
+
+        Assert.Contains("recipe-aware DXF export", response.RecipeHandlingSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("recipe-aware DXF export", repository.Updated!.RecipeHandlingSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleAsync_marks_export_time_manual_review_as_completed_for_recipe_aware_export()
+    {
+        var projection = CreateProjection(
+            SheetAdjustmentProjectionStatus.RequiresManualConfirmation,
+            recipeHandlingSummary: "ElectricalPlan: local recipe manually confirmed; recipe-aware DXF export will apply canonical operations; manual review required: ELLIPSE crosses a canonical recipe pinch line.");
+        var registration = CreateRegistration(projection.SheetRegistrationId, SheetRegistrationStatus.Confirmed);
+        var repository = new CapturingSheetAdjustmentProjectionRepository(projection);
+        var handler = new ConfirmSheetAdjustmentProjectionHandler(
+            repository,
+            new FakeSheetRegistrationRepository(registration),
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 7, 1, 9, 30, 0, DateTimeKind.Utc)));
+
+        var response = await handler.HandleAsync(
+            new ConfirmSheetAdjustmentProjectionRequest(projection.Id),
+            CancellationToken.None);
+
+        Assert.Equal("ReadyForExport", response.Status);
+        Assert.Contains("manual review completed", response.RecipeHandlingSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("manual review required", response.RecipeHandlingSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task HandleAsync_rejects_missing_projection()
     {
         var handler = new ConfirmSheetAdjustmentProjectionHandler(
@@ -75,21 +120,62 @@ public sealed class ConfirmSheetAdjustmentProjectionHandlerTests
             CancellationToken.None));
     }
 
-    private static SheetAdjustmentProjection CreateProjection(SheetAdjustmentProjectionStatus status)
+    [Theory]
+    [InlineData(
+        SheetAdjustmentProjectionMethod.RoofOverhangPreserving,
+        SheetAdjustmentProjectionStatus.RequiresManualConfirmation)]
+    [InlineData(
+        SheetAdjustmentProjectionMethod.RoofOverhangPreserving,
+        SheetAdjustmentProjectionStatus.ReadyForExport)]
+    [InlineData(
+        SheetAdjustmentProjectionMethod.FacadeHorizontalPreservingVerticals,
+        SheetAdjustmentProjectionStatus.RequiresManualConfirmation)]
+    [InlineData(
+        SheetAdjustmentProjectionMethod.FacadeHorizontalPreservingVerticals,
+        SheetAdjustmentProjectionStatus.ReadyForExport)]
+    public async Task HandleAsync_rejects_compressed_affine_only_projection(
+        SheetAdjustmentProjectionMethod method,
+        SheetAdjustmentProjectionStatus status)
+    {
+        var projection = CreateProjection(status, method: method);
+        var repository = new CapturingSheetAdjustmentProjectionRepository(projection);
+        var unitOfWork = new CapturingUnitOfWork();
+        var handler = new ConfirmSheetAdjustmentProjectionHandler(
+            repository,
+            new FakeSheetRegistrationRepository(CreateRegistration(
+                projection.SheetRegistrationId,
+                SheetRegistrationStatus.Confirmed)),
+            unitOfWork,
+            new FakeClock(new DateTime(2026, 7, 1, 9, 30, 0, DateTimeKind.Utc)));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(
+            new ConfirmSheetAdjustmentProjectionRequest(projection.Id),
+            CancellationToken.None));
+
+        Assert.Contains("canonical compression", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(repository.Updated);
+        Assert.False(unitOfWork.Saved);
+    }
+
+    private static SheetAdjustmentProjection CreateProjection(
+        SheetAdjustmentProjectionStatus status,
+        string? recipeHandlingSummary = null,
+        SheetAdjustmentProjectionMethod method = SheetAdjustmentProjectionMethod.ElectricalWholeSheetSimilarity)
         => new(
             Guid.NewGuid(),
             Guid.NewGuid(),
             Guid.NewGuid(),
             Guid.NewGuid(),
             Guid.NewGuid(),
-            SheetAdjustmentProjectionMethod.ElectricalWholeSheetSimilarity,
+            method,
             new SheetAdjustmentProjectionTransform(1.1m, 0m, 12m, -3m),
             0.76m,
             status,
             "Needs visual review",
             1,
             new DateTime(2026, 7, 1, 8, 30, 0, DateTimeKind.Utc),
-            "electrical follows floor plan");
+            "electrical follows floor plan",
+            recipeHandlingSummary);
 
     private static SheetRegistration CreateRegistration(Guid id, SheetRegistrationStatus status)
         => new(

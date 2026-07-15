@@ -11,6 +11,7 @@ public sealed class RegisterRoofSheetHandlerTests
     public async Task HandleAsync_registers_roof_sheet_with_overhang_rule()
     {
         var planSetVersionId = Guid.NewGuid();
+        var canonicalFloorPlanVersionId = Guid.NewGuid();
         var roofSheet = CreateSheet(planSetVersionId, PlanSheetType.RoofPlan);
         var clock = new FakeClock(new DateTime(2026, 6, 30, 21, 0, 0, DateTimeKind.Utc));
         var registrationRepository = new CapturingSheetRegistrationRepository();
@@ -18,6 +19,7 @@ public sealed class RegisterRoofSheetHandlerTests
         var unitOfWork = new CapturingUnitOfWork();
         var handler = new RegisterRoofSheetHandler(
             new FakePlanSheetRepository(roofSheet),
+            new FakePlanSetVersionRepository(CreatePlanSetVersion(planSetVersionId, canonicalFloorPlanVersionId)),
             registrationRepository,
             unitOfWork,
             clock,
@@ -39,6 +41,7 @@ public sealed class RegisterRoofSheetHandlerTests
 
         Assert.True(unitOfWork.Saved);
         Assert.Equal(planSetVersionId, response.PlanSetVersionId);
+        Assert.Equal(canonicalFloorPlanVersionId, response.CanonicalFloorPlanVersionId);
         Assert.Equal(roofSheet.Id, response.DependentSheetId);
         Assert.Equal("RoofFootprintWithOverhang", response.Method);
         Assert.Equal("Confirmed", response.Status);
@@ -66,6 +69,7 @@ public sealed class RegisterRoofSheetHandlerTests
         var electricalSheet = CreateSheet(planSetVersionId, PlanSheetType.ElectricalPlan);
         var handler = new RegisterRoofSheetHandler(
             new FakePlanSheetRepository(electricalSheet),
+            new FakePlanSetVersionRepository(CreatePlanSetVersion(planSetVersionId, Guid.NewGuid())),
             new CapturingSheetRegistrationRepository(),
             new CapturingUnitOfWork(),
             new FakeClock(new DateTime(2026, 6, 30, 21, 0, 0, DateTimeKind.Utc)));
@@ -95,6 +99,36 @@ public sealed class RegisterRoofSheetHandlerTests
             sheetType.ToString(),
             PlanSheetStatus.Imported,
             new DateTime(2026, 6, 30, 20, 0, 0, DateTimeKind.Utc));
+    }
+
+    private static PlanSetVersion CreatePlanSetVersion(Guid id, Guid canonicalFloorPlanVersionId)
+        => new(
+            id,
+            Guid.NewGuid(),
+            canonicalFloorPlanVersionId,
+            versionNumber: 1,
+            createdAtUtc: new DateTime(2026, 6, 30, 19, 0, 0, DateTimeKind.Utc));
+
+    private sealed class FakePlanSetVersionRepository : IPlanSetVersionRepository
+    {
+        private readonly PlanSetVersion version;
+
+        public FakePlanSetVersionRepository(PlanSetVersion version)
+        {
+            this.version = version;
+        }
+
+        public Task<PlanSetVersion?> GetByIdAsync(Guid planSetVersionId, CancellationToken cancellationToken)
+            => Task.FromResult(version.Id == planSetVersionId ? version : null);
+
+        public Task<PlanSetVersion?> GetByCanonicalFloorPlanVersionAsync(
+            Guid canonicalFloorPlanVersionId,
+            CancellationToken cancellationToken)
+            => Task.FromResult(
+                version.CanonicalFloorPlanVersionId == canonicalFloorPlanVersionId ? version : null);
+
+        public Task AddAsync(PlanSetVersion version, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class FakePlanSheetRepository : IPlanSheetRepository

@@ -52,4 +52,46 @@ public sealed class SqliteCanonicalFloorPlanAdjustmentRepository : ICanonicalFlo
 
         return Task.CompletedTask;
     }
+
+    public Task<CanonicalFloorPlanAdjustment?> GetByIdAsync(
+        Guid adjustmentId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = session.Connection.CreateCommand();
+        command.Transaction = session.Transaction;
+        command.CommandText =
+            """
+            SELECT
+                id,
+                plan_set_version_id,
+                canonical_floor_plan_version_id,
+                site_plan_source_path,
+                canonical_floor_plan_export_path,
+                placement_json,
+                adjustment_recipe_json,
+                created_at_utc
+            FROM canonical_floor_plan_adjustments
+            WHERE id = $id
+            LIMIT 1
+            """;
+        command.Parameters.AddWithValue("$id", adjustmentId.ToString());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return Task.FromResult<CanonicalFloorPlanAdjustment?>(null);
+        }
+
+        return Task.FromResult<CanonicalFloorPlanAdjustment?>(new CanonicalFloorPlanAdjustment(
+            Guid.Parse(reader.GetString(0)),
+            Guid.Parse(reader.GetString(1)),
+            Guid.Parse(reader.GetString(2)),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5),
+            reader.GetString(6),
+            DateTime.Parse(reader.GetString(7), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
+    }
 }

@@ -15,4 +15,7 @@ public interface ISheetRegistrationRepository
 
     Task UpdateAsync(SheetRegistration registration, CancellationToken cancellationToken)
         => throw new NotSupportedException();
+
+    Task RemoveByDependentSheetIdAsync(Guid dependentSheetId, CancellationToken cancellationToken)
+        => throw new NotSupportedException();
 }

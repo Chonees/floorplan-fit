@@ -10,6 +10,7 @@ public sealed class RegisterFacadeElevationSheetHandler
     private const string DefaultHorizontalReferenceName = "GeneralFacadeDatum";
 
     private readonly IPlanSheetRepository planSheetRepository;
+    private readonly IPlanSetVersionRepository planSetVersionRepository;
     private readonly ISheetRegistrationRepository sheetRegistrationRepository;
     private readonly IUnitOfWork unitOfWork;
     private readonly IClock clock;
@@ -17,12 +18,14 @@ public sealed class RegisterFacadeElevationSheetHandler
 
     public RegisterFacadeElevationSheetHandler(
         IPlanSheetRepository planSheetRepository,
+        IPlanSetVersionRepository planSetVersionRepository,
         ISheetRegistrationRepository sheetRegistrationRepository,
         IUnitOfWork unitOfWork,
         IClock clock,
         IPlanSetAuditEventRepository? planSetAuditEventRepository = null)
     {
         this.planSheetRepository = planSheetRepository;
+        this.planSetVersionRepository = planSetVersionRepository;
         this.sheetRegistrationRepository = sheetRegistrationRepository;
         this.unitOfWork = unitOfWork;
         this.clock = clock;
@@ -44,6 +47,10 @@ public sealed class RegisterFacadeElevationSheetHandler
         {
             throw new ArgumentException("Facade/elevation sheet is required.", nameof(request));
         }
+
+        var planSetVersion = await planSetVersionRepository.GetByIdAsync(
+            request.PlanSetVersionId,
+            cancellationToken) ?? throw new InvalidOperationException("Plan set version was not found.");
 
         var sheet = await planSheetRepository.GetByIdAsync(request.FacadeElevationSheetId, cancellationToken);
         if (sheet is null)
@@ -67,7 +74,7 @@ public sealed class RegisterFacadeElevationSheetHandler
             Guid.NewGuid(),
             request.PlanSetVersionId,
             request.FacadeElevationSheetId,
-            request.PlanSetVersionId,
+            planSetVersion.CanonicalFloorPlanVersionId,
             SheetRegistrationMethod.FacadeHorizontalReference,
             new SheetRegistrationTransform(
                 scale: request.HorizontalScale,

@@ -161,76 +161,89 @@ public sealed partial class LibraryViewModel : ObservableObject
 
         var templateId = SelectedItem.TemplateId;
         var versionId = SelectedVersion.VersionId;
+        StatusMessage = $"Registering {sheet.SheetType} sheet {sheet.Name}...";
 
-        using var scope = scopeFactory.CreateScope();
-        var housePlanSetId = await ResolveHousePlanSetIdAsync(
-            scope.ServiceProvider.GetService<ResolveHousePlanSetHandler>(),
-            SelectedItem.TemplateId,
-            SelectedItem.Code,
-            SelectedItem.Name,
-            cancellationToken);
-        var planSetVersionId = await ResolvePlanSetVersionIdAsync(
-            scope.ServiceProvider.GetService<ResolvePlanSetVersionHandler>(),
-            housePlanSetId ?? SelectedItem.TemplateId,
-            SelectedVersion.VersionId,
-            cancellationToken);
-        if (!planSetVersionId.HasValue)
+        try
         {
-            StatusMessage = "Could not resolve the selected HousePlanSet version.";
+            using var scope = scopeFactory.CreateScope();
+            var housePlanSetId = await ResolveHousePlanSetIdAsync(
+                scope.ServiceProvider.GetService<ResolveHousePlanSetHandler>(),
+                SelectedItem.TemplateId,
+                SelectedItem.Code,
+                SelectedItem.Name,
+                cancellationToken);
+            var planSetVersionId = await ResolvePlanSetVersionIdAsync(
+                scope.ServiceProvider.GetService<ResolvePlanSetVersionHandler>(),
+                housePlanSetId ?? SelectedItem.TemplateId,
+                SelectedVersion.VersionId,
+                cancellationToken);
+            if (!planSetVersionId.HasValue)
+            {
+                StatusMessage = "Could not resolve the selected HousePlanSet version.";
+                return null;
+            }
+
+            var registration = sheet.SheetType switch
+            {
+                "ElectricalPlan" => await scope.ServiceProvider
+                    .GetRequiredService<RegisterElectricalSheetHandler>()
+                    .HandleAsync(
+                        new RegisterElectricalSheetRequest(
+                            planSetVersionId.Value,
+                            sheet.SheetId),
+                        cancellationToken),
+                "RoofPlan" => await scope.ServiceProvider
+                    .GetRequiredService<RegisterRoofSheetHandler>()
+                    .HandleAsync(
+                        new RegisterRoofSheetRequest(
+                            planSetVersionId.Value,
+                            sheet.SheetId,
+                            transform.Scale,
+                            transform.RotationDegrees,
+                            transform.TranslateX,
+                            transform.TranslateY,
+                            confidence,
+                            overhangInches,
+                            confirmRegistration),
+                        cancellationToken),
+                "FacadeElevation" => await scope.ServiceProvider
+                    .GetRequiredService<RegisterFacadeElevationSheetHandler>()
+                    .HandleAsync(
+                        new RegisterFacadeElevationSheetRequest(
+                            planSetVersionId.Value,
+                            sheet.SheetId,
+                            transform.Scale,
+                            transform.TranslateX,
+                            confidence,
+                            confirmRegistration,
+                            horizontalReferenceName),
+                        cancellationToken),
+                _ => throw new ArgumentException("Unsupported dependent sheet type.", nameof(sheet))
+            };
+
+            await RefreshItemsAsync(cancellationToken);
+            SelectedItem = Items.FirstOrDefault(item => item.TemplateId == templateId) ?? SelectedItem;
+            SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == versionId)
+                ?? SelectedVersion;
+            RefreshSelectedPlanSetSheets();
+            StatusMessage = $"Registered {sheet.SheetType} sheet {sheet.Name}: {registration.Status}";
+            return registration;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (ElectricalFloorRegistrationManualReviewRequiredException exception)
+            when (sheet.SheetType == "ElectricalPlan")
+        {
+            StatusMessage = $"Electrical could not auto-register; no Confirm button is available until a PendingConfirmation registration is saved: {exception.Estimate.EvidenceSummary}";
             return null;
         }
-
-        var registration = sheet.SheetType switch
+        catch (Exception exception)
         {
-            "ElectricalPlan" => await scope.ServiceProvider
-                .GetRequiredService<RegisterElectricalSheetHandler>()
-                .HandleAsync(
-                    new RegisterElectricalSheetRequest(
-                        planSetVersionId.Value,
-                        sheet.SheetId,
-                        transform.Scale,
-                        transform.RotationDegrees,
-                        transform.TranslateX,
-                        transform.TranslateY,
-                        confidence,
-                        confirmRegistration),
-                    cancellationToken),
-            "RoofPlan" => await scope.ServiceProvider
-                .GetRequiredService<RegisterRoofSheetHandler>()
-                .HandleAsync(
-                    new RegisterRoofSheetRequest(
-                        planSetVersionId.Value,
-                        sheet.SheetId,
-                        transform.Scale,
-                        transform.RotationDegrees,
-                        transform.TranslateX,
-                        transform.TranslateY,
-                        confidence,
-                        overhangInches,
-                        confirmRegistration),
-                    cancellationToken),
-            "FacadeElevation" => await scope.ServiceProvider
-                .GetRequiredService<RegisterFacadeElevationSheetHandler>()
-                .HandleAsync(
-                    new RegisterFacadeElevationSheetRequest(
-                        planSetVersionId.Value,
-                        sheet.SheetId,
-                        transform.Scale,
-                        transform.TranslateX,
-                        confidence,
-                        confirmRegistration,
-                        horizontalReferenceName),
-                    cancellationToken),
-            _ => throw new ArgumentException("Unsupported dependent sheet type.", nameof(sheet))
-        };
-
-        await RefreshItemsAsync(cancellationToken);
-        SelectedItem = Items.FirstOrDefault(item => item.TemplateId == templateId) ?? SelectedItem;
-        SelectedVersion = SelectedItem?.Versions.FirstOrDefault(item => item.VersionId == versionId)
-            ?? SelectedVersion;
-        RefreshSelectedPlanSetSheets();
-        StatusMessage = $"Registered {sheet.SheetType} sheet {sheet.Name}: {registration.Status}";
-        return registration;
+            StatusMessage = $"Could not register {sheet.SheetType} sheet {sheet.Name}: {exception.Message}";
+            return null;
+        }
     }
 
     public async Task<SheetRegistrationDto?> ConfirmDependentSheetRegistrationAsync(
@@ -266,6 +279,94 @@ public sealed partial class LibraryViewModel : ObservableObject
         RefreshSelectedPlanSetSheets();
         StatusMessage = $"Confirmed {sheet.SheetType} sheet {sheet.Name}";
         return response;
+    }
+
+    public async Task<RegistrationReviewData> LoadDependentSheetRegistrationReviewAsync(
+        PlanSetSheetDto sheet,
+        CancellationToken cancellationToken)
+    {
+        if (!sheet.CanConfirmRegistration || !sheet.SheetRegistrationId.HasValue)
+        {
+            return RegistrationReviewData.Failure(
+                sheet,
+                "This registration is no longer pending confirmation. Refresh the Library before reviewing it.");
+        }
+
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var registration = await scope.ServiceProvider
+                .GetRequiredService<ISheetRegistrationRepository>()
+                .GetByIdAsync(sheet.SheetRegistrationId.Value, cancellationToken);
+            if (registration is null ||
+                registration.DependentSheetId != sheet.SheetId ||
+                registration.Status.ToString() != "PendingConfirmation")
+            {
+                return RegistrationReviewData.Failure(
+                    sheet,
+                    "The pending registration could not be loaded or changed while the Library was open.");
+            }
+
+            var floorSource = await scope.ServiceProvider
+                .GetRequiredService<IFloorPlanExtractionSourceReader>()
+                .GetByVersionAsync(registration.CanonicalFloorPlanVersionId, cancellationToken);
+            var electricalSource = await scope.ServiceProvider
+                .GetRequiredService<IPlanSheetSourceReader>()
+                .GetBySheetIdAsync(sheet.SheetId, cancellationToken);
+            if (floorSource is null || electricalSource is null)
+            {
+                return RegistrationReviewData.Failure(
+                    sheet,
+                    "The canonical FloorPlan DXF or ElectricalPlan DXF source could not be resolved.");
+            }
+
+            var extractor = scope.ServiceProvider.GetRequiredService<IWallExtractor>();
+            var canonicalCandidates = await extractor.ExtractAsync(
+                floorSource.ManagedFilePath,
+                cancellationToken);
+            var electricalCandidates = await extractor.ExtractAsync(
+                electricalSource.SourceFilePath,
+                cancellationToken);
+            var canonicalGeometry = RegistrationReviewData.ToGeometry(canonicalCandidates);
+            var rawElectricalGeometry = RegistrationReviewData.ToGeometry(electricalCandidates);
+            if (canonicalGeometry.Count == 0 || rawElectricalGeometry.Count == 0)
+            {
+                return RegistrationReviewData.Failure(
+                    sheet,
+                    "The DXF files loaded, but no WALL geometry was available for a safe registration review.");
+            }
+
+            var transform = new SheetRegistrationTransformDto(
+                registration.Transform.Scale,
+                registration.Transform.RotationDegrees,
+                registration.Transform.TranslateX,
+                registration.Transform.TranslateY);
+            var electricalGeometry = RegistrationReviewData.TransformElectricalGeometry(
+                rawElectricalGeometry,
+                transform);
+
+            return new RegistrationReviewData(
+                canonicalGeometry,
+                electricalGeometry,
+                $"{sheet.Name} · {registration.Method} · confidence {registration.Confidence:0.##}",
+                RegistrationReviewData.BuildDiagnostics(
+                    registration.Method.ToString(),
+                    registration.Confidence,
+                    transform,
+                    registration.Warning,
+                    registration.RuleSummary),
+                ErrorMessage: null);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return RegistrationReviewData.Failure(
+                sheet,
+                $"The registration preview could not load: {exception.Message}");
+        }
     }
 
     public async Task<SheetRegistrationDto?> RejectDependentSheetRegistrationAsync(
@@ -344,7 +445,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         {
             StatusMessage = sheet.IsCanonical
                 ? "Canonical floor plan cannot be unlinked from its plan set."
-                : "Only unregistered, not-projected dependent sheets can be unlinked here.";
+                : "Only dependent sheets can be unlinked here.";
             return;
         }
 
@@ -352,17 +453,8 @@ public sealed partial class LibraryViewModel : ObservableObject
         var versionId = SelectedVersion?.VersionId;
 
         using var scope = scopeFactory.CreateScope();
-        var repository = scope.ServiceProvider.GetRequiredService<IPlanSheetRepository>();
-        var existing = await repository.GetByIdAsync(sheet.SheetId, cancellationToken);
-        if (existing is null)
-        {
-            StatusMessage = $"{sheet.SheetType} sheet {sheet.Name} was already unlinked.";
-            await RefreshItemsAsync(cancellationToken);
-            return;
-        }
-
-        await repository.RemoveAsync(sheet.SheetId, cancellationToken);
-        await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(cancellationToken);
+        var handler = scope.ServiceProvider.GetRequiredService<UnlinkPlanSheetHandler>();
+        await handler.HandleAsync(new UnlinkPlanSheetRequest(sheet.SheetId), cancellationToken);
 
         await RefreshItemsAsync(cancellationToken);
         if (templateId.HasValue)
@@ -928,5 +1020,140 @@ public sealed partial class LibraryViewModel : ObservableObject
         OnPropertyChanged(nameof(IsLibraryScreenVisible));
         OnPropertyChanged(nameof(IsReviewScreenVisible));
         OnPropertyChanged(nameof(IsSitePlanAdjustmentScreenVisible));
+    }
+}
+
+public sealed record RegistrationReviewData(
+    IReadOnlyList<GeometryPathDto> CanonicalGeometry,
+    IReadOnlyList<GeometryPathDto> ElectricalGeometry,
+    string Summary,
+    string Diagnostics,
+    string? ErrorMessage)
+{
+    public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
+
+    public bool CanConfirm => !HasError && CanonicalGeometry.Count > 0 && ElectricalGeometry.Count > 0;
+
+    public static RegistrationReviewData Failure(PlanSetSheetDto sheet, string errorMessage)
+        => new(
+            CanonicalGeometry: [],
+            ElectricalGeometry: [],
+            Summary: $"{sheet.Name} · {sheet.RegistrationStatus}",
+            Diagnostics: string.Join(
+                Environment.NewLine,
+                new[] { sheet.RegistrationQualityLabel, sheet.RegistrationWarning }
+                    .Where(value => !string.IsNullOrWhiteSpace(value))),
+            ErrorMessage: errorMessage);
+
+    internal static IReadOnlyList<GeometryPathDto> ToGeometry(
+        IReadOnlyList<DetectedWallCandidate> candidates)
+    {
+        return candidates
+            .Where(candidate => candidate.Points.Count >= 2)
+            .Select(candidate =>
+            {
+                var pathId = Guid.NewGuid();
+                return new GeometryPathDto(
+                    pathId,
+                    IsClosed: false,
+                    candidate.Points
+                        .Zip(candidate.Points.Skip(1), (start, end) => (start, end))
+                        .Select((pair, index) => new GeometrySegmentDto(
+                            pathId,
+                            index + 1,
+                            pair.start.X,
+                            pair.start.Y,
+                            pair.end.X,
+                            pair.end.Y))
+                        .ToArray());
+            })
+            .Where(path => path.Segments.Count > 0)
+            .ToArray();
+    }
+
+    internal static IReadOnlyList<GeometryPathDto> TransformElectricalGeometry(
+        IReadOnlyList<GeometryPathDto> source,
+        SheetRegistrationTransformDto transform)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(transform);
+
+        if (transform.Scale <= 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(transform), "Registration scale must be greater than zero.");
+        }
+
+        return source
+            .Select(path => new GeometryPathDto(
+                path.Id,
+                path.IsClosed,
+                path.Segments.Select(segment =>
+                {
+                    var start = TransformPoint(segment.StartX, segment.StartY, transform);
+                    var end = TransformPoint(segment.EndX, segment.EndY, transform);
+                    return new GeometrySegmentDto(
+                        path.Id,
+                        segment.SortOrder,
+                        start.X,
+                        start.Y,
+                        end.X,
+                        end.Y);
+                }).ToArray()))
+            .ToArray();
+    }
+
+    internal static string BuildDiagnostics(
+        string method,
+        decimal confidence,
+        SheetRegistrationTransformDto transform,
+        string? warning,
+        string? evidence)
+    {
+        var lines = new List<string>
+        {
+            $"Method: {method}",
+            $"Confidence: {confidence:0.##}",
+            $"Transform: scale {transform.Scale:0.######}, rotation {transform.RotationDegrees:0.######}°, X {transform.TranslateX:0.######}, Y {transform.TranslateY:0.######}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(warning))
+        {
+            lines.Add($"Warning: {warning.Trim()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(evidence))
+        {
+            lines.Add($"Evidence: {evidence.Trim()}");
+        }
+
+        return string.Join(Environment.NewLine + Environment.NewLine, lines);
+    }
+
+    private static (decimal X, decimal Y) TransformPoint(
+        decimal x,
+        decimal y,
+        SheetRegistrationTransformDto transform)
+    {
+        var radians = (double)transform.RotationDegrees * Math.PI / 180d;
+        var cos = Math.Cos(radians);
+        var sin = Math.Sin(radians);
+        var sourceX = (double)x;
+        var sourceY = (double)y;
+        var scale = (double)transform.Scale;
+
+        return (
+            ToStableDecimal((((sourceX * cos) - (sourceY * sin)) * scale) + (double)transform.TranslateX),
+            ToStableDecimal((((sourceX * sin) + (sourceY * cos)) * scale) + (double)transform.TranslateY));
+    }
+
+    private static decimal ToStableDecimal(double value)
+    {
+        if (!double.IsFinite(value))
+        {
+            throw new InvalidOperationException("Registration transform produced a non-finite coordinate.");
+        }
+
+        var normalized = Math.Abs(value) < 0.000000001d ? 0d : value;
+        return decimal.Round((decimal)normalized, 9, MidpointRounding.AwayFromZero);
     }
 }

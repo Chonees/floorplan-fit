@@ -11,6 +11,7 @@ public sealed class RegisterFacadeElevationSheetHandlerTests
     public async Task HandleAsync_registers_facade_elevation_sheet_with_vertical_preservation_rule()
     {
         var planSetVersionId = Guid.NewGuid();
+        var canonicalFloorPlanVersionId = Guid.NewGuid();
         var facadeSheet = CreateSheet(planSetVersionId, PlanSheetType.FacadeElevation);
         var clock = new FakeClock(new DateTime(2026, 6, 30, 23, 0, 0, DateTimeKind.Utc));
         var registrationRepository = new CapturingSheetRegistrationRepository();
@@ -18,6 +19,7 @@ public sealed class RegisterFacadeElevationSheetHandlerTests
         var unitOfWork = new CapturingUnitOfWork();
         var handler = new RegisterFacadeElevationSheetHandler(
             new FakePlanSheetRepository(facadeSheet),
+            new FakePlanSetVersionRepository(CreatePlanSetVersion(planSetVersionId, canonicalFloorPlanVersionId)),
             registrationRepository,
             unitOfWork,
             clock,
@@ -37,6 +39,7 @@ public sealed class RegisterFacadeElevationSheetHandlerTests
 
         Assert.True(unitOfWork.Saved);
         Assert.Equal(planSetVersionId, response.PlanSetVersionId);
+        Assert.Equal(canonicalFloorPlanVersionId, response.CanonicalFloorPlanVersionId);
         Assert.Equal(facadeSheet.Id, response.DependentSheetId);
         Assert.Equal("FacadeHorizontalReference", response.Method);
         Assert.Equal("Confirmed", response.Status);
@@ -68,6 +71,7 @@ public sealed class RegisterFacadeElevationSheetHandlerTests
         var roofSheet = CreateSheet(planSetVersionId, PlanSheetType.RoofPlan);
         var handler = new RegisterFacadeElevationSheetHandler(
             new FakePlanSheetRepository(roofSheet),
+            new FakePlanSetVersionRepository(CreatePlanSetVersion(planSetVersionId, Guid.NewGuid())),
             new CapturingSheetRegistrationRepository(),
             new CapturingUnitOfWork(),
             new FakeClock(new DateTime(2026, 6, 30, 23, 0, 0, DateTimeKind.Utc)));
@@ -94,6 +98,36 @@ public sealed class RegisterFacadeElevationSheetHandlerTests
             sheetType.ToString(),
             PlanSheetStatus.Imported,
             new DateTime(2026, 6, 30, 22, 0, 0, DateTimeKind.Utc));
+    }
+
+    private static PlanSetVersion CreatePlanSetVersion(Guid id, Guid canonicalFloorPlanVersionId)
+        => new(
+            id,
+            Guid.NewGuid(),
+            canonicalFloorPlanVersionId,
+            versionNumber: 1,
+            createdAtUtc: new DateTime(2026, 6, 30, 21, 0, 0, DateTimeKind.Utc));
+
+    private sealed class FakePlanSetVersionRepository : IPlanSetVersionRepository
+    {
+        private readonly PlanSetVersion version;
+
+        public FakePlanSetVersionRepository(PlanSetVersion version)
+        {
+            this.version = version;
+        }
+
+        public Task<PlanSetVersion?> GetByIdAsync(Guid planSetVersionId, CancellationToken cancellationToken)
+            => Task.FromResult(version.Id == planSetVersionId ? version : null);
+
+        public Task<PlanSetVersion?> GetByCanonicalFloorPlanVersionAsync(
+            Guid canonicalFloorPlanVersionId,
+            CancellationToken cancellationToken)
+            => Task.FromResult(
+                version.CanonicalFloorPlanVersionId == canonicalFloorPlanVersionId ? version : null);
+
+        public Task AddAsync(PlanSetVersion version, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class FakePlanSheetRepository : IPlanSheetRepository

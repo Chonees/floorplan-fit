@@ -436,6 +436,11 @@ public sealed class GetPlanSetLibraryHandlerTests
         public Task AddAsync(PlanSetVersion version, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public Task<PlanSetVersion?> GetByIdAsync(
+            Guid planSetVersionId,
+            CancellationToken cancellationToken)
+            => Task.FromResult(versions.FirstOrDefault(item => item.Id == planSetVersionId));
+
         public Task<PlanSetVersion?> GetByCanonicalFloorPlanVersionAsync(
             Guid canonicalFloorPlanVersionId,
             CancellationToken cancellationToken)

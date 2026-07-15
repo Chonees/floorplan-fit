@@ -1,4 +1,6 @@
-﻿namespace FloorplanFit.Contracts.PlanSets;
+﻿using FloorplanFit.Contracts.FloorPlans;
+
+namespace FloorplanFit.Contracts.PlanSets;
 
 public sealed record CreateMultiSheetExportAuditRequest(
     Guid PlanSetVersionId,
@@ -8,4 +10,8 @@ public sealed record CreateMultiSheetExportAuditRequest(
     IReadOnlyList<MultiSheetExportProjectionRequestDto> DependentProjections)
 {
     public bool DiscoverAllDependentSheets { get; init; }
+
+    public AdjustedSitePlanPlacementDto? CanonicalPlacement { get; init; }
+
+    public AdjustmentRecipeSummaryDto? CanonicalRecipe { get; init; }
 }

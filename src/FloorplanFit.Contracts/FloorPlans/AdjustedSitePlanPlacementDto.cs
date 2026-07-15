@@ -28,6 +28,10 @@ public sealed record AdjustedSitePlanPlacementDto(
     IReadOnlyList<AdjustedCompressionStepDto> CompressionSteps,
     IReadOnlyList<DimensionDto> AdjustedDimensions)
 {
+    public AdjustmentInputAuditDto? InputAudit { get; init; }
+
+    public IReadOnlyList<FloorPlanAdjustmentOperationImpactDto> FloorPlanImpactAudit { get; init; } = [];
+
     public AdjustedSitePlanPlacementDto(
         decimal FloorToSiteScale,
         decimal SiteOffsetX,
@@ -37,6 +41,30 @@ public sealed record AdjustedSitePlanPlacementDto(
     {
     }
 }
+
+public sealed record AdjustmentInputAuditDto(
+    decimal OriginalWidthInches,
+    decimal OriginalHeightInches,
+    decimal RequestedWidthInches,
+    decimal RequestedHeightInches,
+    decimal RequiredWidthDeltaInches,
+    decimal RequiredHeightDeltaInches,
+    string Source);
+
+public sealed record FloorPlanAdjustmentOperationImpactDto(
+    string OperationId,
+    int OperationIndex,
+    string Kind,
+    string AxisTag,
+    string Edge,
+    decimal Coordinate,
+    decimal ExpectedDeltaSourceUnits,
+    int AffectedEntities,
+    int AffectedVertices,
+    decimal MeasuredMinDeltaSourceUnits,
+    decimal MeasuredMaxDeltaSourceUnits,
+    string Status,
+    string? Warning = null);
 
 /// <summary>
 /// One applied auto-fit compression, in floor-plan source coordinates. Semantics match the

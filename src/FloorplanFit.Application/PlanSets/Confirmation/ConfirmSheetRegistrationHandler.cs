@@ -63,7 +63,8 @@ public sealed class ConfirmSheetRegistrationHandler
             registration.CreatedAtUtc,
             clock.UtcNow,
             registration.Warning,
-            registration.RuleSummary);
+            registration.RuleSummary,
+            registration.WholePlanRegistrationProof);
 
         await sheetRegistrationRepository.UpdateAsync(confirmed, cancellationToken);
         await TryRecordRegistrationQualityEventAsync(confirmed, cancellationToken);

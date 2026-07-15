@@ -60,8 +60,8 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
 
         var canonicalRecipe = request.CanonicalRecipe ?? AdjustmentRecipeSummaryDto.FromPlacement(request.CanonicalPlacement);
         var compressionStepCount = canonicalRecipe.Operations.Count;
-        var status = ResolveStatus(registration, compressionStepCount);
-        var warning = ResolveWarning(registration, compressionStepCount, status);
+        var status = ResolveStatus(registration);
+        var warning = ResolveWarning(registration, status);
         var projection = new SheetAdjustmentProjection(
             Guid.NewGuid(),
             registration.PlanSetVersionId,
@@ -135,19 +135,16 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
     }
 
     private static SheetAdjustmentProjectionStatus ResolveStatus(
-        SheetRegistration registration,
-        int compressionStepCount)
+        SheetRegistration registration)
     {
         return registration.Status is SheetRegistrationStatus.Confirmed &&
-               registration.Confidence >= AutoExportConfidenceThreshold &&
-               compressionStepCount == 0
+               registration.Confidence >= AutoExportConfidenceThreshold
             ? SheetAdjustmentProjectionStatus.ReadyForExport
             : SheetAdjustmentProjectionStatus.RequiresManualConfirmation;
     }
 
     private static string? ResolveWarning(
         SheetRegistration registration,
-        int compressionStepCount,
         SheetAdjustmentProjectionStatus status)
     {
         if (status is SheetAdjustmentProjectionStatus.ReadyForExport)
@@ -165,18 +162,16 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
             return "Electrical projection confidence is below the automatic export threshold.";
         }
 
-        if (compressionStepCount > 0)
-        {
-            return "Canonical compression steps require electrical review before export.";
-        }
-
         return registration.Warning;
     }
 
     private static string BuildRecipeHandlingSummary(
         string sheetKind,
         AdjustmentRecipeSummaryDto canonicalRecipe)
-        => canonicalRecipe.ToSheetReviewSummary(sheetKind);
+        => canonicalRecipe.ToSheetReviewSummary(sheetKind).Replace(
+            "local recipe requires review before DXF deformation",
+            "recipe-aware DXF export will apply canonical operations",
+            StringComparison.Ordinal);
 
     private static SheetAdjustmentProjectionDto ToDto(SheetAdjustmentProjection projection)
     {

@@ -1,5 +1,12 @@
-﻿namespace FloorplanFit.Contracts.PlanSets;
+using System.Text.Json.Serialization;
+
+namespace FloorplanFit.Contracts.PlanSets;
 
 public sealed record MultiSheetExportProjectionRequestDto(
     Guid ProjectionId,
-    string? ExportPath = null);
+    string? ExportPath = null,
+    ProjectedPlanSheetExportAuditDto? ExportAudit = null)
+{
+    [JsonIgnore]
+    public string? VerificationPath { get; init; }
+}

@@ -38,38 +38,107 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
 
         var exportableProjections = await ResolveExportableProjectionsAsync(request, cancellationToken);
         var exportedProjectionRequests = new List<MultiSheetExportProjectionRequestDto>(exportableProjections.Count);
-        foreach (var projection in exportableProjections)
+        var failureStage = PlanSetExportFailureStage.UserPackagePublication;
+        var auditStarted = false;
+
+        try
         {
-            var sheetSource = await planSheetSourceReader.GetBySheetIdAsync(
-                projection.DependentSheetId,
+            return await AtomicDirectoryPublisher.PublishAsync(
+                request.PackageDirectory,
+                async (stagingDirectory, stagingCancellationToken) =>
+                {
+                    failureStage = PlanSetExportFailureStage.DependentSheetGeneration;
+                    foreach (var projection in exportableProjections)
+                    {
+                        if (projection.Status is not SheetAdjustmentProjectionStatus.ReadyForExport)
+                        {
+                            exportedProjectionRequests.Add(new MultiSheetExportProjectionRequestDto(projection.Id));
+                            continue;
+                        }
+
+                        var sheetSource = await planSheetSourceReader.GetBySheetIdAsync(
+                            projection.DependentSheetId,
+                            stagingCancellationToken);
+                        if (sheetSource is null)
+                        {
+                            throw new InvalidOperationException("Dependent sheet source was not found.");
+                        }
+
+                        try
+                        {
+                            var stagedOutputPath = BuildOutputPath(
+                                stagingDirectory,
+                                sheetSource.SourceFilePath,
+                                projection.Id);
+                            var finalOutputPath = BuildOutputPath(
+                                request.PackageDirectory,
+                                sheetSource.SourceFilePath,
+                                projection.Id);
+                            var exported = await projectedPlanSheetHandler.HandleAsync(
+                                new ExportProjectedPlanSheetRequest(
+                                    projection.Id,
+                                    sheetSource.SourceFilePath,
+                                    stagedOutputPath),
+                                stagingCancellationToken);
+                            exportedProjectionRequests.Add(new MultiSheetExportProjectionRequestDto(
+                                exported.ProjectionId,
+                                finalOutputPath,
+                                exported.ExportAudit)
+                            {
+                                VerificationPath = stagedOutputPath
+                            });
+                        }
+                        catch (ProjectedPlanSheetManualReviewRequiredException)
+                        {
+                            exportedProjectionRequests.Add(new MultiSheetExportProjectionRequestDto(projection.Id));
+                        }
+                    }
+
+                    failureStage = PlanSetExportFailureStage.UserPackagePublication;
+                },
+                async (publishPackageAsync, publicationCancellationToken) =>
+                {
+                    failureStage = PlanSetExportFailureStage.VerificationAndWorkspacePublication;
+                    auditStarted = true;
+                    return await exportAuditHandler.HandleAsync(
+                        new CreateMultiSheetExportAuditRequest(
+                            request.PlanSetVersionId,
+                            request.CanonicalFloorPlanVersionId,
+                            request.CanonicalAdjustmentId,
+                            request.CanonicalFloorPlanExportPath,
+                            exportedProjectionRequests)
+                        {
+                            DiscoverAllDependentSheets = request.DependentProjectionIds.Count == 0,
+                            CanonicalPlacement = request.CanonicalPlacement,
+                            CanonicalRecipe = request.CanonicalRecipe
+                        },
+                        publishPackageAsync,
+                        publicationCancellationToken);
+                },
                 cancellationToken);
-            if (sheetSource is null)
+        }
+        catch (Exception exception)
+        {
+            if (!auditStarted)
             {
-                throw new InvalidOperationException("Dependent sheet source was not found.");
+                try
+                {
+                    await exportAuditHandler.TryRecordFailureAsync(
+                        request.PlanSetVersionId,
+                        request.CanonicalFloorPlanVersionId,
+                        request.CanonicalAdjustmentId,
+                        request.CanonicalFloorPlanExportPath,
+                        failureStage,
+                        exception);
+                }
+                catch (Exception persistenceException)
+                {
+                    exception.Data["FailurePersistenceError"] = persistenceException.Message;
+                }
             }
 
-            var exported = await projectedPlanSheetHandler.HandleAsync(
-                new ExportProjectedPlanSheetRequest(
-                    projection.Id,
-                    sheetSource.SourceFilePath,
-                    BuildOutputPath(request.PackageDirectory, sheetSource.SourceFilePath, projection.Id)),
-                cancellationToken);
-            exportedProjectionRequests.Add(new MultiSheetExportProjectionRequestDto(
-                exported.ProjectionId,
-                exported.OutputFilePath));
+            throw;
         }
-
-        return await exportAuditHandler.HandleAsync(
-            new CreateMultiSheetExportAuditRequest(
-                request.PlanSetVersionId,
-                request.CanonicalFloorPlanVersionId,
-                request.CanonicalAdjustmentId,
-                request.CanonicalFloorPlanExportPath,
-                exportedProjectionRequests)
-            {
-                DiscoverAllDependentSheets = request.DependentProjectionIds.Count == 0
-            },
-            cancellationToken);
     }
 
     private async Task<IReadOnlyList<SheetAdjustmentProjection>> ResolveExportableProjectionsAsync(
@@ -96,6 +165,20 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
             if (projection is null)
             {
                 throw new InvalidOperationException("Sheet adjustment projection was not found.");
+            }
+
+            if (projection.PlanSetVersionId != request.PlanSetVersionId)
+            {
+                throw new ArgumentException(
+                    "Sheet adjustment projection does not belong to the requested plan-set version.",
+                    nameof(request));
+            }
+
+            if (projection.CanonicalAdjustmentId != request.CanonicalAdjustmentId)
+            {
+                throw new ArgumentException(
+                    "Sheet adjustment projection does not belong to the requested canonical adjustment.",
+                    nameof(request));
             }
 
             selected.Add(projection);

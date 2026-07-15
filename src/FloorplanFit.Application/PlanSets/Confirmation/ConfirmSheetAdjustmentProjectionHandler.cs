@@ -44,6 +44,10 @@ public sealed class ConfirmSheetAdjustmentProjectionHandler
             throw new InvalidOperationException("Sheet adjustment projection was not found.");
         }
 
+        SheetAdjustmentProjectionCapabilities.EnsureSupported(
+            projection.Method,
+            projection.CanonicalCompressionStepCount);
+
         if (projection.Status is SheetAdjustmentProjectionStatus.ReadyForExport)
         {
             return ToDto(projection);
@@ -69,7 +73,7 @@ public sealed class ConfirmSheetAdjustmentProjectionHandler
             projection.CanonicalCompressionStepCount,
             projection.CreatedAtUtc,
             projection.RuleSummary,
-            projection.RecipeHandlingSummary);
+            BuildConfirmedRecipeHandlingSummary(projection));
 
         await sheetAdjustmentProjectionRepository.UpdateAsync(confirmed, cancellationToken);
         await TryRecordProjectionQualityEventAsync(confirmed, cancellationToken);
@@ -116,6 +120,25 @@ public sealed class ConfirmSheetAdjustmentProjectionHandler
         {
             // ponytail: confirmation telemetry is best-effort; add durable retries only if analytics becomes business-critical.
         }
+    }
+
+    private static string? BuildConfirmedRecipeHandlingSummary(SheetAdjustmentProjection projection)
+    {
+        if (projection.CanonicalCompressionStepCount == 0 ||
+            string.IsNullOrWhiteSpace(projection.RecipeHandlingSummary))
+        {
+            return projection.RecipeHandlingSummary;
+        }
+
+        return projection.RecipeHandlingSummary
+            .Replace(
+            "local recipe requires review before DXF deformation",
+            "local recipe manually confirmed; recipe-aware DXF export will apply canonical operations",
+            StringComparison.OrdinalIgnoreCase)
+            .Replace(
+                "; manual review required:",
+                "; manual review completed:",
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private static SheetAdjustmentProjectionDto ToDto(SheetAdjustmentProjection projection)

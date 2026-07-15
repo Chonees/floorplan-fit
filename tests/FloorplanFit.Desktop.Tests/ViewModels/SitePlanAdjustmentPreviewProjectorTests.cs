@@ -15,8 +15,12 @@ using Xunit;
 
 namespace FloorplanFit.Desktop.Tests.ViewModels;
 
-public sealed class SitePlanAdjustmentPreviewProjectorTests
+public sealed class SitePlanAdjustmentPreviewProjectorTests : IDisposable
 {
+    private readonly string atomicPackageTempRoot = Path.Combine(
+        Path.GetTempPath(),
+        $"floorplan-fit-desktop-package-{Guid.NewGuid():N}");
+
     [Fact]
     public void Project_centers_floor_plan_inside_site_plan_buildable_area()
     {
@@ -1326,7 +1330,7 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
             planSetPackageExporter: packageExporter,
             registeredSheetProjector: registeredSheetProjector);
 
-        await viewModel.ExportAdjustedSitePlanAsync(@"C:\out\combined.dxf", CancellationToken.None);
+        await viewModel.ExportAdjustedSitePlanAsync(CreateAtomicPackageOutputPath(), CancellationToken.None);
 
         var adjustment = Assert.Single(adjustmentRepository.Items);
         Assert.Equal(adjustment.Id, viewModel.LastCanonicalAdjustmentId);
@@ -1463,7 +1467,7 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
             registeredSheetProjector: registeredSheetProjector,
             confirmSheetProjectionHandler: confirmProjectionHandler);
 
-        await viewModel.ExportAdjustedSitePlanAsync(@"C:\out\combined.dxf", CancellationToken.None);
+        await viewModel.ExportAdjustedSitePlanAsync(CreateAtomicPackageOutputPath(), CancellationToken.None);
 
         var canonicalAdjustmentId = Assert.Single(adjustmentRepository.Items).Id;
         Assert.True(viewModel.CanConfirmManualPlanSetProjections);
@@ -1478,6 +1482,20 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
         Assert.Equal(0, viewModel.LastPlanSetExportAudit.Summary.ManualConfirmationRequiredSheetCount);
         Assert.Contains("paquete HousePlanSet listo", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("combined-plan-set", projectedSheetExporter.LastOutputFilePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string CreateAtomicPackageOutputPath()
+    {
+        Directory.CreateDirectory(atomicPackageTempRoot);
+        return Path.Combine(atomicPackageTempRoot, "combined.dxf");
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(atomicPackageTempRoot))
+        {
+            Directory.Delete(atomicPackageTempRoot, recursive: true);
+        }
     }
 
     private sealed class FakeAdjustedSitePlanExporter : FloorplanFit.Application.Abstractions.IAdjustedSitePlanExporter
@@ -1694,6 +1712,38 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests
         public CapturingPlanSetExportManifestWriter(string manifestPath)
         {
             this.manifestPath = manifestPath;
+        }
+
+        public PlanSetVerificationReportDto BuildVerificationReport(MultiSheetExportAuditDto audit)
+        {
+            var dependentCount = Math.Max(0, audit.Sheets.Count - 1);
+            var green = audit.Summary.ManualConfirmationRequiredSheetCount == 0;
+            var check = new PlanSetVerificationCheckDto(
+                green ? PlanSetVerificationCheckStatus.Passed : PlanSetVerificationCheckStatus.InsufficientData,
+                dependentCount,
+                green ? dependentCount : 0,
+                0,
+                green ? 0 : dependentCount);
+            return new PlanSetVerificationReportDto(
+                PlanSetVerificationReportDto.CurrentSchemaVersion,
+                new PlanSetVerificationOutputDto(
+                    audit.Sheets.Count,
+                    green ? audit.Sheets.Count : Math.Max(0, audit.Sheets.Count - 1),
+                    green ? [] : [audit.Sheets.Last().SheetId]),
+                check,
+                new PlanSetVerificationOperationDto(0, 0, 0, 0),
+                new PlanSetVerificationOperationDto(0, 0, 0, 0),
+                check,
+                check,
+                check,
+                check,
+                green
+                    ? []
+                    : [new PlanSetVerificationReasonDto(
+                        PlanSetVerificationReasonCode.MissingRequiredEvidence,
+                        "test-double",
+                        null,
+                        "Synthetic blocked verification for an existing Desktop test.")]);
         }
 
         public Task<string> WriteAsync(MultiSheetExportAuditDto audit, CancellationToken cancellationToken)

@@ -60,8 +60,12 @@ public sealed class ProjectRoofSheetAdjustmentHandler
 
         var canonicalRecipe = request.CanonicalRecipe ?? AdjustmentRecipeSummaryDto.FromPlacement(request.CanonicalPlacement);
         var compressionStepCount = canonicalRecipe.Operations.Count;
-        var status = ResolveStatus(registration, compressionStepCount);
-        var warning = ResolveWarning(registration, compressionStepCount, status);
+        var hasUnsupportedCapability = SheetAdjustmentProjectionCapabilities.TryGetUnsupportedReason(
+            SheetAdjustmentProjectionMethod.RoofOverhangPreserving,
+            compressionStepCount,
+            out var unsupportedReason);
+        var status = ResolveStatus(registration, hasUnsupportedCapability);
+        var warning = ResolveWarning(registration, status, unsupportedReason);
         var projection = new SheetAdjustmentProjection(
             Guid.NewGuid(),
             registration.PlanSetVersionId,
@@ -138,11 +142,15 @@ public sealed class ProjectRoofSheetAdjustmentHandler
 
     private static SheetAdjustmentProjectionStatus ResolveStatus(
         SheetRegistration registration,
-        int compressionStepCount)
+        bool hasUnsupportedCapability)
     {
+        if (hasUnsupportedCapability)
+        {
+            return SheetAdjustmentProjectionStatus.Unsupported;
+        }
+
         return registration.Status is SheetRegistrationStatus.Confirmed &&
                registration.Confidence >= AutoExportConfidenceThreshold &&
-               compressionStepCount == 0 &&
                !string.IsNullOrWhiteSpace(registration.RuleSummary)
             ? SheetAdjustmentProjectionStatus.ReadyForExport
             : SheetAdjustmentProjectionStatus.RequiresManualConfirmation;
@@ -150,9 +158,14 @@ public sealed class ProjectRoofSheetAdjustmentHandler
 
     private static string? ResolveWarning(
         SheetRegistration registration,
-        int compressionStepCount,
-        SheetAdjustmentProjectionStatus status)
+        SheetAdjustmentProjectionStatus status,
+        string? unsupportedReason)
     {
+        if (status is SheetAdjustmentProjectionStatus.Unsupported)
+        {
+            return unsupportedReason;
+        }
+
         if (status is SheetAdjustmentProjectionStatus.ReadyForExport)
         {
             return registration.Warning;
@@ -171,11 +184,6 @@ public sealed class ProjectRoofSheetAdjustmentHandler
         if (registration.Confidence < AutoExportConfidenceThreshold)
         {
             return "Roof projection confidence is below the automatic export threshold.";
-        }
-
-        if (compressionStepCount > 0)
-        {
-            return "Canonical compression steps require roof review before export.";
         }
 
         return registration.Warning;

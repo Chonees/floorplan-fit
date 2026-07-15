@@ -198,6 +198,7 @@ public sealed class IxMiliaAdjustedSitePlanExporter : IAdjustedSitePlanExporter
                 ReplacePointIfPresent(record, "10", "20", steps);
                 break;
             case "LWPOLYLINE":
+            case "HATCH":
                 ReplaceRepeatedPointPairs(record, "10", "20", steps);
                 break;
             case "SOLID":

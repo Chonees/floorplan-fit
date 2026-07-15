@@ -4,6 +4,10 @@ namespace FloorplanFit.Application.Abstractions;
 
 public interface IPlanSetVersionRepository
 {
+    Task<PlanSetVersion?> GetByIdAsync(
+        Guid planSetVersionId,
+        CancellationToken cancellationToken);
+
     Task<PlanSetVersion?> GetByCanonicalFloorPlanVersionAsync(
         Guid canonicalFloorPlanVersionId,
         CancellationToken cancellationToken);

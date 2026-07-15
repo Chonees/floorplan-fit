@@ -92,7 +92,7 @@ public sealed class ProjectElectricalSheetAdjustmentHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_reports_canonical_recipe_compression_as_electrical_review_required()
+    public async Task HandleAsync_marks_confirmed_high_confidence_compression_recipe_ready_for_recipe_aware_export()
     {
         var clock = new FakeClock(new DateTime(2026, 7, 2, 12, 0, 0, DateTimeKind.Utc));
         var registration = CreateRegistration(SheetRegistrationStatus.Confirmed, 0.92m, clock.UtcNow);
@@ -114,12 +114,14 @@ public sealed class ProjectElectricalSheetAdjustmentHandlerTests
                     [new AdjustedCompressionStepDto("Width", "Right", [new AdjustedCompressionMarkerDto(50m, 2m)])])),
             CancellationToken.None);
 
-        Assert.Equal("RequiresManualConfirmation", response.Status);
+        Assert.Equal("ReadyForExport", response.Status);
         Assert.Equal(1, response.CanonicalCompressionStepCount);
+        Assert.Null(response.Warning);
         var recipeHandling = Assert.IsType<string>(response.RecipeHandlingSummary);
         Assert.Contains("HorizontalCompression", recipeHandling);
         Assert.Contains("ElectricalPlan", recipeHandling);
-        Assert.Contains("review", recipeHandling, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("recipe-aware DXF export will apply canonical operations", recipeHandling);
+        Assert.DoesNotContain("review", recipeHandling, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -152,12 +154,13 @@ public sealed class ProjectElectricalSheetAdjustmentHandlerTests
                 explicitRecipe),
             CancellationToken.None);
 
-        Assert.Equal("RequiresManualConfirmation", response.Status);
+        Assert.Equal("ReadyForExport", response.Status);
         Assert.Equal(1, response.CanonicalCompressionStepCount);
         Assert.Equal(3m, response.Transform.Scale);
         Assert.Equal(110m, response.Transform.TranslateX);
         Assert.Equal(194m, response.Transform.TranslateY);
         Assert.Contains("HorizontalCompression", response.RecipeHandlingSummary, StringComparison.Ordinal);
+        Assert.DoesNotContain("review", response.RecipeHandlingSummary, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

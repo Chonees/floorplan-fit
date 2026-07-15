@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace FloorplanFit.Desktop.Tests.Layout;
@@ -266,9 +267,8 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("Content=\"Register\"", mainXaml, StringComparison.Ordinal);
         Assert.Contains("IsVisible=\"{Binding CanRegisterDependent}\"", mainXaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"RegisterDependentSheetButton_OnClick\"", mainXaml, StringComparison.Ordinal);
-        Assert.Contains("Content=\"Confirm\"", mainXaml, StringComparison.Ordinal);
-        Assert.Contains("IsVisible=\"{Binding CanConfirmRegistration}\"", mainXaml, StringComparison.Ordinal);
-        Assert.Contains("Click=\"ConfirmSheetRegistrationButton_OnClick\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Revisar y confirmar\"", mainXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"ReviewSheetRegistrationButton_OnClick\"", mainXaml, StringComparison.Ordinal);
         Assert.Contains("Content=\"Reject Reg\"", mainXaml, StringComparison.Ordinal);
         Assert.Contains("IsVisible=\"{Binding CanRejectRegistration}\"", mainXaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"RejectSheetRegistrationButton_OnClick\"", mainXaml, StringComparison.Ordinal);
@@ -286,7 +286,7 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("Click=\"CorrectSheetToFacadeButton_OnClick\"", mainXaml, StringComparison.Ordinal);
         Assert.Contains("UnlinkDependentSheetButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
         Assert.Contains("RegisterDependentSheetButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("ConfirmSheetRegistrationButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("ReviewSheetRegistrationButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
         Assert.Contains("RejectSheetRegistrationButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
         Assert.Contains("ConfirmSheetProjectionButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
         Assert.Contains("CorrectSheetToElectricalButton_OnClick", mainCodeBehind, StringComparison.Ordinal);
@@ -295,7 +295,7 @@ public sealed class ReviewFloorPlanWindowLayoutTests
     }
 
     [Fact]
-    public void Library_register_action_uses_a_manual_registration_transform_dialog()
+    public void Library_register_action_bypasses_the_manual_dialog_for_electrical_but_keeps_it_for_roof_and_facade()
     {
         var solutionRoot = FindSolutionRoot();
         var mainCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml.cs");
@@ -305,12 +305,56 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         var dialogXaml = File.ReadAllText(dialogXamlPath);
         var dialogCodeBehind = File.ReadAllText(dialogCodeBehindPath);
 
+        var registerHandlerStart = mainCodeBehind.IndexOf(
+            "private async void RegisterDependentSheetButton_OnClick",
+            StringComparison.Ordinal);
+        var confirmHandlerStart = mainCodeBehind.IndexOf(
+            "private async void ReviewSheetRegistrationButton_OnClick",
+            StringComparison.Ordinal);
+        Assert.True(registerHandlerStart >= 0, "The dependent-sheet registration handler must exist.");
+        Assert.True(
+            confirmHandlerStart > registerHandlerStart,
+            "The confirmation handler must follow the dependent-sheet registration handler.");
+
+        var registerHandler = mainCodeBehind[registerHandlerStart..confirmHandlerStart];
+        var electricalBranch = Regex.Match(
+            registerHandler,
+            @"if\s*\(\s*sheet\.SheetType\s*(?:==|is)\s*""ElectricalPlan""\s*\)",
+            RegexOptions.CultureInvariant);
+        Assert.True(
+            electricalBranch.Success,
+            "Electrical registration must have an explicit direct branch before the manual dialog.");
+
+        var directRegistrationIndex = registerHandler.IndexOf(
+            "await viewModel.RegisterDependentSheetAsync(",
+            electricalBranch.Index,
+            StringComparison.Ordinal);
+        Assert.True(
+            directRegistrationIndex > electricalBranch.Index,
+            "The Electrical branch must call registration directly.");
+
+        var directReturnIndex = registerHandler.IndexOf(
+            "return;",
+            directRegistrationIndex,
+            StringComparison.Ordinal);
+        Assert.True(
+            directReturnIndex > directRegistrationIndex,
+            "The Electrical branch must return before the manual dialog path.");
+
+        var dialogIndex = registerHandler.IndexOf(
+            "new RegistrationTransformDialog(sheet)",
+            StringComparison.Ordinal);
+        Assert.True(
+            dialogIndex > directReturnIndex,
+            "RegistrationTransformDialog must only be reached after Electrical registration returns.");
+
+        var roofAndFacadeDialogPath = registerHandler[dialogIndex..];
         Assert.Contains("RegistrationTransformDialog", mainCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("ShowDialog<RegistrationTransformDialogResult?>", mainCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("registrationResult.Transform", mainCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("registrationResult.Confidence", mainCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("registrationResult.OverhangInches", mainCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("registrationResult.HorizontalReferenceName", mainCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("ShowDialog<RegistrationTransformDialogResult?>", roofAndFacadeDialogPath, StringComparison.Ordinal);
+        Assert.Contains("registrationResult.Transform", roofAndFacadeDialogPath, StringComparison.Ordinal);
+        Assert.Contains("registrationResult.Confidence", roofAndFacadeDialogPath, StringComparison.Ordinal);
+        Assert.Contains("registrationResult.OverhangInches", roofAndFacadeDialogPath, StringComparison.Ordinal);
+        Assert.Contains("registrationResult.HorizontalReferenceName", roofAndFacadeDialogPath, StringComparison.Ordinal);
 
         Assert.Contains("x:Name=\"ScaleTextBox\"", dialogXaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"RotationDegreesTextBox\"", dialogXaml, StringComparison.Ordinal);

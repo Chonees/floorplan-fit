@@ -1,4 +1,6 @@
+using System.Globalization;
 using Avalonia.Controls;
+using Avalonia.Data.Converters;
 using Avalonia.Platform.Storage;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Contracts.PlanSets;
@@ -152,6 +154,20 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (sheet.SheetType == "ElectricalPlan")
+        {
+            // ponytail: These placeholders never cross the identifier-only Electrical request boundary.
+            await viewModel.RegisterDependentSheetAsync(
+                sheet,
+                transform: new SheetRegistrationTransformDto(1m, 0m, 0m, 0m),
+                confidence: 0m,
+                confirmRegistration: false,
+                overhangInches: 0m,
+                horizontalReferenceName: null,
+                cancellationToken: CancellationToken.None);
+            return;
+        }
+
         var dialog = new RegistrationTransformDialog(sheet);
         var registrationResult = await dialog.ShowDialog<RegistrationTransformDialogResult?>(this);
         if (registrationResult is null)
@@ -169,9 +185,14 @@ public partial class MainWindow : Window
             cancellationToken: CancellationToken.None);
     }
 
-    private async void ConfirmSheetRegistrationButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async void ReviewSheetRegistrationButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (sender is not Button { DataContext: PlanSetSheetDto sheet })
+        {
+            return;
+        }
+
+        if (sheet.SheetType != "ElectricalPlan")
         {
             return;
         }
@@ -181,7 +202,52 @@ public partial class MainWindow : Window
             return;
         }
 
-        await viewModel.ConfirmDependentSheetRegistrationAsync(sheet, CancellationToken.None);
+        var review = await viewModel.LoadDependentSheetRegistrationReviewAsync(
+            sheet,
+            CancellationToken.None);
+        var confirmed = await new RegistrationReviewDialog(review).ShowDialog<bool>(this);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        if (!review.CanConfirm)
+        {
+            viewModel.StatusMessage = review.ErrorMessage ?? "Registration review could not be confirmed.";
+            return;
+        }
+
+        try
+        {
+            await viewModel.ConfirmDependentSheetRegistrationAsync(sheet, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            viewModel.StatusMessage = $"Could not confirm {sheet.SheetType} registration: {exception.Message}";
+        }
+    }
+
+    private async void ConfirmSheetRegistrationButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: PlanSetSheetDto sheet } ||
+            sheet.SheetType == "ElectricalPlan")
+        {
+            return;
+        }
+
+        if (DataContext is not LibraryViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            await viewModel.ConfirmDependentSheetRegistrationAsync(sheet, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            viewModel.StatusMessage = $"Could not confirm {sheet.SheetType} registration: {exception.Message}";
+        }
     }
 
     private async void RejectSheetRegistrationButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -362,4 +428,25 @@ public partial class MainWindow : Window
 
         await viewModel.DeleteVersionAsync(version, CancellationToken.None);
     }
+}
+
+public sealed class PendingRegistrationActionVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not PlanSetSheetDto { CanConfirmRegistration: true } sheet)
+        {
+            return false;
+        }
+
+        return (parameter as string) switch
+        {
+            "Electrical" => sheet.SheetType == "ElectricalPlan",
+            "NonElectrical" => sheet.SheetType != "ElectricalPlan",
+            _ => false
+        };
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
 }

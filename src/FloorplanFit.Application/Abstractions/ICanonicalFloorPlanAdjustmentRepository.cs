@@ -5,4 +5,7 @@ namespace FloorplanFit.Application.Abstractions;
 public interface ICanonicalFloorPlanAdjustmentRepository
 {
     Task AddAsync(CanonicalFloorPlanAdjustment adjustment, CancellationToken cancellationToken);
+
+    Task<CanonicalFloorPlanAdjustment?> GetByIdAsync(Guid adjustmentId, CancellationToken cancellationToken)
+        => throw new NotSupportedException();
 }

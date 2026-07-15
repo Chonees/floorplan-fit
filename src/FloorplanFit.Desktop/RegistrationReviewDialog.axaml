@@ -1,0 +1,92 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:FloorplanFit.Desktop.Controls"
+        xmlns:viewModels="using:FloorplanFit.Desktop.ViewModels"
+        x:Class="FloorplanFit.Desktop.RegistrationReviewDialog"
+        x:DataType="viewModels:RegistrationReviewData"
+        RequestedThemeVariant="Dark"
+        Width="1120"
+        Height="760"
+        MinWidth="820"
+        MinHeight="560"
+        WindowStartupLocation="CenterOwner"
+        Title="Revisar registro">
+  <Grid RowDefinitions="Auto,*,Auto"
+        Margin="18"
+        RowSpacing="12">
+    <Grid ColumnDefinitions="*,Auto"
+          ColumnSpacing="16">
+      <StackPanel Spacing="3">
+        <TextBlock FontSize="22"
+                   FontWeight="SemiBold"
+                   Text="Revisar ElectricalPlan sobre FloorPlan" />
+        <TextBlock Classes="muted"
+                   Text="{Binding Summary}" />
+      </StackPanel>
+      <StackPanel Grid.Column="1"
+                  Orientation="Horizontal"
+                  Spacing="14">
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <Border Width="22" Height="4" Background="#DCE2E8" VerticalAlignment="Center" />
+          <TextBlock Text="FloorPlan canónico" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <Border Width="22" Height="4" Background="#B922D3EE" VerticalAlignment="Center" />
+          <TextBlock Text="ElectricalPlan registrado" />
+        </StackPanel>
+      </StackPanel>
+    </Grid>
+
+    <Grid Grid.Row="1"
+          ColumnDefinitions="3*,320"
+          ColumnSpacing="12">
+      <Border Classes="panel-card"
+              ClipToBounds="True">
+        <controls:RegistrationOverlayPreviewControl
+            CanonicalGeometry="{Binding CanonicalGeometry}"
+            ElectricalGeometry="{Binding ElectricalGeometry}" />
+      </Border>
+
+      <Border Grid.Column="1"
+              Classes="section-card"
+              Padding="12">
+        <Grid RowDefinitions="Auto,*"
+              RowSpacing="8">
+          <TextBlock FontWeight="SemiBold"
+                     Text="Diagnóstico" />
+          <ScrollViewer Grid.Row="1"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="10">
+              <TextBlock Foreground="#FFFF6B6B"
+                         FontWeight="SemiBold"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasError}"
+                         Text="{Binding ErrorMessage}" />
+              <TextBlock TextWrapping="Wrap"
+                         Text="{Binding Diagnostics}" />
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Grid Grid.Row="2"
+          ColumnDefinitions="*,Auto,Auto"
+          ColumnSpacing="8">
+      <TextBlock VerticalAlignment="Center"
+                 Classes="muted"
+                 Text="Confirmar aplica el flujo existente; cancelar no modifica nada." />
+      <Button Grid.Column="1"
+              Padding="14,6"
+              Content="Cancelar / Volver"
+              Click="CancelButton_OnClick" />
+      <Button Grid.Column="2"
+              Padding="14,6"
+              Classes="primary"
+              Content="Confirmar"
+              IsEnabled="{Binding CanConfirm}"
+              Click="ConfirmButton_OnClick" />
+    </Grid>
+  </Grid>
+</Window>
