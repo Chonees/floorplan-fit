@@ -94,4 +94,31 @@ public sealed class SqliteCanonicalFloorPlanAdjustmentRepository : ICanonicalFlo
             reader.GetString(6),
             DateTime.Parse(reader.GetString(7), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
     }
+
+    public Task UpdateExportPathAsync(
+        Guid adjustmentId,
+        string finalPath,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = session.Connection.CreateCommand();
+        command.Transaction = session.Transaction;
+        command.CommandText =
+            """
+            UPDATE canonical_floor_plan_adjustments
+            SET canonical_floor_plan_export_path = $canonical_floor_plan_export_path
+            WHERE id = $id
+            """;
+        command.Parameters.AddWithValue("$canonical_floor_plan_export_path", finalPath);
+        command.Parameters.AddWithValue("$id", adjustmentId.ToString());
+        var affectedRows = command.ExecuteNonQuery();
+        if (affectedRows != 1)
+        {
+            throw new InvalidOperationException(
+                $"Expected to update one canonical floor-plan adjustment, but updated {affectedRows}.");
+        }
+
+        return Task.CompletedTask;
+    }
 }

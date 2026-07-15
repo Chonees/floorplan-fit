@@ -24,4 +24,6 @@ public sealed record MultiSheetExportAuditDto(
     public PlanSetVerificationReportDto? Verification { get; init; }
 
     public IReadOnlyList<string> HumanSummary { get; init; } = [];
+
+    public IReadOnlyList<PlanSetPackageArtifactDto> Artifacts { get; init; } = [];
 }

@@ -15,4 +15,9 @@ public sealed class SqliteUnitOfWork : IUnitOfWork
     {
         return session.CommitAsync(cancellationToken);
     }
+
+    public Task RollbackAsync(CancellationToken cancellationToken)
+    {
+        return session.RollbackAsync(cancellationToken);
+    }
 }

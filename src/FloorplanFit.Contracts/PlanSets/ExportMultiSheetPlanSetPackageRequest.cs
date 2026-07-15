@@ -13,4 +13,6 @@ public sealed record ExportMultiSheetPlanSetPackageRequest(
     public AdjustedSitePlanPlacementDto? CanonicalPlacement { get; init; }
 
     public AdjustmentRecipeSummaryDto? CanonicalRecipe { get; init; }
+
+    public bool DeleteCanonicalSourceAfterSuccess { get; init; }
 }

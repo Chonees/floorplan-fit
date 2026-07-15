@@ -9,6 +9,78 @@ namespace FloorplanFit.Application.Tests.PlanSets.ExportAudit;
 public sealed class CreateMultiSheetExportAuditHandlerTests
 {
     [Fact]
+    public async Task HandleAsync_updates_canonical_path_after_package_publish_before_export_persistence_and_commit()
+    {
+        var projection = CreateReadyProjection();
+        var order = new List<string>();
+        var canonicalRepository = new CapturingCanonicalFloorPlanAdjustmentRepository
+        {
+            OnUpdate = (_, _) => order.Add("update")
+        };
+        var exportRepository = new CapturingPlanSetExportRepository
+        {
+            OnAdd = _ => order.Add("export")
+        };
+        var unitOfWork = new CapturingUnitOfWork
+        {
+            OnSave = () => order.Add("commit")
+        };
+        var handler = new CreateMultiSheetExportAuditHandler(
+            new FakeSheetAdjustmentProjectionRepository(projection),
+            new FakePlanSheetReader(),
+            exportRepository,
+            new CapturingPlanSetAuditEventRepository(),
+            new CapturingPlanSetExportManifestWriter("exports/package/manifest.json"),
+            unitOfWork,
+            new FakeClock(new DateTime(2026, 7, 15, 12, 0, 0, DateTimeKind.Utc)),
+            canonicalFloorPlanAdjustmentRepository: canonicalRepository);
+        var request = CreateRequest(projection) with
+        {
+            CanonicalFloorPlanExportPath = "exports/X-plan-set/X-floorplan.dxf"
+        };
+
+        await handler.HandleAsync(
+            request,
+            _ =>
+            {
+                order.Add("publish");
+                return Task.CompletedTask;
+            },
+            CancellationToken.None);
+
+        Assert.Equal(["publish", "update", "export", "commit"], order);
+        Assert.Equal(
+            (request.CanonicalAdjustmentId, request.CanonicalFloorPlanExportPath),
+            Assert.Single(canonicalRepository.Updates));
+    }
+
+    [Fact]
+    public async Task HandleAsync_persists_final_canonical_path_but_verifies_staged_canonical_path()
+    {
+        var projection = CreateReadyProjection();
+        var repository = new CapturingPlanSetExportRepository();
+        var writer = new CapturingPlanSetExportManifestWriter("exports/package/manifest.json");
+        var finalCanonicalPath = "exports/X-plan-set/X-floorplan.dxf";
+        var stagedCanonicalPath = "exports/.X-plan-set.staging-123/X-floorplan.dxf";
+
+        var response = await CreateHandler(repository, writer, projection).HandleAsync(
+            CreateRequest(projection) with
+            {
+                CanonicalFloorPlanExportPath = finalCanonicalPath,
+                CanonicalFloorPlanVerificationPath = stagedCanonicalPath
+            },
+            CancellationToken.None);
+
+        var verificationCanonical = Assert.Single(writer.Items[0].Sheets, sheet => sheet.SheetKind == "CanonicalFloorPlan");
+        Assert.Equal(finalCanonicalPath, verificationCanonical.StoragePath);
+        Assert.Equal(stagedCanonicalPath, verificationCanonical.VerificationPath);
+        Assert.Equal(
+            finalCanonicalPath,
+            Assert.Single(repository.Items).Sheets.Single(sheet => sheet.SheetKind == "CanonicalFloorPlan").StoragePath);
+        Assert.Equal(finalCanonicalPath, Assert.Single(response.Sheets, sheet => sheet.SheetKind == "CanonicalFloorPlan").StoragePath);
+    }
+
+    [Fact]
     public async Task HandleAsync_persists_export_audit_with_automatic_and_manual_sheet_statuses()
     {
         var planSetVersionId = Guid.NewGuid();
@@ -507,9 +579,29 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
     {
         public List<PlanSetExport> Items { get; } = [];
 
+        public Action<PlanSetExport>? OnAdd { get; init; }
+
         public Task AddAsync(PlanSetExport export, CancellationToken cancellationToken)
         {
+            OnAdd?.Invoke(export);
             Items.Add(export);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingCanonicalFloorPlanAdjustmentRepository : ICanonicalFloorPlanAdjustmentRepository
+    {
+        public List<(Guid AdjustmentId, string ExportPath)> Updates { get; } = [];
+
+        public Action<Guid, string>? OnUpdate { get; init; }
+
+        public Task AddAsync(CanonicalFloorPlanAdjustment adjustment, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task UpdateExportPathAsync(Guid adjustmentId, string finalPath, CancellationToken cancellationToken)
+        {
+            OnUpdate?.Invoke(adjustmentId, finalPath);
+            Updates.Add((adjustmentId, finalPath));
             return Task.CompletedTask;
         }
     }
@@ -568,8 +660,11 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
     {
         public bool Saved { get; private set; }
 
+        public Action? OnSave { get; init; }
+
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
+            OnSave?.Invoke();
             Saved = true;
             return Task.CompletedTask;
         }

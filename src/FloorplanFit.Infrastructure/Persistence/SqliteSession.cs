@@ -37,6 +37,28 @@ public sealed class SqliteSession : IDisposable, IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    public Task RollbackAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (transaction is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var currentTransaction = transaction;
+        transaction = null;
+        try
+        {
+            currentTransaction.Rollback();
+        }
+        finally
+        {
+            currentTransaction.Dispose();
+        }
+
+        return Task.CompletedTask;
+    }
+
     public void Dispose()
     {
         DisposeCore();

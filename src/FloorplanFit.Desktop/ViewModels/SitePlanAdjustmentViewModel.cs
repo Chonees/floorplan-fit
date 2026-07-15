@@ -504,6 +504,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
                 outputFilePath,
                 placement,
                 cancellationToken);
+            var packageDirectory = BuildPlanSetPackageDirectory(result.OutputFilePath);
 
             var canonicalAdjustmentRecord = await TryRecordCanonicalAdjustmentAsync(
                 placement,
@@ -517,6 +518,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
             var packageExport = await TryExportPlanSetPackageAsync(
                 canonicalAdjustmentRecord.Response,
                 result.OutputFilePath,
+                packageDirectory,
                 placement,
                 cancellationToken);
             if (!packageExport.Succeeded)
@@ -573,7 +575,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
                     canonicalFloorPlanVersionId.Value,
                     LastCanonicalAdjustmentId.Value,
                     canonicalExportPath,
-                    BuildPlanSetPackageDirectory(canonicalExportPath),
+                    BuildConfirmedPlanSetPackageDirectory(canonicalExportPath),
                     [])
                 {
                     CanonicalPlacement = audit.CanonicalPlacement,
@@ -631,6 +633,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     private async Task<(bool Succeeded, MultiSheetExportAuditDto? Audit)> TryExportPlanSetPackageAsync(
         RecordCanonicalFloorPlanAdjustmentResponse? canonicalAdjustment,
         string canonicalFloorPlanExportPath,
+        string packageDirectory,
         AdjustedSitePlanPlacementDto placement,
         CancellationToken cancellationToken)
     {
@@ -661,11 +664,12 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
                     canonicalFloorPlanVersionId.Value,
                     canonicalAdjustment.AdjustmentId,
                     canonicalFloorPlanExportPath,
-                    BuildPlanSetPackageDirectory(canonicalFloorPlanExportPath),
+                    packageDirectory,
                     [])
                 {
                     CanonicalPlacement = placement,
-                    CanonicalRecipe = canonicalAdjustment.AdjustmentRecipe
+                    CanonicalRecipe = canonicalAdjustment.AdjustmentRecipe,
+                    DeleteCanonicalSourceAfterSuccess = true
                 },
                 cancellationToken);
             LastPlanSetExportAudit = audit;
@@ -696,6 +700,28 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         }
 
         return Path.Combine(parentDirectory, $"{exportName}-plan-set");
+    }
+
+    private static string BuildConfirmedPlanSetPackageDirectory(string canonicalFloorPlanExportPath)
+    {
+        var sourcePackageDirectory = Path.GetDirectoryName(canonicalFloorPlanExportPath);
+        if (string.IsNullOrWhiteSpace(sourcePackageDirectory))
+        {
+            sourcePackageDirectory = Environment.CurrentDirectory;
+        }
+
+        var parentDirectory = Path.GetDirectoryName(sourcePackageDirectory) ?? sourcePackageDirectory;
+        var sourcePackageName = Path.GetFileName(sourcePackageDirectory);
+        const string packageSuffix = "-plan-set";
+        var packageStem = sourcePackageName.EndsWith(packageSuffix, StringComparison.OrdinalIgnoreCase)
+            ? sourcePackageName[..^packageSuffix.Length]
+            : Path.GetFileNameWithoutExtension(canonicalFloorPlanExportPath);
+        if (packageStem.EndsWith("-confirmed", StringComparison.OrdinalIgnoreCase))
+        {
+            packageStem = packageStem[..^"-confirmed".Length];
+        }
+
+        return Path.Combine(parentDirectory, $"{packageStem}-confirmed-plan-set");
     }
 
     private static bool IsManualProjectedSheet(ExportedPlanSheetDto sheet)

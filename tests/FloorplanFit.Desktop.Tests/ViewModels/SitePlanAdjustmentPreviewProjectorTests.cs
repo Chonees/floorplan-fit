@@ -1304,7 +1304,8 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests : IDisposable
                 manifestWriter,
                 packageUnitOfWork,
                 new FakeClock(new DateTime(2026, 6, 30, 23, 59, 0, DateTimeKind.Utc)),
-                qualityReportHandler));
+                qualityReportHandler,
+                adjustmentRepository));
         var recorder = new RecordCanonicalFloorPlanAdjustmentHandler(
             adjustmentRepository,
             new CapturingUnitOfWork(),
@@ -1333,6 +1334,12 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests : IDisposable
         await viewModel.ExportAdjustedSitePlanAsync(CreateAtomicPackageOutputPath(), CancellationToken.None);
 
         var adjustment = Assert.Single(adjustmentRepository.Items);
+        var expectedFloorPath = Path.Combine(atomicPackageTempRoot, "combined-plan-set", "combined-floorplan.dxf");
+        Assert.Equal(Path.Combine(atomicPackageTempRoot, "combined.dxf"), adjustmentRepository.AddedExportPath);
+        Assert.Equal(expectedFloorPath, adjustmentRepository.UpdatedExportPath);
+        Assert.Equal(expectedFloorPath, adjustment.CanonicalFloorPlanExportPath);
+        Assert.True(File.Exists(adjustment.CanonicalFloorPlanExportPath));
+        Assert.False(File.Exists(Path.Combine(atomicPackageTempRoot, "combined.dxf")));
         Assert.Equal(adjustment.Id, viewModel.LastCanonicalAdjustmentId);
         Assert.NotNull(viewModel.LastPlanSetExportAudit);
         Assert.Equal(adjustment.Id, viewModel.LastPlanSetExportAudit!.CanonicalAdjustmentId);
@@ -1435,7 +1442,8 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests : IDisposable
                 new CapturingPlanSetAuditEventRepository(),
                 new CapturingPlanSetExportManifestWriter(@"C:\out\manifest.json"),
                 packageUnitOfWork,
-                new FakeClock(new DateTime(2026, 7, 1, 16, 6, 0, DateTimeKind.Utc))));
+                new FakeClock(new DateTime(2026, 7, 1, 16, 6, 0, DateTimeKind.Utc)),
+                canonicalFloorPlanAdjustmentRepository: adjustmentRepository));
         var confirmProjectionHandler = new ConfirmSheetAdjustmentProjectionHandler(
             projectionRepository,
             registrationRepository,
@@ -1469,7 +1477,9 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests : IDisposable
 
         await viewModel.ExportAdjustedSitePlanAsync(CreateAtomicPackageOutputPath(), CancellationToken.None);
 
-        var canonicalAdjustmentId = Assert.Single(adjustmentRepository.Items).Id;
+        var adjustment = Assert.Single(adjustmentRepository.Items);
+        var canonicalAdjustmentId = adjustment.Id;
+        var originalPackagedFloorPath = adjustment.CanonicalFloorPlanExportPath;
         Assert.True(viewModel.CanConfirmManualPlanSetProjections);
         Assert.Equal(1, viewModel.LastPlanSetExportAudit!.Summary.ManualConfirmationRequiredSheetCount);
 
@@ -1481,7 +1491,18 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests : IDisposable
         Assert.Equal(1, viewModel.LastPlanSetExportAudit.Summary.AutomaticallyProjectedSheetCount);
         Assert.Equal(0, viewModel.LastPlanSetExportAudit.Summary.ManualConfirmationRequiredSheetCount);
         Assert.Contains("paquete HousePlanSet listo", viewModel.AutoFitSuggestionStatus, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("combined-plan-set", projectedSheetExporter.LastOutputFilePath, StringComparison.OrdinalIgnoreCase);
+        var confirmedPackageDirectory = Path.Combine(atomicPackageTempRoot, "combined-confirmed-plan-set");
+        var confirmedFloorPath = Path.Combine(confirmedPackageDirectory, "combined-floorplan.dxf");
+        Assert.Equal(
+            confirmedFloorPath,
+            Assert.Single(viewModel.LastPlanSetExportAudit.Sheets, sheet => sheet.SheetKind == "CanonicalFloorPlan").StoragePath);
+        Assert.True(File.Exists(confirmedFloorPath));
+        Assert.True(File.Exists(originalPackagedFloorPath));
+        Assert.False(Directory.Exists(Path.Combine(
+            atomicPackageTempRoot,
+            "combined-plan-set",
+            "combined-floorplan-plan-set")));
+        Assert.Contains("combined-confirmed-plan-set", projectedSheetExporter.LastOutputFilePath, StringComparison.OrdinalIgnoreCase);
     }
 
     private string CreateAtomicPackageOutputPath()
@@ -1516,6 +1537,12 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests : IDisposable
             CancellationToken cancellationToken)
         {
             LastCall = new Call(floorPlanSourcePath, sitePlanSourcePath, outputFilePath, placement);
+            var outputDirectory = Path.GetDirectoryName(outputFilePath);
+            if (!string.IsNullOrWhiteSpace(outputDirectory) && Directory.Exists(outputDirectory))
+            {
+                File.WriteAllText(outputFilePath, "canonical-source");
+            }
+
             return Task.FromResult(new FloorplanFit.Application.Abstractions.AdjustedSitePlanExportResult(
                 outputFilePath,
                 4,
@@ -1527,9 +1554,36 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests : IDisposable
     {
         public List<CanonicalFloorPlanAdjustment> Items { get; } = [];
 
+        public string? AddedExportPath { get; private set; }
+
+        public string? UpdatedExportPath { get; private set; }
+
         public Task AddAsync(CanonicalFloorPlanAdjustment adjustment, CancellationToken cancellationToken)
         {
+            AddedExportPath = adjustment.CanonicalFloorPlanExportPath;
             Items.Add(adjustment);
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateExportPathAsync(Guid adjustmentId, string finalPath, CancellationToken cancellationToken)
+        {
+            var index = Items.FindIndex(adjustment => adjustment.Id == adjustmentId);
+            if (index < 0)
+            {
+                throw new InvalidOperationException("Canonical adjustment was not found.");
+            }
+
+            var adjustment = Items[index];
+            Items[index] = new CanonicalFloorPlanAdjustment(
+                adjustment.Id,
+                adjustment.PlanSetVersionId,
+                adjustment.CanonicalFloorPlanVersionId,
+                adjustment.SitePlanSourcePath,
+                finalPath,
+                adjustment.PlacementJson,
+                adjustment.AdjustmentRecipeJson,
+                adjustment.CreatedAtUtc);
+            UpdatedExportPath = finalPath;
             return Task.CompletedTask;
         }
     }

@@ -72,7 +72,12 @@ public sealed class PlanSetExportManifestWriterTests
                     ManualProjectionCount: 1,
                     Signals: []))
             {
-                Verification = CreateBlockedVerification()
+                Verification = CreateBlockedVerification(),
+                Artifacts =
+                [
+                    new PlanSetPackageArtifactDto("FloorPlan", @"C:\out\X-floorplan.dxf"),
+                    new PlanSetPackageArtifactDto("ElectricalPlan", @"C:\out\X-electrical.dxf")
+                ]
             };
             var writer = new PlanSetExportManifestWriter(new AppWorkspace(Path.Combine(tempRoot, "workspace")));
 
@@ -103,6 +108,11 @@ public sealed class PlanSetExportManifestWriterTests
             Assert.Equal(
                 PlanSetVerificationReportDto.CurrentSchemaVersion,
                 root.GetProperty("Verification").GetProperty("schemaVersion").GetInt32());
+            var artifacts = root.GetProperty("Artifacts").EnumerateArray().ToArray();
+            Assert.Equal(2, artifacts.Length);
+            Assert.Contains(artifacts, artifact =>
+                artifact.GetProperty("Role").GetString() == "ElectricalPlan" &&
+                artifact.GetProperty("Path").GetString() == @"C:\out\X-electrical.dxf");
         }
         finally
         {

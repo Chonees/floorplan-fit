@@ -14,4 +14,8 @@ public sealed record CreateMultiSheetExportAuditRequest(
     public AdjustedSitePlanPlacementDto? CanonicalPlacement { get; init; }
 
     public AdjustmentRecipeSummaryDto? CanonicalRecipe { get; init; }
+
+    public string? CanonicalFloorPlanVerificationPath { get; init; }
+
+    public IReadOnlyList<PlanSetPackageArtifactDto> PackageArtifacts { get; init; } = [];
 }

@@ -8,6 +8,81 @@ namespace FloorplanFit.Infrastructure.Tests.PlanSets;
 public sealed class CanonicalFloorPlanAdjustmentPersistenceTests
 {
     [Fact]
+    public async Task UpdateExportPathAsync_rolls_back_without_commit_and_persists_with_commit()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-canonical-update-{Guid.NewGuid():N}");
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+            var adjustment = CreateAdjustment("exports/X.dxf");
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                await new SqliteCanonicalFloorPlanAdjustmentRepository(session).AddAsync(adjustment, CancellationToken.None);
+                await new SqliteUnitOfWork(session).SaveChangesAsync(CancellationToken.None);
+            }
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                await new SqliteCanonicalFloorPlanAdjustmentRepository(session).UpdateExportPathAsync(
+                    adjustment.Id,
+                    "exports/X-plan-set/X-floorplan.dxf",
+                    CancellationToken.None);
+                await session.RollbackAsync(CancellationToken.None);
+                await new SqliteUnitOfWork(session).SaveChangesAsync(CancellationToken.None);
+            }
+
+            Assert.Equal("exports/X.dxf", await ReadExportPathAsync(workspace.DatabasePath, adjustment.Id));
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                await new SqliteCanonicalFloorPlanAdjustmentRepository(session).UpdateExportPathAsync(
+                    adjustment.Id,
+                    "exports/X-plan-set/X-floorplan.dxf",
+                    CancellationToken.None);
+                await new SqliteUnitOfWork(session).SaveChangesAsync(CancellationToken.None);
+            }
+
+            Assert.Equal(
+                "exports/X-plan-set/X-floorplan.dxf",
+                await ReadExportPathAsync(workspace.DatabasePath, adjustment.Id));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateExportPathAsync_throws_when_adjustment_does_not_exist()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-canonical-update-missing-{Guid.NewGuid():N}");
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+            await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+            var repository = new SqliteCanonicalFloorPlanAdjustmentRepository(session);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => repository.UpdateExportPathAsync(
+                Guid.NewGuid(),
+                "exports/X-plan-set/X-floorplan.dxf",
+                CancellationToken.None));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task AddAsync_persists_canonical_floor_plan_adjustment()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-canonical-adjustment-{Guid.NewGuid():N}");
@@ -64,5 +139,26 @@ public sealed class CanonicalFloorPlanAdjustmentPersistenceTests
                 Directory.Delete(tempRoot, recursive: true);
             }
         }
+    }
+
+    private static CanonicalFloorPlanAdjustment CreateAdjustment(string exportPath)
+        => new(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "library/site.dxf",
+            exportPath,
+            "{\"FloorToSiteScale\":1.2}",
+            "{\"Version\":\"v1\",\"FloorToSiteScale\":1.2,\"Operations\":[]}",
+            new DateTime(2026, 7, 15, 12, 0, 0, DateTimeKind.Utc));
+
+    private static async Task<string?> ReadExportPathAsync(string databasePath, Guid adjustmentId)
+    {
+        await using var connection = new SqliteConnection($"Data Source={databasePath}");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT canonical_floor_plan_export_path FROM canonical_floor_plan_adjustments WHERE id = $id";
+        command.Parameters.AddWithValue("$id", adjustmentId.ToString());
+        return (string?)await command.ExecuteScalarAsync();
     }
 }

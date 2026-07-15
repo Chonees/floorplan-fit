@@ -11,7 +11,6 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
     private readonly IPlanSheetSourceReader planSheetSourceReader;
     private readonly ExportProjectedPlanSheetHandler projectedPlanSheetHandler;
     private readonly CreateMultiSheetExportAuditHandler exportAuditHandler;
-
     public ExportMultiSheetPlanSetPackageHandler(
         ISheetAdjustmentProjectionRepository sheetAdjustmentProjectionRepository,
         IPlanSheetSourceReader planSheetSourceReader,
@@ -38,16 +37,28 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
 
         var exportableProjections = await ResolveExportableProjectionsAsync(request, cancellationToken);
         var exportedProjectionRequests = new List<MultiSheetExportProjectionRequestDto>(exportableProjections.Count);
+        var packageArtifacts = new List<PlanSetPackageArtifactDto>();
         var failureStage = PlanSetExportFailureStage.UserPackagePublication;
         var auditStarted = false;
+        string? stagedFloorPath = null;
+        string? finalFloorPath = null;
 
         try
         {
-            return await AtomicDirectoryPublisher.PublishAsync(
+            var response = await AtomicDirectoryPublisher.PublishAsync(
                 request.PackageDirectory,
                 async (stagingDirectory, stagingCancellationToken) =>
                 {
+                    finalFloorPath = BuildCanonicalFloorPlanPath(
+                        request.PackageDirectory,
+                        request.CanonicalFloorPlanExportPath);
+                    var packageStem = Path.GetFileNameWithoutExtension(finalFloorPath)[..^"-floorplan".Length];
+                    stagedFloorPath = Path.Combine(stagingDirectory, Path.GetFileName(finalFloorPath));
+                    File.Copy(request.CanonicalFloorPlanExportPath, stagedFloorPath, overwrite: false);
+                    packageArtifacts.Add(new PlanSetPackageArtifactDto("FloorPlan", finalFloorPath));
+
                     failureStage = PlanSetExportFailureStage.DependentSheetGeneration;
+                    var usedOutputNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     foreach (var projection in exportableProjections)
                     {
                         if (projection.Status is not SheetAdjustmentProjectionStatus.ReadyForExport)
@@ -66,14 +77,9 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
 
                         try
                         {
-                            var stagedOutputPath = BuildOutputPath(
-                                stagingDirectory,
-                                sheetSource.SourceFilePath,
-                                projection.Id);
-                            var finalOutputPath = BuildOutputPath(
-                                request.PackageDirectory,
-                                sheetSource.SourceFilePath,
-                                projection.Id);
+                            var fileName = BuildOutputFileName(packageStem, sheetSource.SheetType, usedOutputNames);
+                            var stagedOutputPath = Path.Combine(stagingDirectory, fileName);
+                            var finalOutputPath = Path.Combine(request.PackageDirectory, fileName);
                             var exported = await projectedPlanSheetHandler.HandleAsync(
                                 new ExportProjectedPlanSheetRequest(
                                     projection.Id,
@@ -87,35 +93,46 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
                             {
                                 VerificationPath = stagedOutputPath
                             });
+                            packageArtifacts.Add(new PlanSetPackageArtifactDto(sheetSource.SheetType, finalOutputPath));
                         }
                         catch (ProjectedPlanSheetManualReviewRequiredException)
                         {
                             exportedProjectionRequests.Add(new MultiSheetExportProjectionRequestDto(projection.Id));
                         }
                     }
-
-                    failureStage = PlanSetExportFailureStage.UserPackagePublication;
                 },
                 async (publishPackageAsync, publicationCancellationToken) =>
                 {
                     failureStage = PlanSetExportFailureStage.VerificationAndWorkspacePublication;
                     auditStarted = true;
+                    var canonicalStoragePath = finalFloorPath
+                        ?? throw new InvalidOperationException("Canonical floor-plan staging did not complete.");
+                    var canonicalVerificationPath = stagedFloorPath
+                        ?? throw new InvalidOperationException("Canonical floor-plan staging did not complete.");
                     return await exportAuditHandler.HandleAsync(
                         new CreateMultiSheetExportAuditRequest(
                             request.PlanSetVersionId,
                             request.CanonicalFloorPlanVersionId,
                             request.CanonicalAdjustmentId,
-                            request.CanonicalFloorPlanExportPath,
+                            canonicalStoragePath,
                             exportedProjectionRequests)
                         {
                             DiscoverAllDependentSheets = request.DependentProjectionIds.Count == 0,
                             CanonicalPlacement = request.CanonicalPlacement,
-                            CanonicalRecipe = request.CanonicalRecipe
+                            CanonicalRecipe = request.CanonicalRecipe,
+                            CanonicalFloorPlanVerificationPath = canonicalVerificationPath,
+                            PackageArtifacts = packageArtifacts
                         },
                         publishPackageAsync,
                         publicationCancellationToken);
                 },
                 cancellationToken);
+            if (request.DeleteCanonicalSourceAfterSuccess)
+            {
+                File.Delete(request.CanonicalFloorPlanExportPath);
+            }
+
+            return response;
         }
         catch (Exception exception)
         {
@@ -153,8 +170,12 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
                 cancellationToken);
             return projections
                 .GroupBy(projection => projection.DependentSheetId)
-                .Select(group => group.OrderBy(projection => projection.CreatedAtUtc).Last())
+                .Select(group => group
+                    .OrderBy(projection => projection.CreatedAtUtc)
+                    .ThenBy(projection => projection.Id)
+                    .Last())
                 .Where(projection => projection.Status is SheetAdjustmentProjectionStatus.ReadyForExport)
+                .OrderBy(projection => projection.Id)
                 .ToArray();
         }
 
@@ -187,10 +208,61 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
         return selected;
     }
 
-    private static string BuildOutputPath(string packageDirectory, string sourceFilePath, Guid projectionId)
+    private static string BuildOutputFileName(
+        string packageStem,
+        string sheetType,
+        ISet<string> usedNames)
     {
-        var sourceName = Path.GetFileNameWithoutExtension(sourceFilePath);
-        var safeName = string.IsNullOrWhiteSpace(sourceName) ? "sheet" : sourceName;
-        return Path.Combine(packageDirectory, $"{safeName}-{projectionId:N}.dxf");
+        var role = SanitizeFileStem(sheetType
+            .Replace("Plan", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("Sheet", "", StringComparison.OrdinalIgnoreCase));
+        var baseName = $"{packageStem}-{role.ToLowerInvariant()}";
+        var candidate = $"{baseName}.dxf";
+        for (var suffix = 2; !usedNames.Add(candidate); suffix++)
+        {
+            candidate = $"{baseName}-{suffix}.dxf";
+        }
+
+        return candidate;
+    }
+
+    public static string BuildCanonicalFloorPlanPath(
+        string packageDirectory,
+        string canonicalFloorPlanSourcePath)
+    {
+        var packageStem = SanitizeFileStem(Path.GetFileNameWithoutExtension(canonicalFloorPlanSourcePath));
+        const string floorPlanSuffix = "-floorplan";
+        if (packageStem.EndsWith(floorPlanSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            packageStem = packageStem[..^floorPlanSuffix.Length];
+        }
+
+        return Path.Combine(packageDirectory, $"{packageStem}-floorplan.dxf");
+    }
+
+    private static string SanitizeFileStem(string? value)
+    {
+        var source = string.IsNullOrWhiteSpace(value) ? "plan" : value.Trim();
+        var characters = new List<char>(source.Length);
+        var pendingSeparator = false;
+        foreach (var character in source)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                if (pendingSeparator && characters.Count > 0)
+                {
+                    characters.Add('-');
+                }
+
+                characters.Add(character);
+                pendingSeparator = false;
+            }
+            else if (char.IsWhiteSpace(character) || character is '-' or '_')
+            {
+                pendingSeparator = characters.Count > 0;
+            }
+        }
+
+        return characters.Count == 0 ? "plan" : new string(characters.ToArray());
     }
 }

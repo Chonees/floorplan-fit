@@ -143,7 +143,9 @@ public sealed class CreateMultiSheetExportAuditHandler
                 request.DependentProjections,
                 canonicalPlacement,
                 canonicalRecipe,
-                verificationReport: null);
+                verificationReport: null,
+                packageArtifacts: request.PackageArtifacts,
+                canonicalFloorPlanVerificationPath: request.CanonicalFloorPlanVerificationPath);
             verificationReport = planSetExportManifestWriter.BuildVerificationReport(verificationInput);
             status = verificationReport.IsGreen
                 ? PlanSetExportStatus.ReadyForExport
@@ -165,7 +167,9 @@ public sealed class CreateMultiSheetExportAuditHandler
                 request.DependentProjections,
                 canonicalPlacement,
                 canonicalRecipe,
-                verificationReport);
+                verificationReport,
+                request.PackageArtifacts,
+                request.CanonicalFloorPlanVerificationPath);
             packageManifestPath = await planSetExportManifestWriter.WriteAsync(draftAudit, cancellationToken);
             if (string.IsNullOrWhiteSpace(packageManifestPath))
             {
@@ -193,6 +197,14 @@ public sealed class CreateMultiSheetExportAuditHandler
             ?? throw new InvalidOperationException("Workspace manifest publication did not complete.");
         try
         {
+            if (canonicalFloorPlanAdjustmentRepository is not null)
+            {
+                await canonicalFloorPlanAdjustmentRepository.UpdateExportPathAsync(
+                    request.CanonicalAdjustmentId,
+                    request.CanonicalFloorPlanExportPath,
+                    CancellationToken.None);
+            }
+
             var export = new PlanSetExport(
                 exportId,
                 request.PlanSetVersionId,
@@ -215,7 +227,9 @@ public sealed class CreateMultiSheetExportAuditHandler
                 request.DependentProjections,
                 canonicalPlacement,
                 canonicalRecipe,
-                verificationReport);
+                verificationReport,
+                request.PackageArtifacts,
+                request.CanonicalFloorPlanVerificationPath);
 
             // Atomic files are already visible. Finish the DB commit even if cancellation arrives after that point.
             await planSetExportRepository.AddAsync(export, CancellationToken.None);
@@ -226,6 +240,15 @@ public sealed class CreateMultiSheetExportAuditHandler
         catch (Exception exception)
         {
             TryRollbackWorkspacePublication(publishedManifestPath, exception);
+            try
+            {
+                await unitOfWork.RollbackAsync(CancellationToken.None);
+            }
+            catch (Exception rollbackException)
+            {
+                exception.Data["UnitOfWorkRollbackFailure"] = rollbackException.Message;
+            }
+
             throw;
         }
     }
@@ -557,7 +580,9 @@ public sealed class CreateMultiSheetExportAuditHandler
         IReadOnlyList<MultiSheetExportProjectionRequestDto>? dependentProjections = null,
         AdjustedSitePlanPlacementDto? canonicalPlacement = null,
         AdjustmentRecipeSummaryDto? canonicalRecipe = null,
-        PlanSetVerificationReportDto? verificationReport = null)
+        PlanSetVerificationReportDto? verificationReport = null,
+        IReadOnlyList<PlanSetPackageArtifactDto>? packageArtifacts = null,
+        string? canonicalFloorPlanVerificationPath = null)
     {
         var exportAudits = dependentProjections?
             .Where(projection => projection.ExportAudit is not null)
@@ -569,7 +594,13 @@ public sealed class CreateMultiSheetExportAuditHandler
             .ToDictionary(
                 projection => projection.ProjectionId,
                 projection => projection.VerificationPath!);
-        var sheetDtos = sheets.Select(sheet => ToDto(sheet, exportAudits, verificationPaths)).ToArray();
+        var sheetDtos = sheets
+            .Select(sheet => ToDto(
+                sheet,
+                exportAudits,
+                verificationPaths,
+                canonicalFloorPlanVerificationPath))
+            .ToArray();
 
         return new MultiSheetExportAuditDto(
             exportId,
@@ -585,7 +616,8 @@ public sealed class CreateMultiSheetExportAuditHandler
             canonicalRecipe)
         {
             Verification = verificationReport,
-            HumanSummary = BuildHumanSummary(summary, sheetDtos, canonicalPlacement, canonicalRecipe, verificationReport)
+            HumanSummary = BuildHumanSummary(summary, sheetDtos, canonicalPlacement, canonicalRecipe, verificationReport),
+            Artifacts = packageArtifacts ?? []
         };
     }
 
@@ -816,7 +848,8 @@ public sealed class CreateMultiSheetExportAuditHandler
     private static ExportedPlanSheetDto ToDto(
         PlanSetExportedSheet sheet,
         IReadOnlyDictionary<Guid, ProjectedPlanSheetExportAuditDto>? exportAudits,
-        IReadOnlyDictionary<Guid, string>? verificationPaths)
+        IReadOnlyDictionary<Guid, string>? verificationPaths,
+        string? canonicalFloorPlanVerificationPath)
     {
         var exportAudit = sheet.SheetProjectionId.HasValue && exportAudits is not null
             ? exportAudits.GetValueOrDefault(sheet.SheetProjectionId.Value)
@@ -835,9 +868,9 @@ public sealed class CreateMultiSheetExportAuditHandler
             sheet.RecipeHandlingSummary,
             exportAudit)
         {
-            VerificationPath = sheet.SheetProjectionId.HasValue && verificationPaths is not null
-                ? verificationPaths.GetValueOrDefault(sheet.SheetProjectionId.Value)
-                : null
+            VerificationPath = sheet.SheetProjectionId.HasValue
+                ? verificationPaths?.GetValueOrDefault(sheet.SheetProjectionId.Value)
+                : canonicalFloorPlanVerificationPath
         };
     }
 }
