@@ -157,13 +157,47 @@ public sealed class PreviewInteractionCoordinatorTests
     }
 
     [Fact]
-    public void HandlePointerMoved_updates_preview_trim_while_edge_drag_is_active()
+    public void HandleLeftButtonPressed_prefers_pinch_marker_click_before_underlying_geometry_hit()
+    {
+        var geometryPathId = Guid.NewGuid();
+        var marker = new PinchMarkerDto(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Patio",
+            Guid.NewGuid(),
+            geometryPathId,
+            nameof(PinchAxisTag.Width),
+            0.5m,
+            120m,
+            1);
+        var outcome = PreviewInteractionCoordinator.HandleLeftButtonPressed(
+            new PreviewInteractionCoordinator.LeftButtonPressRequest(
+                PointerPosition: new Point(100d, 140d),
+                AxisTag: PinchAxisTag.Width,
+                IsPinchPlacementArmed: false,
+                ResolveEdgeDrag: (_, _) => null,
+                ResolveDimensionHandleHit: _ => null,
+                ResolveDimensionHit: _ => null,
+                ResolveRoomLabelHit: _ => null,
+                ResolveOpeningLabelHit: _ => null,
+                ResolveGeometryHit: _ => new PreviewInteractionCoordinator.GeometryHit(geometryPathId, 0.5m),
+                ResolveMovableArtifact: _ => null,
+                ResolvePinchMarkerHit: _ => marker));
+
+        Assert.True(outcome.Handled);
+        Assert.Equal(marker.PinchMarkerId, outcome.PinchMarkerClickedId);
+        Assert.Null(outcome.GeometryClick);
+        Assert.Null(outcome.StartedArtifactMove);
+    }
+
+    [Fact]
+    public void HandlePointerMoved_preserves_raw_preview_trim_when_no_snap_step_is_supplied()
     {
         var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
             new Rect(0, 0, 800, 600),
             MinX: 0d,
             MinY: 0d,
-            Scale: 2d,
+            Scale: 1d,
             OffsetX: 100d,
             OffsetY: 80d);
 
@@ -173,7 +207,7 @@ public sealed class PreviewInteractionCoordinatorTests
             PanStartPoint: default,
             PanStartZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
             ActiveDragEdge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Right,
-            DragStartPoint: new Point(420d, 200d),
+            DragStartPoint: new Point(0.625d, 200d),
             ActivePreviewTrimSourceUnits: 0m,
             ActiveArtifactMove: null,
             PendingDimensionEdit: null,
@@ -182,13 +216,118 @@ public sealed class PreviewInteractionCoordinatorTests
         var outcome = PreviewInteractionCoordinator.HandlePointerMoved(
             new PreviewInteractionCoordinator.PointerMovedRequest(
                 CurrentState: state,
-                PointerPosition: new Point(390d, 200d),
+                PointerPosition: new Point(0d, 200d),
                 Viewport: viewport,
                 ResolveSnappedDimensionWorldPoint: null));
 
         Assert.False(outcome.Handled);
         Assert.True(outcome.InvalidateVisual);
+        Assert.Equal(0.625m, outcome.NextState.ActivePreviewTrimSourceUnits);
+    }
+
+    [Theory]
+    [InlineData(0.625d, 0.5d)]
+    [InlineData(0.76d, 1d)]
+    public void HandlePointerMoved_quantizes_edge_drag_trim_to_the_nearest_snap_step(
+        double rawTrimSourceUnits,
+        double expectedTrimSourceUnits)
+    {
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0, 0, 800, 600),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 1d,
+            OffsetX: 100d,
+            OffsetY: 80d);
+        var state = new PreviewInteractionCoordinator.InteractionState(
+            PreviewZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
+            IsPanningPreview: false,
+            PanStartPoint: default,
+            PanStartZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
+            ActiveDragEdge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Right,
+            DragStartPoint: new Point(rawTrimSourceUnits, 200d),
+            ActivePreviewTrimSourceUnits: 0m,
+            ActiveArtifactMove: null,
+            PendingDimensionEdit: null,
+            ActiveDimensionEdit: null);
+
+        var outcome = PreviewInteractionCoordinator.HandlePointerMoved(
+            new PreviewInteractionCoordinator.PointerMovedRequest(
+                CurrentState: state,
+                PointerPosition: new Point(0d, 200d),
+                Viewport: viewport,
+                ResolveSnappedDimensionWorldPoint: null,
+                EdgeDragSnapStepSourceUnits: 0.5m));
+
+        Assert.Equal((decimal)expectedTrimSourceUnits, outcome.NextState.ActivePreviewTrimSourceUnits);
+    }
+
+    [Fact]
+    public void HandlePointerMoved_preserves_raw_trim_when_snap_step_is_too_small()
+    {
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0, 0, 800, 600),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 1d,
+            OffsetX: 100d,
+            OffsetY: 80d);
+        var state = new PreviewInteractionCoordinator.InteractionState(
+            PreviewZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
+            IsPanningPreview: false,
+            PanStartPoint: default,
+            PanStartZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
+            ActiveDragEdge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Right,
+            DragStartPoint: new Point(15d, 200d),
+            ActivePreviewTrimSourceUnits: 0m,
+            ActiveArtifactMove: null,
+            PendingDimensionEdit: null,
+            ActiveDimensionEdit: null);
+
+        var outcome = PreviewInteractionCoordinator.HandlePointerMoved(
+            new PreviewInteractionCoordinator.PointerMovedRequest(
+                CurrentState: state,
+                PointerPosition: new Point(0d, 200d),
+                Viewport: viewport,
+                ResolveSnappedDimensionWorldPoint: null,
+                EdgeDragSnapStepSourceUnits: 1e-28m));
+
         Assert.Equal(15m, outcome.NextState.ActivePreviewTrimSourceUnits);
+    }
+
+    [Theory]
+    [InlineData(1e-30d)]
+    [InlineData(1e-320d)]
+    public void HandlePointerMoved_uses_safe_zero_when_raw_trim_cannot_be_converted_to_decimal(double scale)
+    {
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0, 0, 800, 600),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: scale,
+            OffsetX: 100d,
+            OffsetY: 80d);
+        var state = new PreviewInteractionCoordinator.InteractionState(
+            PreviewZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
+            IsPanningPreview: false,
+            PanStartPoint: default,
+            PanStartZoomState: FloorPlanPreviewControl.PreviewZoomState.Default,
+            ActiveDragEdge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Right,
+            DragStartPoint: new Point(1d, 200d),
+            ActivePreviewTrimSourceUnits: 0m,
+            ActiveArtifactMove: null,
+            PendingDimensionEdit: null,
+            ActiveDimensionEdit: null);
+
+        var outcome = PreviewInteractionCoordinator.HandlePointerMoved(
+            new PreviewInteractionCoordinator.PointerMovedRequest(
+                CurrentState: state,
+                PointerPosition: new Point(0d, 200d),
+                Viewport: viewport,
+                ResolveSnappedDimensionWorldPoint: null,
+                EdgeDragSnapStepSourceUnits: 0.5m));
+
+        Assert.Equal(0m, outcome.NextState.ActivePreviewTrimSourceUnits);
     }
 
     [Fact]

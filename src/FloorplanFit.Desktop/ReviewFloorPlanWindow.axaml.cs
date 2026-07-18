@@ -229,6 +229,54 @@ public partial class ReviewFloorPlanWindow : UserControl
         await viewModel.RemoveSelectedPinchAsync(CancellationToken.None);
     }
 
+    private void EditPinchMaxTrimButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            viewModel.BeginEditSelectedPinchMaxTrim();
+        }
+    }
+
+    private async void SavePinchMaxTrimButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            await viewModel.SaveSelectedPinchMaxTrimAsync(CancellationToken.None);
+        }
+    }
+
+    private void CancelPinchMaxTrimButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            viewModel.CancelEditSelectedPinchMaxTrim();
+        }
+    }
+
+    private void DecreasePinchMaxTrimButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            viewModel.AdjustEditableSelectedPinchMaxTrim(-0.5m);
+        }
+    }
+
+    private void IncreasePinchMaxTrimButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            viewModel.AdjustEditableSelectedPinchMaxTrim(0.5m);
+        }
+    }
+
+    private void PreviewControl_OnPinchMarkerClicked(object? sender, FloorPlanPreviewControl.PinchMarkerClickedEventArgs e)
+    {
+        if (DataContext is FloorPlanReviewViewModel viewModel)
+        {
+            viewModel.SelectPinchMarker(e.PinchMarkerId);
+        }
+    }
+
     private async void PreviewControl_OnGeometryPathClicked(object? sender, FloorPlanPreviewControl.GeometryPathClickedEventArgs e)
     {
         if (DataContext is not FloorPlanReviewViewModel viewModel)

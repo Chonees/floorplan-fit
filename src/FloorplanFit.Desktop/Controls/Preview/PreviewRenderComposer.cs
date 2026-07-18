@@ -135,8 +135,7 @@ internal static class PreviewRenderComposer
             viewport,
             scene.PreviewGeometry,
             scene.PinchMarkers,
-            scene.PreviewPinchGroupId,
-            scene.PreviewAxisTag);
+            scene.SelectedPinchMarkerId);
         if (ShouldRenderDimensions(scene))
         {
             DimensionPreviewLayerRenderer.RenderHandles(

@@ -70,6 +70,9 @@ public sealed class RejectWallCandidateHandlerTests
         public Task AddAsync(PinchMarker marker, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public Task UpdateAsync(PinchMarker marker, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task<PinchMarker?> GetByIdAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
             => Task.FromResult(Items.SingleOrDefault(item => item.Id == pinchMarkerId));
 

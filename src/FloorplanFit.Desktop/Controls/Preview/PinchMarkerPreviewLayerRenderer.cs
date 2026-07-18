@@ -11,8 +11,7 @@ internal static class PinchMarkerPreviewLayerRenderer
         FloorPlanPreviewGeometry.PreviewViewport viewport,
         IReadOnlyList<GeometryPathDto> previewGeometry,
         IReadOnlyList<PinchMarkerDto>? pinchMarkers,
-        Guid? previewPinchGroupId,
-        string? previewAxisTag)
+        Guid? selectedPinchMarkerId)
     {
         if (pinchMarkers is not { Count: > 0 })
         {
@@ -34,7 +33,7 @@ internal static class PinchMarkerPreviewLayerRenderer
             }
 
             var projected = viewport.Project((decimal)worldPoint.Value.X, (decimal)worldPoint.Value.Y);
-            var style = ResolveStyle(marker, previewPinchGroupId, previewAxisTag);
+            var style = ResolveStyle(marker, selectedPinchMarkerId);
             context.DrawEllipse(new SolidColorBrush(style.Fill), null, projected, style.Radius, style.Radius);
             context.DrawEllipse(null, new Pen(Brushes.White, 1), projected, style.Radius, style.Radius);
         }
@@ -56,18 +55,10 @@ internal static class PinchMarkerPreviewLayerRenderer
 
     internal static PinchMarkerVisualStyle ResolveStyle(
         PinchMarkerDto marker,
-        Guid? previewPinchGroupId,
-        string? previewAxisTag)
+        Guid? selectedPinchMarkerId)
     {
-        var isActiveGroup = previewPinchGroupId is not null && marker.PinchGroupId == previewPinchGroupId;
-        if (isActiveGroup)
-        {
-            return new PinchMarkerVisualStyle(PreviewSemanticPalette.ActivePinchGroup, 5d);
-        }
-
-        var isActiveAxis = string.Equals(marker.AxisTag, previewAxisTag, StringComparison.OrdinalIgnoreCase);
-        return isActiveAxis
-            ? new PinchMarkerVisualStyle(PreviewSemanticPalette.ActivePinchAxis, 4d)
+        return selectedPinchMarkerId == marker.PinchMarkerId
+            ? new PinchMarkerVisualStyle(PreviewSemanticPalette.ActivePinchGroup, 5d)
             : new PinchMarkerVisualStyle(PreviewSemanticPalette.InactivePinch, 4d);
     }
 

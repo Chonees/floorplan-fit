@@ -177,6 +177,9 @@ public sealed class PublishFloorPlanCurationHandlerTests
             throw new NotSupportedException();
         }
 
+        public Task UpdateAsync(PinchMarker marker, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task<PinchMarker?> GetByIdAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();

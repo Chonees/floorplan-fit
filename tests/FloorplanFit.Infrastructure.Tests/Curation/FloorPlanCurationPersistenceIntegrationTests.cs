@@ -763,6 +763,88 @@ public sealed class FloorPlanCurationPersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task PinchMarkerRepository_update_persists_exact_max_trim_without_replacing_the_marker()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+
+            var curationId = Guid.NewGuid();
+            var groupId = Guid.NewGuid();
+            var marker = new PinchMarker(
+                Guid.NewGuid(),
+                curationId,
+                groupId,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                0.5m,
+                25.4m,
+                1);
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                await new SqlitePinchGroupRepository(session).AddAsync(
+                    new PinchGroup(groupId, curationId, "Patio", PinchAxisTag.Width, 1),
+                    CancellationToken.None);
+                var repository = new SqlitePinchMarkerRepository(session);
+                await repository.AddAsync(marker, CancellationToken.None);
+                marker.UpdateMaxTrim(0.099218750m);
+                await repository.UpdateAsync(marker, CancellationToken.None);
+                await session.CommitAsync(CancellationToken.None);
+            }
+
+            await using (var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None))
+            {
+                var loaded = await new SqlitePinchMarkerRepository(session).GetByIdAsync(marker.Id, CancellationToken.None);
+
+                Assert.NotNull(loaded);
+                Assert.Equal(marker.Id, loaded.Id);
+                Assert.Equal(0.099218750m, loaded.MaxTrimMm);
+            }
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task PinchMarkerRepository_update_throws_when_marker_row_does_not_exist()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var workspace = new AppWorkspace(tempRoot);
+            workspace.EnsureCreated();
+            await SqliteSchemaInitializer.InitializeAsync(workspace.DatabasePath, CancellationToken.None);
+            var missingMarker = new PinchMarker(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                0.5m,
+                25.4m,
+                1);
+
+            await using var session = await SqliteSession.OpenAsync(workspace.DatabasePath, CancellationToken.None);
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new SqlitePinchMarkerRepository(session).UpdateAsync(missingMarker, CancellationToken.None));
+
+            Assert.Equal("Expected to update one pinch marker, but updated 0.", exception.Message);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task Pinch_repositories_remove_a_group_and_only_its_markers()
     {
         var tempRoot = CreateTempRoot();

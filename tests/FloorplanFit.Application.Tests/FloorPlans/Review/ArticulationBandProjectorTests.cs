@@ -37,4 +37,29 @@ public sealed class ArticulationBandProjectorTests
         Assert.Equal(200m, band.MaxTrimMm);
         Assert.Equal("Suggested", band.Status);
     }
+
+    [Fact]
+    public void Build_and_marker_inches_preserve_exact_one_over_256_inch_capacity()
+    {
+        var pathId = Guid.NewGuid();
+        var pinchGroupId = Guid.NewGuid();
+        var marker = new PinchMarkerDto(
+            Guid.NewGuid(),
+            pinchGroupId,
+            "Patio",
+            Guid.NewGuid(),
+            pathId,
+            "Width",
+            0.5m,
+            0.099218750m,
+            1);
+
+        var band = Assert.Single(ArticulationBandProjector.Build(
+            [new PinchGroupDto(pinchGroupId, "Patio", "Width", 1)],
+            [marker],
+            [new GeometryPathDto(pathId, false, [new GeometrySegmentDto(pathId, 1, 100m, 0m, 100m, 100m)])]));
+
+        Assert.Equal(0.00390625m, marker.MaxTrimInches);
+        Assert.Equal(0.099218750m, band.MaxTrimMm);
+    }
 }

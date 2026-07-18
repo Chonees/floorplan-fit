@@ -5,6 +5,7 @@ using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.Controls;
 using FloorplanFit.Desktop.Controls.Preview;
+using FloorplanFit.Desktop.Presentation;
 using FloorplanFit.Domain.FloorPlans;
 
 namespace FloorplanFit.Desktop.ViewModels;
@@ -35,6 +36,8 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private IReadOnlyList<MeasurementNodeGroupNodeOptionViewModel>? selectedMeasurementGroupNodeOptionsCache;
     private Guid? selectedMeasurementGroupNodeOptionsCacheCorridorId;
     private bool isUpdatingCuratedArtifactEditors;
+    private Guid? editingPinchMarkerId;
+    private string pinchMaxTrimPrefill = string.Empty;
 
     public FloorPlanReviewViewModel(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory, Guid templateId)
         : this(scopeFactory, templateId, floorPlanVersionId: null)
@@ -221,6 +224,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private string newPinchMaxTrimInches = "1";
 
     [ObservableProperty]
+    private string editableSelectedPinchMaxTrim = string.Empty;
+
+    [ObservableProperty]
+    private bool isEditingSelectedPinchMaxTrim;
+
+    [ObservableProperty]
     private bool isPinchPlacementArmed;
 
     [ObservableProperty]
@@ -267,6 +276,8 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     public Guid? SelectedPinchGroupId => SelectedPinchGroup?.PinchGroupId;
 
+    public Guid? SelectedPinchMarkerId => SelectedPinchMarker?.PinchMarkerId;
+
     public IReadOnlyList<PinchMarkerDto> SelectedPinchGroupMarkers =>
         SelectedPinchGroup is null
             ? []
@@ -284,6 +295,14 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     public string SuggestedPinchGroupName => CreateNextPinchGroupName();
 
     public bool CanRemoveSelectedPinch => SelectedPinchMarker is not null;
+
+    public bool CanEditSelectedPinchMaxTrim =>
+        DraftCurationId != Guid.Empty &&
+        SelectedPinchMarker is not null;
+
+    public string SelectedPinchMaxTrimDisplay => SelectedPinchMarker is null
+        ? string.Empty
+        : ArchitecturalLengthText.FormatInches(SelectedPinchMarker.MaxTrimMm / MillimetersPerInch);
 
     public bool CanDeleteSelectedItem =>
         CanRemoveSelectedPinch ||
@@ -998,13 +1017,17 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return;
         }
 
-        if (!decimal.TryParse(NewPinchMaxTrimInches.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var maxTrimInches) || maxTrimInches <= 0m)
+        if (!ArchitecturalLengthText.TryParsePositiveInches(
+                NewPinchMaxTrimInches,
+                ArchitecturalLengthDefaultUnit.Inches,
+                out var maxTrimInches) ||
+            maxTrimInches > decimal.MaxValue / MillimetersPerInch)
         {
-            StatusMessage = "Escrib\u00ED un ajuste m\u00E1ximo en pulgadas v\u00E1lido antes de marcar el ajuste.";
+            StatusMessage = "Escrib\u00ED un ajuste m\u00E1ximo positivo. Ej: 1, 6 1/2\" o 1'-2\". No uses restas como 5' -9\".";
             return;
         }
 
-        var maxTrimMm = decimal.Round(maxTrimInches * MillimetersPerInch, 3, MidpointRounding.AwayFromZero);
+        var maxTrimMm = maxTrimInches * MillimetersPerInch;
         StatusMessage = $"Guardando un ajuste de {SelectedPinchGroup.Name} sobre {SelectedCandidate.SourceEntityRef}...";
         await mutationCoordinator.AddPinchMarkerAsync(
             DraftCurationId,
@@ -1017,6 +1040,113 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         IsPinchPlacementArmed = false;
         await RefreshSessionAsync(SelectedCandidate.CandidateId, null, SelectedPinchGroup.PinchGroupId, preferredCuratedArtifact: null, cancellationToken);
         StatusMessage = $"Ajuste de {SelectedPinchGroup.Name} agregado sobre {SelectedCandidate.SourceEntityRef}.";
+    }
+
+    public void BeginEditSelectedPinchMaxTrim()
+    {
+        if (!CanEditSelectedPinchMaxTrim || SelectedPinchMarker is null)
+        {
+            return;
+        }
+
+        pinchMaxTrimPrefill = ArchitecturalLengthText.FormatInches(
+            SelectedPinchMarker.MaxTrimMm / MillimetersPerInch);
+        editingPinchMarkerId = SelectedPinchMarker.PinchMarkerId;
+        EditableSelectedPinchMaxTrim = pinchMaxTrimPrefill;
+        IsEditingSelectedPinchMaxTrim = true;
+    }
+
+    public void AdjustEditableSelectedPinchMaxTrim(decimal deltaInches)
+    {
+        if (!IsEditingSelectedPinchMaxTrim)
+        {
+            return;
+        }
+
+        if (!ArchitecturalLengthText.TryAdjustInches(
+                EditableSelectedPinchMaxTrim,
+                ArchitecturalLengthDefaultUnit.Inches,
+                deltaInches,
+                out var adjusted))
+        {
+            StatusMessage = "Escribí una capacidad positiva válida para ajustar.";
+            return;
+        }
+
+        EditableSelectedPinchMaxTrim = adjusted;
+        StatusMessage = "Valor preparado; todavía falta Guardar.";
+    }
+
+    public void CancelEditSelectedPinchMaxTrim()
+    {
+        IsEditingSelectedPinchMaxTrim = false;
+        EditableSelectedPinchMaxTrim = string.Empty;
+        editingPinchMarkerId = null;
+        pinchMaxTrimPrefill = string.Empty;
+    }
+
+    public async Task SaveSelectedPinchMaxTrimAsync(CancellationToken cancellationToken)
+    {
+        var marker = SelectedPinchMarker;
+        if (!IsEditingSelectedPinchMaxTrim)
+        {
+            return;
+        }
+
+        if (editingPinchMarkerId is not Guid markerId ||
+            marker is null ||
+            marker.PinchMarkerId != markerId)
+        {
+            CancelEditSelectedPinchMaxTrim();
+            StatusMessage = "La selección cambió; no se guardó la capacidad anterior.";
+            return;
+        }
+
+        if (!CanEditSelectedPinchMaxTrim)
+        {
+            return;
+        }
+
+        if (string.Equals(EditableSelectedPinchMaxTrim.Trim(), pinchMaxTrimPrefill.Trim(), StringComparison.Ordinal))
+        {
+            CancelEditSelectedPinchMaxTrim();
+            StatusMessage = "La capacidad del pinch no cambió.";
+            return;
+        }
+
+        if (!ArchitecturalLengthText.TryParsePositiveInches(
+                EditableSelectedPinchMaxTrim,
+                ArchitecturalLengthDefaultUnit.Inches,
+                out var maxTrimInches) ||
+            maxTrimInches > decimal.MaxValue / MillimetersPerInch)
+        {
+            StatusMessage = "Escrib\u00ED una capacidad positiva. Ej: 1, 6 1/2\" o 1'-2\". No uses restas como 5' -9\".";
+            return;
+        }
+
+        var maxTrimMm = maxTrimInches * MillimetersPerInch;
+        if (maxTrimMm == marker.MaxTrimMm)
+        {
+            CancelEditSelectedPinchMaxTrim();
+            StatusMessage = "La capacidad del pinch no cambió.";
+            return;
+        }
+
+        StatusMessage = "Guardando capacidad del pinch...";
+        await mutationCoordinator.UpdatePinchMarkerMaxTrimAsync(
+            DraftCurationId,
+            markerId,
+            maxTrimMm,
+            cancellationToken);
+
+        CancelEditSelectedPinchMaxTrim();
+        await RefreshSessionAsync(
+            marker.SourceCandidateId,
+            markerId,
+            marker.PinchGroupId,
+            GetSelectedCuratedArtifactSelection(),
+            cancellationToken);
+        StatusMessage = "Capacidad del pinch actualizada.";
     }
 
     public async Task SaveSelectedDimensionIntervalBindingAsync(CancellationToken cancellationToken)
@@ -1739,6 +1869,18 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
     }
 
+    public bool SelectPinchMarker(Guid pinchMarkerId)
+    {
+        var marker = PinchMarkers.FirstOrDefault(item => item.PinchMarkerId == pinchMarkerId);
+        if (marker is null)
+        {
+            return false;
+        }
+
+        SelectedPinchMarker = marker;
+        return true;
+    }
+
     public bool SelectPreviewPath(Guid geometryPathId)
     {
         var selection = selectionCoordinator.ResolvePreviewHit(
@@ -1793,6 +1935,11 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     partial void OnDraftCurationIdChanged(Guid value)
     {
+        if (value == Guid.Empty)
+        {
+            CancelEditSelectedPinchMaxTrim();
+        }
+
         OnPropertyChanged(nameof(CanEditPublishedCuration));
         OnPropertyChanged(nameof(CanPublishCuration));
         OnPropertyChanged(nameof(CanDeleteSelectedItem));
@@ -1804,6 +1951,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(CanRestoreSelectedDimensionIntervalBinding));
         OnPropertyChanged(nameof(CanSaveSelectedCuratedArtifactClassification));
         OnPropertyChanged(nameof(CanSaveSelectedLabelTextHeight));
+        OnPropertyChanged(nameof(CanEditSelectedPinchMaxTrim));
     }
 
     partial void OnSelectedCandidateChanged(WallCandidateDto? value)
@@ -1827,10 +1975,17 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     partial void OnSelectedPinchMarkerChanged(PinchMarkerDto? value)
     {
+        if (IsEditingSelectedPinchMaxTrim && editingPinchMarkerId != value?.PinchMarkerId)
+        {
+            CancelEditSelectedPinchMaxTrim();
+        }
+
         ApplySelectionPresentation(selectionCoordinator.ResolvePinchMarkerPresentation(value));
+        OnPropertyChanged(nameof(SelectedPinchMarkerId));
         OnPropertyChanged(nameof(CanRemoveSelectedPinch));
+        OnPropertyChanged(nameof(CanEditSelectedPinchMaxTrim));
+        OnPropertyChanged(nameof(SelectedPinchMaxTrimDisplay));
         OnPropertyChanged(nameof(CanDeleteSelectedItem));
-        OnPropertyChanged(nameof(SelectedPinchGroupMarkers));
         RaiseUxNotifications();
     }
 
@@ -2201,6 +2356,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         ReplaceItems(WallCandidates, applyPlan.Session.WallCandidates);
         ReplaceItems(PinchGroups, applyPlan.Session.PinchGroups);
         ReplaceItems(PinchMarkers, applyPlan.Session.PinchMarkers);
+        OnPropertyChanged(nameof(SelectedPinchGroupMarkers));
         ReplaceItems(MeasurementCorridors, applyPlan.Session.MeasurementCorridors);
         ReplaceItems(MeasurementNodes, applyPlan.Session.MeasurementNodes);
         ReplaceItems(DimensionIntervalBindings, applyPlan.Session.DimensionIntervalBindings);
@@ -2676,15 +2832,15 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     {
         ApplySelectionClears(plan.ClearSelections);
 
+        if (plan.SelectedPinchGroup is not null)
+        {
+            SelectedPinchGroup = plan.SelectedPinchGroup;
+        }
+
         if (!string.IsNullOrWhiteSpace(plan.SelectedPinchAxis) &&
             !string.Equals(SelectedPinchAxis, plan.SelectedPinchAxis, StringComparison.OrdinalIgnoreCase))
         {
             SelectedPinchAxis = plan.SelectedPinchAxis;
-        }
-
-        if (plan.SelectedPinchGroup is not null)
-        {
-            SelectedPinchGroup = plan.SelectedPinchGroup;
         }
 
         if (plan.LinkedCandidate is not null)

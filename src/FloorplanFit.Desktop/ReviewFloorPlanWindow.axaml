@@ -66,10 +66,11 @@
                           Spacing="6"
                           VerticalAlignment="Center">
                 <TextBlock Classes="caption"
-                           Text="in"
+                           Text="in / ft-in"
                            VerticalAlignment="Center" />
-                <TextBox Width="78"
-                         Text="{Binding NewPinchMaxTrimInches}" />
+                <TextBox Width="110"
+                         Text="{Binding NewPinchMaxTrimInches}"
+                         Watermark="6 1/2&quot;" />
               </StackPanel>
 
               <StackPanel Grid.Column="3"
@@ -150,9 +151,10 @@
                                             MinHeight="0"
                                             HorizontalAlignment="Stretch"
                                             VerticalAlignment="Stretch"
-                                            ClipToBounds="True"
-                                            GeometryPathClicked="PreviewControl_OnGeometryPathClicked"
-                                            RoomLabelClicked="PreviewControl_OnRoomLabelClicked"
+                                             ClipToBounds="True"
+                                             GeometryPathClicked="PreviewControl_OnGeometryPathClicked"
+                                             PinchMarkerClicked="PreviewControl_OnPinchMarkerClicked"
+                                             RoomLabelClicked="PreviewControl_OnRoomLabelClicked"
                                             OpeningLabelClicked="PreviewControl_OnOpeningLabelClicked"
                                             MovableArtifactMoved="PreviewControl_OnMovableArtifactMoved"
                                             DimensionClicked="PreviewControl_OnDimensionClicked"
@@ -160,9 +162,10 @@
                                             ManualWallLinePointClicked="PreviewControl_OnManualWallLinePointClicked"
                                             ManualWallLinePreviewPointChanged="PreviewControl_OnManualWallLinePreviewPointChanged"
                                             GeometryPaths="{Binding GeometryPaths}"
-                                            HighlightGeometryPathId="{Binding HighlightGeometryPathId}"
-                                            PinchMarkers="{Binding PinchMarkers}"
-                                            RoomLabels="{Binding RoomLabels}"
+                                             HighlightGeometryPathId="{Binding HighlightGeometryPathId}"
+                                             PinchMarkers="{Binding PinchMarkers}"
+                                             SelectedPinchMarkerId="{Binding SelectedPinchMarkerId}"
+                                             RoomLabels="{Binding RoomLabels}"
                                             HighlightRoomLabelId="{Binding SelectedRoomLabelId}"
                                             WallCandidates="{Binding WallCandidates}"
                                             OpeningCandidates="{Binding OpeningCandidates}"
@@ -261,12 +264,46 @@
                               <StackPanel Spacing="2">
                                 <TextBlock FontWeight="SemiBold"
                                            Text="{Binding SortOrder, StringFormat='Pinch {0}'}" />
-                                <TextBlock Classes="caption"
-                                           Text="{Binding MaxTrimInches, StringFormat='Max: {0} in'}" />
                               </StackPanel>
                             </DataTemplate>
                           </ListBox.ItemTemplate>
                         </ListBox>
+
+                        <Border Classes="section-card"
+                                IsVisible="{Binding CanRemoveSelectedPinch}">
+                          <StackPanel Spacing="6">
+                            <TextBlock Classes="caption"
+                                       Text="{Binding SelectedPinchMaxTrimDisplay, StringFormat='Capacidad maxima: {0}'}" />
+                            <Button Classes="subtle"
+                                    Content="Editar capacidad"
+                                    IsEnabled="{Binding CanEditSelectedPinchMaxTrim}"
+                                    Click="EditPinchMaxTrimButton_OnClick" />
+                            <StackPanel Spacing="6"
+                                        IsVisible="{Binding IsEditingSelectedPinchMaxTrim}">
+                              <TextBox Text="{Binding EditableSelectedPinchMaxTrim}"
+                                       AutomationProperties.Name="Capacidad editable del pinch en pulgadas"
+                                       Watermark="6 1/2&quot;" />
+                              <StackPanel Orientation="Horizontal"
+                                          HorizontalAlignment="Right"
+                                          Spacing="8">
+                                <Button Classes="subtle"
+                                        Content="- 1/2&quot;"
+                                        AutomationProperties.Name="Disminuir capacidad del pinch en media pulgada"
+                                        Click="DecreasePinchMaxTrimButton_OnClick" />
+                                <Button Classes="subtle"
+                                        Content="+ 1/2&quot;"
+                                        AutomationProperties.Name="Aumentar capacidad del pinch en media pulgada"
+                                        Click="IncreasePinchMaxTrimButton_OnClick" />
+                                <Button Classes="subtle"
+                                        Content="Cancelar"
+                                        Click="CancelPinchMaxTrimButton_OnClick" />
+                                <Button Classes="primary"
+                                        Content="Guardar"
+                                        Click="SavePinchMaxTrimButton_OnClick" />
+                              </StackPanel>
+                            </StackPanel>
+                          </StackPanel>
+                        </Border>
                       </StackPanel>
                     </StackPanel>
                   </Border>

@@ -49,7 +49,17 @@ public sealed class PinchMarker
 
     public decimal PositionRatio { get; }
 
-    public decimal MaxTrimMm { get; }
+    public decimal MaxTrimMm { get; private set; }
 
     public int SortOrder { get; }
+
+    public void UpdateMaxTrim(decimal maxTrimMm)
+    {
+        if (maxTrimMm <= 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxTrimMm), "Max trim must be positive.");
+        }
+
+        MaxTrimMm = maxTrimMm;
+    }
 }

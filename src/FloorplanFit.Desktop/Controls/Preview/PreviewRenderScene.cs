@@ -42,7 +42,8 @@ internal sealed record PreviewRenderScene(
     IReadOnlyList<SitePlanTextDto>? SitePlanTexts = null,
     ManualWallLineDraft? ManualWallLineDraft = null,
     IReadOnlyList<GeometryPathDto>? ChangePreviewGhostGeometry = null,
-    double ChangePreviewGhostOpacity = 0d)
+    double ChangePreviewGhostOpacity = 0d,
+    Guid? SelectedPinchMarkerId = null)
 {
     public bool HasGeometry => PreviewGeometry.Count > 0;
 

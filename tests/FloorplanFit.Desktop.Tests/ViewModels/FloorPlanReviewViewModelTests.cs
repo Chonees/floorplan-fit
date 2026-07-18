@@ -981,7 +981,258 @@ public sealed class FloorPlanReviewViewModelTests
     }
 
     [Fact]
-    public async Task HandlePreviewInteractionAsync_saves_default_one_inch_pinch_limit_as_millimeters()
+    public async Task Selected_pinch_max_trim_edit_adjusts_by_half_inch_without_persisting_or_changing_marker_identity()
+    {
+        using var fixture = await CreateSelectedPinchEditFixtureAsync(152.4m);
+
+        fixture.ViewModel.BeginEditSelectedPinchMaxTrim();
+
+        Assert.Equal("6\"", fixture.ViewModel.EditableSelectedPinchMaxTrim);
+
+        fixture.ViewModel.AdjustEditableSelectedPinchMaxTrim(-0.5m);
+
+        Assert.Equal("5 1/2\"", fixture.ViewModel.EditableSelectedPinchMaxTrim);
+
+        fixture.ViewModel.AdjustEditableSelectedPinchMaxTrim(0.5m);
+
+        Assert.Equal("6\"", fixture.ViewModel.EditableSelectedPinchMaxTrim);
+        Assert.Equal(152.4m, Assert.Single(fixture.MarkerRepository.Items).MaxTrimMm);
+        Assert.Equal(0, fixture.MarkerRepository.UpdateCallCount);
+        Assert.Equal(fixture.PinchMarkerId, fixture.ViewModel.SelectedPinchMarker?.PinchMarkerId);
+    }
+
+    [Fact]
+    public async Task Selected_pinch_max_trim_edit_rejects_non_positive_half_inch_decrement_without_changing_text()
+    {
+        using var fixture = await CreateSelectedPinchEditFixtureAsync(12.7m);
+
+        fixture.ViewModel.BeginEditSelectedPinchMaxTrim();
+        fixture.ViewModel.AdjustEditableSelectedPinchMaxTrim(-0.5m);
+
+        Assert.Equal("1/2\"", fixture.ViewModel.EditableSelectedPinchMaxTrim);
+        Assert.Equal("Escribí una capacidad positiva válida para ajustar.", fixture.ViewModel.StatusMessage);
+
+        fixture.ViewModel.EditableSelectedPinchMaxTrim = "invalid";
+        fixture.ViewModel.AdjustEditableSelectedPinchMaxTrim(0.5m);
+
+        Assert.Equal("invalid", fixture.ViewModel.EditableSelectedPinchMaxTrim);
+        Assert.Equal("Escribí una capacidad positiva válida para ajustar.", fixture.ViewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Successful_pinch_max_trim_adjustment_clears_previous_error_and_requires_guardar()
+    {
+        using var fixture = await CreateSelectedPinchEditFixtureAsync(12.7m);
+
+        fixture.ViewModel.BeginEditSelectedPinchMaxTrim();
+        fixture.ViewModel.AdjustEditableSelectedPinchMaxTrim(-0.5m);
+
+        Assert.Equal("Escribí una capacidad positiva válida para ajustar.", fixture.ViewModel.StatusMessage);
+
+        fixture.ViewModel.AdjustEditableSelectedPinchMaxTrim(0.5m);
+
+        Assert.Equal("1\"", fixture.ViewModel.EditableSelectedPinchMaxTrim);
+        Assert.Equal("Valor preparado; todavía falta Guardar.", fixture.ViewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Adjusting_selected_pinch_max_trim_while_not_editing_leaves_text_unchanged()
+    {
+        using var fixture = await CreateSelectedPinchEditFixtureAsync(152.4m);
+
+        fixture.ViewModel.EditableSelectedPinchMaxTrim = "6\"";
+        fixture.ViewModel.AdjustEditableSelectedPinchMaxTrim(-0.5m);
+
+        Assert.False(fixture.ViewModel.IsEditingSelectedPinchMaxTrim);
+        Assert.Equal("6\"", fixture.ViewModel.EditableSelectedPinchMaxTrim);
+    }
+
+    [Fact]
+    public async Task Selecting_another_pinch_updates_exact_capacity_and_abandons_the_previous_draft_without_collection_churn()
+    {
+        using var fixture = await CreateSelectedPinchEditFixtureAsync(152.4m, 254m);
+        var propertyChanges = new List<string?>();
+        fixture.ViewModel.PropertyChanged += (_, args) => propertyChanges.Add(args.PropertyName);
+
+        fixture.ViewModel.BeginEditSelectedPinchMaxTrim();
+        fixture.ViewModel.EditableSelectedPinchMaxTrim = "7\"";
+
+        Assert.True(fixture.ViewModel.SelectPinchMarker(fixture.SecondPinchMarkerId));
+
+        Assert.Equal(fixture.SecondPinchMarkerId, fixture.ViewModel.SelectedPinchMarkerId);
+        Assert.Equal("10\"", fixture.ViewModel.SelectedPinchMaxTrimDisplay);
+        Assert.False(fixture.ViewModel.IsEditingSelectedPinchMaxTrim);
+        Assert.Empty(fixture.ViewModel.EditableSelectedPinchMaxTrim);
+        Assert.Equal(0, fixture.MarkerRepository.UpdateCallCount);
+        Assert.Equal(152.4m, fixture.MarkerRepository.Items.Single(item => item.Id == fixture.PinchMarkerId).MaxTrimMm);
+        Assert.Equal(254m, fixture.MarkerRepository.Items.Single(item => item.Id == fixture.SecondPinchMarkerId).MaxTrimMm);
+        Assert.Contains(nameof(FloorPlanReviewViewModel.SelectedPinchMarkerId), propertyChanges);
+        Assert.DoesNotContain(nameof(FloorPlanReviewViewModel.SelectedPinchGroupMarkers), propertyChanges);
+    }
+
+    [Fact]
+    public async Task Save_selected_pinch_max_trim_fails_safe_when_the_editing_identity_no_longer_matches_selection()
+    {
+        using var fixture = await CreateSelectedPinchEditFixtureAsync(152.4m, 254m);
+
+        fixture.ViewModel.BeginEditSelectedPinchMaxTrim();
+        fixture.ViewModel.EditableSelectedPinchMaxTrim = "7\"";
+        fixture.ViewModel.SelectedPinchMarker = fixture.ViewModel.PinchMarkers.Single(
+            marker => marker.PinchMarkerId == fixture.SecondPinchMarkerId);
+
+        // Simulate a stale UI attempting to submit after selection already cancelled the original edit.
+        fixture.ViewModel.IsEditingSelectedPinchMaxTrim = true;
+        fixture.ViewModel.EditableSelectedPinchMaxTrim = "12\"";
+        await fixture.ViewModel.SaveSelectedPinchMaxTrimAsync(CancellationToken.None);
+
+        Assert.False(fixture.ViewModel.IsEditingSelectedPinchMaxTrim);
+        Assert.Equal(0, fixture.MarkerRepository.UpdateCallCount);
+        Assert.Equal(152.4m, fixture.MarkerRepository.Items.Single(item => item.Id == fixture.PinchMarkerId).MaxTrimMm);
+        Assert.Equal(254m, fixture.MarkerRepository.Items.Single(item => item.Id == fixture.SecondPinchMarkerId).MaxTrimMm);
+    }
+
+    [Fact]
+    public async Task Save_selected_pinch_max_trim_refreshes_and_restores_the_exact_marker_id()
+    {
+        using var fixture = await CreateSelectedPinchEditFixtureAsync(152.4m, 254m);
+        fixture.ViewModel.SelectedPinchMarker = fixture.ViewModel.PinchMarkers.Single(
+            marker => marker.PinchMarkerId == fixture.SecondPinchMarkerId);
+
+        fixture.ViewModel.BeginEditSelectedPinchMaxTrim();
+        fixture.ViewModel.EditableSelectedPinchMaxTrim = "11\"";
+        await fixture.ViewModel.SaveSelectedPinchMaxTrimAsync(CancellationToken.None);
+
+        Assert.Equal(1, fixture.MarkerRepository.UpdateCallCount);
+        Assert.Equal(152.4m, fixture.MarkerRepository.Items.Single(item => item.Id == fixture.PinchMarkerId).MaxTrimMm);
+        Assert.Equal(279.4m, fixture.MarkerRepository.Items.Single(item => item.Id == fixture.SecondPinchMarkerId).MaxTrimMm);
+        Assert.Equal(fixture.SecondPinchMarkerId, fixture.ViewModel.SelectedPinchMarkerId);
+        Assert.Equal(279.4m, fixture.ViewModel.SelectedPinchMarker?.MaxTrimMm);
+        Assert.Equal("11\"", fixture.ViewModel.SelectedPinchMaxTrimDisplay);
+    }
+
+    [Fact]
+    public async Task Selected_pinch_max_trim_edit_preserves_noop_exact_value_and_refreshes_saved_marker_and_band()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var candidateId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var pinchGroupId = Guid.NewGuid();
+        var pinchMarkerId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "santa-barbara", "SANTA-BARBARA", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var curationRepository = new InMemoryFloorPlanCurationRepository();
+        var markerRepository = new InMemoryPinchMarkerRepository([]);
+
+        FloorPlanReviewSessionDto CreateSession()
+        {
+            var maxTrimMm = markerRepository.Items.SingleOrDefault()?.MaxTrimMm ?? 120m;
+            return new FloorPlanReviewSessionDto(
+                templateId,
+                "santa-barbara",
+                "SANTA-BARBARA",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 120m, 0m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new WallCandidateDto(candidateId, "LINE:68", "WALLS", "Accepted", 0.95m, 101.6m, null, geometryPathId, 1)
+                ],
+                [
+                    new PinchGroupDto(pinchGroupId, "Patio", nameof(PinchAxisTag.Width), 1)
+                ],
+                [
+                    new PinchMarkerDto(pinchMarkerId, pinchGroupId, "Patio", candidateId, geometryPathId, nameof(PinchAxisTag.Width), 0.55m, maxTrimMm, 1)
+                ])
+            {
+                ArticulationBands =
+                [
+                    new ArticulationBandDto(pinchGroupId, "Patio", nameof(PinchAxisTag.Width), 60m, 60m, maxTrimMm, "Suggested")
+                ]
+            };
+        }
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(curationRepository);
+        services.AddSingleton<IPinchMarkerRepository>(markerRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 7, 16, 21, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(CreateSession));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<UpdatePinchMarkerMaxTrimHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        markerRepository.Items.Add(new PinchMarker(
+            pinchMarkerId,
+            viewModel.DraftCurationId,
+            pinchGroupId,
+            candidateId,
+            geometryPathId,
+            0.55m,
+            120m,
+            1));
+        viewModel.SelectedPinchGroup = viewModel.PinchGroups.Single();
+        viewModel.SelectedPinchMarker = viewModel.PinchMarkers.Single();
+
+        Assert.Equal("4 185/256\"", viewModel.SelectedPinchMaxTrimDisplay);
+
+        viewModel.BeginEditSelectedPinchMaxTrim();
+
+        Assert.True(viewModel.IsEditingSelectedPinchMaxTrim);
+        Assert.Equal("4 185/256\"", viewModel.EditableSelectedPinchMaxTrim);
+
+        viewModel.CancelEditSelectedPinchMaxTrim();
+
+        Assert.False(viewModel.IsEditingSelectedPinchMaxTrim);
+
+        viewModel.BeginEditSelectedPinchMaxTrim();
+        viewModel.EditableSelectedPinchMaxTrim += "   ";
+        await viewModel.SaveSelectedPinchMaxTrimAsync(CancellationToken.None);
+
+        Assert.Equal(120m, Assert.Single(markerRepository.Items).MaxTrimMm);
+        Assert.Equal(0, markerRepository.UpdateCallCount);
+        Assert.Equal(pinchMarkerId, viewModel.SelectedPinchMarker?.PinchMarkerId);
+
+        viewModel.BeginEditSelectedPinchMaxTrim();
+        viewModel.EditableSelectedPinchMaxTrim = "1/256\"";
+        await viewModel.SaveSelectedPinchMaxTrimAsync(CancellationToken.None);
+
+        Assert.False(viewModel.IsEditingSelectedPinchMaxTrim);
+        Assert.Equal(1, markerRepository.UpdateCallCount);
+        Assert.Equal(pinchMarkerId, Assert.Single(markerRepository.Items).Id);
+        Assert.Equal(0.099218750m, markerRepository.Items.Single().MaxTrimMm);
+        Assert.Equal(pinchMarkerId, Assert.Single(viewModel.PinchMarkers).PinchMarkerId);
+        Assert.Equal(0.099218750m, viewModel.PinchMarkers.Single().MaxTrimMm);
+        Assert.Equal(pinchMarkerId, viewModel.SelectedPinchMarker?.PinchMarkerId);
+        Assert.Equal(0.099218750m, Assert.Single(viewModel.ArticulationBands).MaxTrimMm);
+        Assert.Equal("1/256\"", viewModel.SelectedPinchMaxTrimDisplay);
+
+        viewModel.BeginEditSelectedPinchMaxTrim();
+        viewModel.EditableSelectedPinchMaxTrim = "0.00390625";
+        await viewModel.SaveSelectedPinchMaxTrimAsync(CancellationToken.None);
+
+        Assert.Equal(1, markerRepository.UpdateCallCount);
+        Assert.Equal(0.099218750m, Assert.Single(markerRepository.Items).MaxTrimMm);
+    }
+
+    [Theory]
+    [InlineData("0.00390625")]
+    [InlineData("1/256\"")]
+    public async Task HandlePreviewInteractionAsync_saves_decimal_and_architectural_pinch_limits_without_rounding_drift(
+        string maxTrimText)
     {
         var templateId = Guid.NewGuid();
         var versionId = Guid.NewGuid();
@@ -1048,14 +1299,14 @@ public sealed class FloorPlanReviewViewModelTests
         groupRepository.Items.Add(new PinchGroup(pinchGroupId, viewModel.DraftCurationId, "Patio", PinchAxisTag.Width, 1));
         viewModel.SelectedPinchGroup = viewModel.PinchGroups.Single();
 
-        Assert.Equal("1", viewModel.NewPinchMaxTrimInches);
+        viewModel.NewPinchMaxTrimInches = maxTrimText;
         Assert.True(viewModel.SelectPreviewPath(geometryPathId));
 
         viewModel.TogglePinchPlacement();
         await viewModel.HandlePreviewInteractionAsync(geometryPathId, 0.5m, CancellationToken.None);
 
         var marker = Assert.Single(markerRepository.Items);
-        Assert.Equal(25.4m, marker.MaxTrimMm);
+        Assert.Equal(0.099218750m, marker.MaxTrimMm);
     }
 
     [Fact]
@@ -1588,6 +1839,70 @@ public sealed class FloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task SelectPinchMarker_preserves_exact_marker_and_group_when_crossing_to_axis_with_multiple_groups()
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var candidateId = Guid.NewGuid();
+        var widthGroupId = Guid.NewGuid();
+        var firstHeightGroupId = Guid.NewGuid();
+        var targetHeightGroupId = Guid.NewGuid();
+        var targetMarkerId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "seminole2000", "SEMINOLE2000", isActive: true);
+        template.SetCurrentVersion(versionId);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 5, 5, 15, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(
+            new FloorPlanReviewSessionDto(
+                templateId,
+                "seminole2000",
+                "SEMINOLE2000",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 0m, 120m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new WallCandidateDto(candidateId, "LINE:68", "WALLS", "Accepted", 0.95m, null, null, geometryPathId, 1)
+                ],
+                [
+                    new PinchGroupDto(widthGroupId, "Ajuste Width", nameof(PinchAxisTag.Width), 1),
+                    new PinchGroupDto(firstHeightGroupId, "Ajuste Height H1", nameof(PinchAxisTag.Height), 2),
+                    new PinchGroupDto(targetHeightGroupId, "Ajuste Height H2", nameof(PinchAxisTag.Height), 3)
+                ],
+                [
+                    new PinchMarkerDto(Guid.NewGuid(), widthGroupId, "Ajuste Width", candidateId, geometryPathId, nameof(PinchAxisTag.Width), 0.25m, 80m, 1),
+                    new PinchMarkerDto(Guid.NewGuid(), firstHeightGroupId, "Ajuste Height H1", candidateId, geometryPathId, nameof(PinchAxisTag.Height), 0.45m, 100m, 2),
+                    new PinchMarkerDto(targetMarkerId, targetHeightGroupId, "Ajuste Height H2", candidateId, geometryPathId, nameof(PinchAxisTag.Height), 0.65m, 120m, 3)
+                ])));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+
+        using var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        Assert.Equal(widthGroupId, viewModel.SelectedPinchGroupId);
+
+        Assert.True(viewModel.SelectPinchMarker(targetMarkerId));
+
+        Assert.Equal(targetMarkerId, viewModel.SelectedPinchMarkerId);
+        Assert.Equal(targetHeightGroupId, viewModel.SelectedPinchGroupId);
+    }
+
+    [Fact]
     public async Task Changing_measurement_corridor_axis_to_height_updates_the_preview_axis_and_height_group()
     {
         var templateId = Guid.NewGuid();
@@ -1725,18 +2040,133 @@ public sealed class FloorPlanReviewViewModelTests
         Assert.Equal(candidate.Id, markerRepository.LastRemovedSourceCandidateId);
     }
 
+    private static async Task<SelectedPinchEditFixture> CreateSelectedPinchEditFixtureAsync(
+        decimal maxTrimMm,
+        decimal? secondMaxTrimMm = null)
+    {
+        var templateId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var candidateId = Guid.NewGuid();
+        var geometryPathId = Guid.NewGuid();
+        var pinchGroupId = Guid.NewGuid();
+        Guid[] pinchMarkerIds = secondMaxTrimMm is null
+            ? [Guid.NewGuid()]
+            : [Guid.NewGuid(), Guid.NewGuid()];
+        decimal[] maxTrimValues = secondMaxTrimMm is null
+            ? [maxTrimMm]
+            : [maxTrimMm, secondMaxTrimMm.Value];
+        var template = new FloorPlanTemplate(templateId, "santa-barbara", "SANTA-BARBARA", isActive: true);
+        template.SetCurrentVersion(versionId);
+        var markerRepository = new InMemoryPinchMarkerRepository([]);
+
+        FloorPlanReviewSessionDto CreateSession()
+        {
+            var markers = pinchMarkerIds
+                .Select((pinchMarkerId, index) => new PinchMarkerDto(
+                    pinchMarkerId,
+                    pinchGroupId,
+                    "Patio",
+                    candidateId,
+                    geometryPathId,
+                    nameof(PinchAxisTag.Width),
+                    0.35m + (0.3m * index),
+                    markerRepository.Items.FirstOrDefault(item => item.Id == pinchMarkerId)?.MaxTrimMm ?? maxTrimValues[index],
+                    index + 1))
+                .ToArray();
+
+            return new FloorPlanReviewSessionDto(
+                templateId,
+                "santa-barbara",
+                "SANTA-BARBARA",
+                "Curated Draft",
+                1,
+                null,
+                [
+                    new GeometryPathDto(geometryPathId, false, [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 120m, 0m)])
+                ],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new WallCandidateDto(candidateId, "LINE:68", "WALLS", "Accepted", 0.95m, 101.6m, null, geometryPathId, 1)
+                ],
+                [
+                    new PinchGroupDto(pinchGroupId, "Patio", nameof(PinchAxisTag.Width), 1)
+                ],
+                markers);
+        }
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IPinchMarkerRepository>(markerRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 7, 16, 21, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(CreateSession));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<UpdatePinchMarkerMaxTrimHandler>();
+
+        var provider = services.BuildServiceProvider();
+        var viewModel = new FloorPlanReviewViewModel(provider.GetRequiredService<IServiceScopeFactory>(), templateId);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+        for (var index = 0; index < pinchMarkerIds.Length; index++)
+        {
+            markerRepository.Items.Add(new PinchMarker(
+                pinchMarkerIds[index],
+                viewModel.DraftCurationId,
+                pinchGroupId,
+                candidateId,
+                geometryPathId,
+                0.35m + (0.3m * index),
+                maxTrimValues[index],
+                index + 1));
+        }
+
+        viewModel.SelectedPinchGroup = viewModel.PinchGroups.Single();
+        viewModel.SelectedPinchMarker = viewModel.PinchMarkers.OrderBy(marker => marker.SortOrder).First();
+
+        return new SelectedPinchEditFixture(provider, viewModel, markerRepository, pinchMarkerIds);
+    }
+
+    private sealed class SelectedPinchEditFixture(
+        ServiceProvider provider,
+        FloorPlanReviewViewModel viewModel,
+        InMemoryPinchMarkerRepository markerRepository,
+        IReadOnlyList<Guid> pinchMarkerIds) : IDisposable
+    {
+        public FloorPlanReviewViewModel ViewModel => viewModel;
+
+        public InMemoryPinchMarkerRepository MarkerRepository => markerRepository;
+
+        public Guid PinchMarkerId => pinchMarkerIds[0];
+
+        public Guid SecondPinchMarkerId => pinchMarkerIds[1];
+
+        public void Dispose() => provider.Dispose();
+    }
+
     private sealed class FakeFloorPlanReviewSessionReader : IFloorPlanReviewSessionReader
     {
-        private readonly FloorPlanReviewSessionDto session;
+        private readonly Func<FloorPlanReviewSessionDto> readSession;
 
         public FakeFloorPlanReviewSessionReader(FloorPlanReviewSessionDto session)
+            : this(() => session)
         {
-            this.session = session;
+        }
+
+        public FakeFloorPlanReviewSessionReader(Func<FloorPlanReviewSessionDto> readSession)
+        {
+            this.readSession = readSession;
         }
 
         public Task<FloorPlanReviewSessionDto?> GetByTemplateAsync(Guid templateId, CancellationToken cancellationToken)
         {
-            return Task.FromResult<FloorPlanReviewSessionDto?>(session);
+            return Task.FromResult<FloorPlanReviewSessionDto?>(readSession());
         }
 
         public Task<FloorPlanReviewSessionDto?> GetByVersionAsync(
@@ -1744,7 +2174,7 @@ public sealed class FloorPlanReviewViewModelTests
             Guid floorPlanVersionId,
             CancellationToken cancellationToken)
         {
-            return Task.FromResult<FloorPlanReviewSessionDto?>(session);
+            return Task.FromResult<FloorPlanReviewSessionDto?>(readSession());
         }
     }
 
@@ -2053,9 +2483,23 @@ public sealed class FloorPlanReviewViewModelTests
 
         public Guid? LastRemovedSourceCandidateId { get; private set; }
 
+        public int UpdateCallCount { get; private set; }
+
         public Task AddAsync(PinchMarker marker, CancellationToken cancellationToken)
         {
             Items.Add(marker);
+            return Task.CompletedTask;
+        }
+
+        public Task UpdateAsync(PinchMarker marker, CancellationToken cancellationToken)
+        {
+            UpdateCallCount++;
+            var index = Items.FindIndex(item => item.Id == marker.Id);
+            if (index >= 0)
+            {
+                Items[index] = marker;
+            }
+
             return Task.CompletedTask;
         }
 

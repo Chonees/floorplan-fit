@@ -13,5 +13,5 @@ public sealed record PinchMarkerDto(
 {
     private const decimal MillimetersPerInch = 25.4m;
 
-    public decimal MaxTrimInches => decimal.Round(MaxTrimMm / MillimetersPerInch, 3, MidpointRounding.AwayFromZero);
+    public decimal MaxTrimInches => MaxTrimMm / MillimetersPerInch;
 }

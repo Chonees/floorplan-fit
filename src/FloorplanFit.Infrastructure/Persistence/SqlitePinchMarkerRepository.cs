@@ -53,6 +53,28 @@ public sealed class SqlitePinchMarkerRepository : IPinchMarkerRepository
         return Task.CompletedTask;
     }
 
+    public Task UpdateAsync(PinchMarker marker, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var command = CreateCommand(
+            """
+            UPDATE pinch_markers
+            SET max_trim_mm = $max_trim_mm
+            WHERE id = $id
+            """);
+        command.Parameters.AddWithValue("$id", marker.Id.ToString());
+        command.Parameters.AddWithValue("$max_trim_mm", marker.MaxTrimMm.ToString(CultureInfo.InvariantCulture));
+        var affectedRows = command.ExecuteNonQuery();
+        if (affectedRows != 1)
+        {
+            throw new InvalidOperationException(
+                $"Expected to update one pinch marker, but updated {affectedRows}.");
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<PinchMarker?> GetByIdAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

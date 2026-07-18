@@ -6,6 +6,8 @@ public interface IPinchMarkerRepository
 {
     Task AddAsync(PinchMarker marker, CancellationToken cancellationToken);
 
+    Task UpdateAsync(PinchMarker marker, CancellationToken cancellationToken);
+
     Task<PinchMarker?> GetByIdAsync(Guid pinchMarkerId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<PinchMarker>> ListByCurationAsync(Guid curationId, CancellationToken cancellationToken);

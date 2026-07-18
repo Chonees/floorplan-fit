@@ -32,7 +32,7 @@
         <TextBlock FontWeight="SemiBold"
                    Text="Simular site plan" />
         <TextBlock Classes="muted"
-                   Text="Medidas del area buildable en feet. El DXF se escribe en inches, igual que los synth actuales."
+                   Text="Medidas del area buildable en decimal feet o architectural feet/inches. El DXF se escribe en inches, igual que los synth actuales."
                    TextWrapping="Wrap" />
 
         <Grid ColumnDefinitions="*,*"
@@ -40,22 +40,44 @@
           <StackPanel Spacing="4">
             <TextBlock Classes="caption"
                        Text="Ancho buildable (ft)" />
-            <TextBox x:Name="BuildableWidthFeetTextBox"
-                     Watermark="39" />
+            <Grid ColumnDefinitions="*,Auto,Auto"
+                  ColumnSpacing="4">
+              <TextBox x:Name="BuildableWidthFeetTextBox"
+                       Watermark="39'-0&quot;" />
+              <Button Grid.Column="1"
+                      Classes="subtle"
+                      Content="- 1/2&quot;"
+                      Click="DecreaseBuildableWidthButton_OnClick" />
+              <Button Grid.Column="2"
+                      Classes="subtle"
+                      Content="+ 1/2&quot;"
+                      Click="IncreaseBuildableWidthButton_OnClick" />
+            </Grid>
           </StackPanel>
           <StackPanel Grid.Column="1"
                       Spacing="4">
             <TextBlock Classes="caption"
                        Text="Alto buildable (ft)" />
-            <TextBox x:Name="BuildableHeightFeetTextBox"
-                     Watermark="77.5" />
+            <Grid ColumnDefinitions="*,Auto,Auto"
+                  ColumnSpacing="4">
+              <TextBox x:Name="BuildableHeightFeetTextBox"
+                       Watermark="77'-6&quot;" />
+              <Button Grid.Column="1"
+                      Classes="subtle"
+                      Content="- 1/2&quot;"
+                      Click="DecreaseBuildableHeightButton_OnClick" />
+              <Button Grid.Column="2"
+                      Classes="subtle"
+                      Content="+ 1/2&quot;"
+                      Click="IncreaseBuildableHeightButton_OnClick" />
+            </Grid>
           </StackPanel>
         </Grid>
 
         <TextBlock x:Name="ValidationText"
                    Foreground="#FFFF6B6B"
                    IsVisible="False"
-                   Text="Ingresa ancho y alto positivos en feet." />
+                   Text="Ingresá ancho y alto positivos. Ej: 39, 39'-0&quot; o 38'-11 1/2&quot;. No uses restas como 5' -9&quot;." />
 
         <StackPanel Orientation="Horizontal"
                     HorizontalAlignment="Right"

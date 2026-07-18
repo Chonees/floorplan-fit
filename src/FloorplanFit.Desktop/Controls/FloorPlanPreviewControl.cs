@@ -69,6 +69,7 @@ public sealed class FloorPlanPreviewControl : Control
             ProtectedDetailAssembliesProperty,
             CuratedPlanArtifactsProperty,
             PreviewPinchGroupIdProperty,
+            SelectedPinchMarkerIdProperty,
             PreviewAxisTagProperty,
             IsPinchPlacementArmedProperty,
             IsManualWallLinePlacementArmedProperty,
@@ -260,6 +261,9 @@ public sealed class FloorPlanPreviewControl : Control
 
     public static readonly StyledProperty<Guid?> PreviewPinchGroupIdProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, Guid?>(nameof(PreviewPinchGroupId));
+
+    public static readonly StyledProperty<Guid?> SelectedPinchMarkerIdProperty =
+        AvaloniaProperty.Register<FloorPlanPreviewControl, Guid?>(nameof(SelectedPinchMarkerId));
 
     public static readonly StyledProperty<string?> PreviewAxisTagProperty =
         AvaloniaProperty.Register<FloorPlanPreviewControl, string?>(nameof(PreviewAxisTag));
@@ -462,6 +466,12 @@ public sealed class FloorPlanPreviewControl : Control
         set => SetValue(PreviewPinchGroupIdProperty, value);
     }
 
+    public Guid? SelectedPinchMarkerId
+    {
+        get => GetValue(SelectedPinchMarkerIdProperty);
+        set => SetValue(SelectedPinchMarkerIdProperty, value);
+    }
+
     public string? PreviewAxisTag
     {
         get => GetValue(PreviewAxisTagProperty);
@@ -493,6 +503,7 @@ public sealed class FloorPlanPreviewControl : Control
     }
 
     public event EventHandler<GeometryPathClickedEventArgs>? GeometryPathClicked;
+    public event EventHandler<PinchMarkerClickedEventArgs>? PinchMarkerClicked;
     public event EventHandler<RoomLabelClickedEventArgs>? RoomLabelClicked;
     public event EventHandler<OpeningLabelClickedEventArgs>? OpeningLabelClicked;
     public event EventHandler<MovableArtifactMovedEventArgs>? MovableArtifactMoved;
@@ -614,6 +625,54 @@ public sealed class FloorPlanPreviewControl : Control
             .OrderForHitTesting(geometryPaths);
     }
 
+    internal static PinchMarkerDto? TryResolvePinchMarkerHit(
+        IReadOnlyList<PinchMarkerDto>? pinchMarkers,
+        IReadOnlyList<GeometryPathDto>? previewGeometry,
+        FloorPlanPreviewGeometry.PreviewViewport viewport,
+        Point pointerPosition,
+        double hitTolerancePixels)
+    {
+        if (pinchMarkers is not { Count: > 0 } ||
+            previewGeometry is not { Count: > 0 } ||
+            !double.IsFinite(hitTolerancePixels) ||
+            hitTolerancePixels < 0d)
+        {
+            return null;
+        }
+
+        var pathsById = previewGeometry.ToDictionary(path => path.Id);
+        var bestDistanceSquared = hitTolerancePixels * hitTolerancePixels;
+        PinchMarkerDto? bestHit = null;
+
+        foreach (var marker in pinchMarkers)
+        {
+            if (!pathsById.TryGetValue(marker.GeometryPathId, out var path))
+            {
+                continue;
+            }
+
+            var worldPoint = FloorPlanPreviewGeometry.GetPointAtRatio(path, marker.PositionRatio);
+            if (worldPoint is null)
+            {
+                continue;
+            }
+
+            var projected = viewport.Project(worldPoint.Value.X, worldPoint.Value.Y);
+            var deltaX = projected.X - pointerPosition.X;
+            var deltaY = projected.Y - pointerPosition.Y;
+            var distanceSquared = (deltaX * deltaX) + (deltaY * deltaY);
+            if (distanceSquared > bestDistanceSquared)
+            {
+                continue;
+            }
+
+            bestDistanceSquared = distanceSquared;
+            bestHit = marker;
+        }
+
+        return bestHit;
+    }
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -728,7 +787,13 @@ public sealed class FloorPlanPreviewControl : Control
                 },
                 geometryPathId => TryResolveMovableArtifact(geometryPathId, out var movableArtifact)
                     ? movableArtifact
-                    : null));
+                    : null,
+                ResolvePinchMarkerHit: point => TryResolvePinchMarkerHit(
+                    PinchMarkers,
+                    BuildPreviewGeometry(axisTag),
+                    viewport.Value,
+                    point,
+                    HitTestTolerance)));
 
         if (!pressOutcome.Handled)
         {
@@ -748,6 +813,11 @@ public sealed class FloorPlanPreviewControl : Control
         if (pressOutcome.OpeningLabelClickedId is { } openingLabelId)
         {
             OpeningLabelClicked?.Invoke(this, new OpeningLabelClickedEventArgs(openingLabelId));
+        }
+
+        if (pressOutcome.PinchMarkerClickedId is { } pinchMarkerId)
+        {
+            PinchMarkerClicked?.Invoke(this, new PinchMarkerClickedEventArgs(pinchMarkerId));
         }
 
         if (pressOutcome.GeometryClick is { } geometryClick)
@@ -860,7 +930,8 @@ public sealed class FloorPlanPreviewControl : Control
                 CurrentState: CaptureInteractionState(),
                 PointerPosition: pointerPosition,
                 Viewport: viewport,
-                ResolveSnappedDimensionWorldPoint: resolveSnappedDimensionWorldPoint));
+                ResolveSnappedDimensionWorldPoint: resolveSnappedDimensionWorldPoint,
+                EdgeDragSnapStepSourceUnits: ResolveEdgeDragSnapStepSourceUnits(MeasurementContext)));
 
         ApplyInteractionState(moveOutcome.NextState);
         if (moveOutcome.InvalidateVisual)
@@ -975,6 +1046,23 @@ public sealed class FloorPlanPreviewControl : Control
         Point startPointerPosition,
         Point currentPointerPosition)
         => PreviewInteractionCoordinator.ResolvePanStateForDrag(startState, startPointerPosition, currentPointerPosition);
+
+    internal static decimal? ResolveEdgeDragSnapStepSourceUnits(MeasurementContextDto? measurementContext)
+    {
+        if (measurementContext is null || measurementContext.ToMillimetersFactor <= 0m)
+        {
+            return null;
+        }
+
+        try
+        {
+            return 12.7m / measurementContext.ToMillimetersFactor;
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
+    }
 
     internal static PreviewZoomState PreserveZoomStateForBaseViewportChange(
         FloorPlanPreviewGeometry.PreviewViewport oldBaseViewport,
@@ -1273,7 +1361,8 @@ public sealed class FloorPlanPreviewControl : Control
             ActiveDimensionHandleKind: activeDimensionEdit?.HandleKind,
             ManualWallLineDraft: ManualWallLineDraft,
             ChangePreviewGhostGeometry: changePreviewGhostGeometry,
-            ChangePreviewGhostOpacity: ghostOpacity);
+            ChangePreviewGhostOpacity: ghostOpacity,
+            SelectedPinchMarkerId: SelectedPinchMarkerId);
     }
 
     private DimensionDto? BuildEditedDimensionPreview(PreviewDimensionEditState edit, DimensionDto baseDimension)
@@ -1803,6 +1892,16 @@ public sealed class FloorPlanPreviewControl : Control
         public Guid GeometryPathId { get; }
 
         public decimal PositionRatio { get; }
+    }
+
+    public sealed class PinchMarkerClickedEventArgs : EventArgs
+    {
+        public PinchMarkerClickedEventArgs(Guid pinchMarkerId)
+        {
+            PinchMarkerId = pinchMarkerId;
+        }
+
+        public Guid PinchMarkerId { get; }
     }
 
     public sealed class RoomLabelClickedEventArgs : EventArgs

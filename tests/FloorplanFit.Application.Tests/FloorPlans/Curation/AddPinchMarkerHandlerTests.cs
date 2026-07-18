@@ -119,6 +119,9 @@ public sealed class AddPinchMarkerHandlerTests
             return Task.CompletedTask;
         }
 
+        public Task UpdateAsync(PinchMarker marker, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task<PinchMarker?> GetByIdAsync(Guid pinchMarkerId, CancellationToken cancellationToken)
             => Task.FromResult(Items.SingleOrDefault(item => item.Id == pinchMarkerId));
 

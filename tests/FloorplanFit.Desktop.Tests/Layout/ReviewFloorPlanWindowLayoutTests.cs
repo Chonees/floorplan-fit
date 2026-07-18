@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Xunit;
 
 namespace FloorplanFit.Desktop.Tests.Layout;
@@ -11,7 +12,6 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         var solutionRoot = FindSolutionRoot();
         var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
         var xaml = File.ReadAllText(xamlPath);
-
         Assert.Contains("<UserControl", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("RequestedThemeVariant=\"Dark\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("TransparencyLevelHint=\"AcrylicBlur, Mica, Blur\"", xaml, StringComparison.Ordinal);
@@ -53,6 +53,8 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("RoomLabelClicked", xaml, StringComparison.Ordinal);
         Assert.Contains("OpeningLabelClicked", xaml, StringComparison.Ordinal);
         Assert.Contains("PreviewPinchGroupId=\"{Binding SelectedPinchGroupId}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedPinchMarkerId=\"{Binding SelectedPinchMarkerId}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("PinchMarkerClicked=\"PreviewControl_OnPinchMarkerClicked\"", xaml, StringComparison.Ordinal);
         Assert.Contains("RoomLabels=\"{Binding RoomLabels}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("OpeningCandidates=\"{Binding OpeningCandidates}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("OpeningLabels=\"{Binding OpeningLabels}\"", xaml, StringComparison.Ordinal);
@@ -181,7 +183,41 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("x:Name=\"BuildableHeightFeetTextBox\"", dialogXaml, StringComparison.Ordinal);
         Assert.Contains("AdjustSitePlanSetupMode.Import", dialogCodeBehind, StringComparison.Ordinal);
         Assert.Contains("AdjustSitePlanSetupMode.Simulate", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("TryParsePositiveFeet", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("TryCreateSimulation", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("architectural feet/inches", dialogXaml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Watermark=\"39'-0&quot;\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("Watermark=\"77'-6&quot;\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("Ej: 39, 39'-0&quot;", dialogXaml, StringComparison.Ordinal);
+
+        Assert.Contains("Content=\"- 1/2&quot;\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"+ 1/2&quot;\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"DecreaseBuildableWidthButton_OnClick\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"IncreaseBuildableWidthButton_OnClick\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"DecreaseBuildableHeightButton_OnClick\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"IncreaseBuildableHeightButton_OnClick\"", dialogXaml, StringComparison.Ordinal);
+        Assert.Contains("TryAdjustInches", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("ArchitecturalLengthDefaultUnit.Feet", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("deltaInches", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("out var formatted", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("textBox.Text = formatted;", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("ValidationText.IsVisible = false;", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains("ValidationText.IsVisible = true;", dialogCodeBehind, StringComparison.Ordinal);
+        Assert.Contains(
+            "=> AdjustBuildableLength(BuildableWidthFeetTextBox, -0.5m);",
+            dialogCodeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "=> AdjustBuildableLength(BuildableWidthFeetTextBox, 0.5m);",
+            dialogCodeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "=> AdjustBuildableLength(BuildableHeightFeetTextBox, -0.5m);",
+            dialogCodeBehind,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "=> AdjustBuildableLength(BuildableHeightFeetTextBox, 0.5m);",
+            dialogCodeBehind,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -406,6 +442,9 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         var solutionRoot = FindSolutionRoot();
         var xamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml");
         var xaml = File.ReadAllText(xamlPath);
+        var codeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "ReviewFloorPlanWindow.axaml.cs");
+        var codeBehind = File.ReadAllText(codeBehindPath);
+        var xamlDocument = XDocument.Parse(xaml);
 
         Assert.Contains("x:Name=\"FitToolPalette\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"FitToolbarCommands\"", xaml, StringComparison.Ordinal);
@@ -431,9 +470,11 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("IsManualWallLinePlacementArmed=\"{Binding IsManualWallLinePlacementArmed}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ManualWallLinePointClicked=\"PreviewControl_OnManualWallLinePointClicked\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ManualWallLinePreviewPointChanged=\"PreviewControl_OnManualWallLinePreviewPointChanged\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Text=\"in\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"in / ft-in\"", xaml, StringComparison.Ordinal);
         Assert.Contains("NewPinchMaxTrimInches", xaml, StringComparison.Ordinal);
-        Assert.Contains("MaxTrimInches", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"{Binding MaxTrimInches", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("StringFormat='Max: {0} in'", xaml, StringComparison.Ordinal);
+        Assert.Contains("Watermark=\"6 1/2&quot;\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("NewPinchMaxTrimMm", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("MaxTrimMm, StringFormat='Max: {0} mm'", xaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"Herramientas Fit\"", xaml, StringComparison.Ordinal);
@@ -453,6 +494,34 @@ public sealed class ReviewFloorPlanWindowLayoutTests
         Assert.Contains("Text=\"Pinches de este grupo\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ItemsSource=\"{Binding SelectedPinchGroupMarkers}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SelectedItem=\"{Binding SelectedPinchMarker}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding SelectedPinchMaxTrimDisplay", xaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Editar capacidad\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"EditPinchMaxTrimButton_OnClick\"", xaml, StringComparison.Ordinal);
+        var editableCapacityTextBox = xamlDocument
+            .Descendants()
+            .Single(element =>
+                element.Name.LocalName == "TextBox" &&
+                element.Attribute("Text")?.Value == "{Binding EditableSelectedPinchMaxTrim}");
+        Assert.Equal("Capacidad editable del pinch en pulgadas", editableCapacityTextBox.Attribute("AutomationProperties.Name")?.Value);
+
+        var halfInchButtons = xamlDocument
+            .Descendants()
+            .Where(element =>
+                element.Name.LocalName == "Button" &&
+                element.Attribute("Content")?.Value is "- 1/2\"" or "+ 1/2\"")
+            .ToArray();
+        Assert.Equal(2, halfInchButtons.Length);
+        var decreaseButton = halfInchButtons.Single(element => element.Attribute("Content")?.Value == "- 1/2\"");
+        Assert.Equal("DecreasePinchMaxTrimButton_OnClick", decreaseButton.Attribute("Click")?.Value);
+        Assert.Equal("Disminuir capacidad del pinch en media pulgada", decreaseButton.Attribute("AutomationProperties.Name")?.Value);
+        var increaseButton = halfInchButtons.Single(element => element.Attribute("Content")?.Value == "+ 1/2\"");
+        Assert.Equal("IncreasePinchMaxTrimButton_OnClick", increaseButton.Attribute("Click")?.Value);
+        Assert.Equal("Aumentar capacidad del pinch en media pulgada", increaseButton.Attribute("AutomationProperties.Name")?.Value);
+        Assert.Contains("Click=\"SavePinchMaxTrimButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"CancelPinchMaxTrimButton_OnClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AdjustEditableSelectedPinchMaxTrim(-0.5m)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("AdjustEditableSelectedPinchMaxTrim(0.5m)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("SelectPinchMarker(e.PinchMarkerId)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("IsEnabled=\"{Binding CanRemoveSelectedPinch}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"Grupos de A y B\"", xaml, StringComparison.Ordinal);
         Assert.Contains("ItemsSource=\"{Binding MeasurementNodeGroupOptions}\"", xaml, StringComparison.Ordinal);

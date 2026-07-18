@@ -255,6 +255,21 @@ internal sealed class FloorPlanReviewMutationCoordinator
             cancellationToken);
     }
 
+    public async Task UpdatePinchMarkerMaxTrimAsync(
+        Guid draftCurationId,
+        Guid pinchMarkerId,
+        decimal maxTrimMm,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<UpdatePinchMarkerMaxTrimHandler>();
+        await handler.HandleAsync(
+            draftCurationId,
+            pinchMarkerId,
+            maxTrimMm,
+            cancellationToken);
+    }
+
     public async Task SaveLabelTextHeightAsync(
         Guid draftCurationId,
         string sourceArtifactKind,

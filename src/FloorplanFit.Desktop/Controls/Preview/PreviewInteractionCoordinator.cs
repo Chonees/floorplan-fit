@@ -33,7 +33,8 @@ internal static class PreviewInteractionCoordinator
         Func<Point, RoomLabelDto?> ResolveRoomLabelHit,
         Func<Point, OpeningLabelDto?> ResolveOpeningLabelHit,
         Func<Point, GeometryHit?> ResolveGeometryHit,
-        Func<Guid, FloorPlanPreviewControl.PreviewMovableArtifactDescriptor?> ResolveMovableArtifact);
+        Func<Guid, FloorPlanPreviewControl.PreviewMovableArtifactDescriptor?> ResolveMovableArtifact,
+        Func<Point, PinchMarkerDto?>? ResolvePinchMarkerHit = null);
 
     internal readonly record struct LeftButtonPressOutcome(
         bool Handled,
@@ -46,7 +47,8 @@ internal static class PreviewInteractionCoordinator
         FloorPlanPreviewGeometry.PreviewCompressionEdge? StartedEdgeDrag,
         FloorPlanPreviewControl.PreviewArtifactMoveState? StartedArtifactMove,
         FloorPlanPreviewControl.PreviewPendingDimensionEditState? PendingDimensionEdit,
-        FloorPlanPreviewControl.PreviewDimensionEditState? StartedDimensionEdit);
+        FloorPlanPreviewControl.PreviewDimensionEditState? StartedDimensionEdit,
+        Guid? PinchMarkerClickedId = null);
 
     internal readonly record struct InteractionState(
         FloorPlanPreviewControl.PreviewZoomState PreviewZoomState,
@@ -92,7 +94,8 @@ internal static class PreviewInteractionCoordinator
         InteractionState CurrentState,
         Point PointerPosition,
         FloorPlanPreviewGeometry.PreviewViewport? Viewport,
-        Func<FloorPlanPreviewControl.PreviewDimensionEditState, Point, Point>? ResolveSnappedDimensionWorldPoint);
+        Func<FloorPlanPreviewControl.PreviewDimensionEditState, Point, Point>? ResolveSnappedDimensionWorldPoint,
+        decimal? EdgeDragSnapStepSourceUnits = null);
 
     internal readonly record struct PointerMovedOutcome(
         bool Handled,
@@ -283,6 +286,23 @@ internal static class PreviewInteractionCoordinator
                 StartedDimensionEdit: null);
         }
 
+        if (request.ResolvePinchMarkerHit?.Invoke(request.PointerPosition) is { } pinchMarker)
+        {
+            return new LeftButtonPressOutcome(
+                Handled: true,
+                CapturePointer: false,
+                InvalidateVisual: false,
+                DimensionClickedId: null,
+                RoomLabelClickedId: null,
+                OpeningLabelClickedId: null,
+                GeometryClick: null,
+                StartedEdgeDrag: null,
+                StartedArtifactMove: null,
+                PendingDimensionEdit: null,
+                StartedDimensionEdit: null,
+                PinchMarkerClickedId: pinchMarker.PinchMarkerId);
+        }
+
         if (request.ResolveGeometryHit(request.PointerPosition) is not { } geometryHit)
         {
             return default;
@@ -437,7 +457,9 @@ internal static class PreviewInteractionCoordinator
             InvalidateVisual: true,
             NextState: state with
             {
-                ActivePreviewTrimSourceUnits = (decimal)(pixelDelta / request.Viewport.Value.Scale)
+                ActivePreviewTrimSourceUnits = ResolveTrimSourceUnits(
+                    pixelDelta / request.Viewport.Value.Scale,
+                    request.EdgeDragSnapStepSourceUnits)
             });
     }
 
@@ -565,6 +587,49 @@ internal static class PreviewInteractionCoordinator
     private static bool HasMeaningfulDifference(decimal original, decimal updated)
     {
         return decimal.Abs(updated - original) >= FloorPlanPreviewControl.MovementPersistenceEpsilon;
+    }
+
+    private static decimal ResolveTrimSourceUnits(double value, decimal? snapStep)
+    {
+        if (!double.IsFinite(value))
+        {
+            return 0m;
+        }
+
+        decimal sourceValue;
+        try
+        {
+            sourceValue = (decimal)value;
+        }
+        catch (OverflowException)
+        {
+            return 0m;
+        }
+
+        return SnapToNearestStep(sourceValue, snapStep);
+    }
+
+    private static decimal SnapToNearestStep(decimal value, decimal? snapStep)
+    {
+        if (value <= 0m)
+        {
+            return 0m;
+        }
+
+        var step = snapStep.GetValueOrDefault();
+        if (step <= 0m)
+        {
+            return value;
+        }
+
+        try
+        {
+            return decimal.Round(value / step, 0, MidpointRounding.AwayFromZero) * step;
+        }
+        catch (OverflowException)
+        {
+            return value;
+        }
     }
 
     private static decimal RoundModelValue(decimal value)

@@ -58,6 +58,45 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void Preview_control_exposes_exact_selected_pinch_marker_identity()
+    {
+        var selectedPinchMarkerId = Guid.NewGuid();
+        var control = new FloorPlanPreviewControl
+        {
+            SelectedPinchMarkerId = selectedPinchMarkerId
+        };
+
+        Assert.Equal(selectedPinchMarkerId, control.SelectedPinchMarkerId);
+    }
+
+    [Fact]
+    public void ResolveEdgeDragSnapStepSourceUnits_converts_half_an_inch_to_source_units()
+    {
+        var inchContext = new MeasurementContextDto("Inch", 25.4m, 1m, 1m);
+        var millimeterContext = new MeasurementContextDto("Millimeter", 1m, 1m, 1m);
+
+        Assert.Equal(0.5m, FloorPlanPreviewControl.ResolveEdgeDragSnapStepSourceUnits(inchContext));
+        Assert.Equal(12.7m, FloorPlanPreviewControl.ResolveEdgeDragSnapStepSourceUnits(millimeterContext));
+    }
+
+    [Fact]
+    public void ResolveEdgeDragSnapStepSourceUnits_returns_null_without_measurement_context()
+    {
+        Assert.Null(FloorPlanPreviewControl.ResolveEdgeDragSnapStepSourceUnits(measurementContext: null));
+    }
+
+    [Fact]
+    public void ResolveEdgeDragSnapStepSourceUnits_returns_null_for_invalid_or_overflowing_factors()
+    {
+        Assert.Null(FloorPlanPreviewControl.ResolveEdgeDragSnapStepSourceUnits(
+            new MeasurementContextDto("Unknown", 0m, 1m, 1m)));
+        Assert.Null(FloorPlanPreviewControl.ResolveEdgeDragSnapStepSourceUnits(
+            new MeasurementContextDto("Unknown", -1m, 1m, 1m)));
+        Assert.Null(FloorPlanPreviewControl.ResolveEdgeDragSnapStepSourceUnits(
+            new MeasurementContextDto("Unknown", 1e-28m, 1m, 1m)));
+    }
+
+    [Fact]
     public void Preview_control_exposes_dimensions_for_canvas_overlay()
     {
         var changedDimensionId = Guid.NewGuid();
@@ -406,6 +445,43 @@ public sealed class FloorPlanPreviewControlTests
         var hitTestGeometry = FloorPlanPreviewControl.BuildHitTestGeometry(geometryPaths, openings);
 
         Assert.Equal([openingPathId, wallPathId], hitTestGeometry.Select(item => item.Id).ToArray());
+    }
+
+    [Fact]
+    public void TryResolvePinchMarkerHit_returns_the_exact_marker_at_its_rendered_circle()
+    {
+        var geometryPathId = Guid.NewGuid();
+        var marker = new PinchMarkerDto(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Patio",
+            Guid.NewGuid(),
+            geometryPathId,
+            "Width",
+            0.5m,
+            120m,
+            1);
+        var path = new GeometryPathDto(
+            geometryPathId,
+            false,
+            [new GeometrySegmentDto(geometryPathId, 1, 0m, 0m, 100m, 0m)]);
+        var viewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0d, 0d, 200d, 100d),
+            MinX: 0d,
+            MinY: 0d,
+            Scale: 1d,
+            OffsetX: 0d,
+            OffsetY: 0d);
+        var renderedCircleCenter = viewport.Project(50m, 0m);
+
+        var hit = FloorPlanPreviewControl.TryResolvePinchMarkerHit(
+            [marker],
+            [path],
+            viewport,
+            renderedCircleCenter,
+            hitTolerancePixels: 8d);
+
+        Assert.Equal(marker.PinchMarkerId, hit?.PinchMarkerId);
     }
 
     [Fact]
@@ -1520,23 +1596,29 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
-    public void PinchMarkerPreviewLayerRenderer_styles_active_group_above_axis_and_inactive_markers()
+    public void PinchMarkerPreviewLayerRenderer_styles_only_the_exact_selected_marker_as_active()
     {
         var selectedGroupId = Guid.NewGuid();
-        var activeGroupMarker = CreatePinchMarker(selectedGroupId, "Height");
-        var activeAxisMarker = CreatePinchMarker(Guid.NewGuid(), "Height");
-        var inactiveMarker = CreatePinchMarker(Guid.NewGuid(), "Width");
+        var selectedMarker = CreatePinchMarker(selectedGroupId, "Height");
+        var sameGroupMarker = CreatePinchMarker(selectedGroupId, "Height");
+        var sameAxisMarker = CreatePinchMarker(Guid.NewGuid(), "Height");
+        var otherAxisMarker = CreatePinchMarker(Guid.NewGuid(), "Width");
 
-        var activeGroupStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(activeGroupMarker, selectedGroupId, "Height");
-        var activeAxisStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(activeAxisMarker, selectedGroupId, "Height");
-        var inactiveStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(inactiveMarker, selectedGroupId, "Height");
+        var selectedStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(selectedMarker, selectedMarker.PinchMarkerId);
+        var sameGroupStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(sameGroupMarker, selectedMarker.PinchMarkerId);
+        var sameAxisStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(sameAxisMarker, selectedMarker.PinchMarkerId);
+        var otherAxisStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(otherAxisMarker, selectedMarker.PinchMarkerId);
+        var noSelectionStyles = new[] { selectedMarker, sameGroupMarker, sameAxisMarker, otherAxisMarker }
+            .Select(marker => PinchMarkerPreviewLayerRenderer.ResolveStyle(marker, selectedPinchMarkerId: null))
+            .ToArray();
 
-        Assert.Equal(Colors.SeaGreen, activeGroupStyle.Fill);
-        Assert.Equal(5d, activeGroupStyle.Radius);
-        Assert.Equal(Colors.DodgerBlue, activeAxisStyle.Fill);
-        Assert.Equal(4d, activeAxisStyle.Radius);
-        Assert.Equal(Colors.SlateGray, inactiveStyle.Fill);
-        Assert.Equal(4d, inactiveStyle.Radius);
+        Assert.Equal(Colors.SeaGreen, selectedStyle.Fill);
+        Assert.Equal(5d, selectedStyle.Radius);
+        Assert.Equal(Colors.SlateGray, sameGroupStyle.Fill);
+        Assert.Equal(Colors.SlateGray, sameAxisStyle.Fill);
+        Assert.Equal(Colors.SlateGray, otherAxisStyle.Fill);
+        Assert.All(noSelectionStyles, style => Assert.Equal(Colors.SlateGray, style.Fill));
+        Assert.All(noSelectionStyles, style => Assert.Equal(4d, style.Radius));
     }
 
     private static PinchMarkerDto CreatePinchMarker(Guid pinchGroupId, string axisTag)

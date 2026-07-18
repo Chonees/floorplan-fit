@@ -136,6 +136,7 @@ public static class DesktopServiceRegistration
         services.AddScoped<AddPinchGroupHandler>();
         services.AddScoped<AddManualWallCandidateHandler>();
         services.AddScoped<AddPinchMarkerHandler>();
+        services.AddScoped<UpdatePinchMarkerMaxTrimHandler>();
         services.AddScoped<AddMeasurementCorridorHandler>();
         services.AddScoped<ChangeMeasurementCorridorAxisHandler>();
         services.AddScoped<AddMeasurementNodeHandler>();
