@@ -18,4 +18,6 @@ public sealed record CreateMultiSheetExportAuditRequest(
     public string? CanonicalFloorPlanVerificationPath { get; init; }
 
     public IReadOnlyList<PlanSetPackageArtifactDto> PackageArtifacts { get; init; } = [];
+
+    public string? PackageStagingDirectory { get; init; }
 }

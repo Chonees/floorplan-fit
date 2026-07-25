@@ -5,7 +5,6 @@ using Avalonia.Platform.Storage;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Desktop.ViewModels;
-using FloorplanFit.Infrastructure.Dxf;
 
 namespace FloorplanFit.Desktop;
 
@@ -345,15 +344,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var setup = await new AdjustSitePlanSetupDialog().ShowDialog<AdjustSitePlanSetupResult?>(this);
-        if (setup is null)
-        {
-            return;
-        }
-
-        var sitePlanFilePath = setup.Mode == AdjustSitePlanSetupMode.Import
-            ? await OpenSitePlanPickerAsync()
-            : SyntheticSitePlanDxfWriter.WriteToTempFile(setup.BuildableWidthFeet, setup.BuildableHeightFeet);
+        var sitePlanFilePath = await OpenSitePlanPickerAsync();
         if (sitePlanFilePath is null)
         {
             return;

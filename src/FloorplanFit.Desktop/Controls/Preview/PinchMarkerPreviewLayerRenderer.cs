@@ -11,7 +11,9 @@ internal static class PinchMarkerPreviewLayerRenderer
         FloorPlanPreviewGeometry.PreviewViewport viewport,
         IReadOnlyList<GeometryPathDto> previewGeometry,
         IReadOnlyList<PinchMarkerDto>? pinchMarkers,
-        Guid? selectedPinchMarkerId)
+        Guid? selectedPinchMarkerId,
+        Guid? previewPinchGroupId,
+        FloorPlanPreviewGeometry.PreviewCompressionEdge? activeDragEdge)
     {
         if (pinchMarkers is not { Count: > 0 })
         {
@@ -33,7 +35,7 @@ internal static class PinchMarkerPreviewLayerRenderer
             }
 
             var projected = viewport.Project((decimal)worldPoint.Value.X, (decimal)worldPoint.Value.Y);
-            var style = ResolveStyle(marker, selectedPinchMarkerId);
+            var style = ResolveStyle(marker, selectedPinchMarkerId, previewPinchGroupId, activeDragEdge);
             context.DrawEllipse(new SolidColorBrush(style.Fill), null, projected, style.Radius, style.Radius);
             context.DrawEllipse(null, new Pen(Brushes.White, 1), projected, style.Radius, style.Radius);
         }
@@ -55,11 +57,27 @@ internal static class PinchMarkerPreviewLayerRenderer
 
     internal static PinchMarkerVisualStyle ResolveStyle(
         PinchMarkerDto marker,
-        Guid? selectedPinchMarkerId)
+        Guid? selectedPinchMarkerId,
+        Guid? previewPinchGroupId = null,
+        FloorPlanPreviewGeometry.PreviewCompressionEdge? activeDragEdge = null)
     {
-        return selectedPinchMarkerId == marker.PinchMarkerId
-            ? new PinchMarkerVisualStyle(PreviewSemanticPalette.ActivePinchGroup, 5d)
-            : new PinchMarkerVisualStyle(PreviewSemanticPalette.InactivePinch, 4d);
+        var isActiveDragMarker = marker.PinchGroupId == previewPinchGroupId &&
+                                 (activeDragEdge switch
+                                 {
+                                     FloorPlanPreviewGeometry.PreviewCompressionEdge.Left or
+                                     FloorPlanPreviewGeometry.PreviewCompressionEdge.Right
+                                         => string.Equals(marker.AxisTag, "Width", StringComparison.OrdinalIgnoreCase),
+                                     FloorPlanPreviewGeometry.PreviewCompressionEdge.Top or
+                                     FloorPlanPreviewGeometry.PreviewCompressionEdge.Bottom
+                                         => string.Equals(marker.AxisTag, "Height", StringComparison.OrdinalIgnoreCase),
+                                     _ => false
+                                 });
+        var isSelected = selectedPinchMarkerId == marker.PinchMarkerId;
+        var isGreen = activeDragEdge is null ? isSelected : isActiveDragMarker;
+
+        return new PinchMarkerVisualStyle(
+            isGreen ? PreviewSemanticPalette.ActivePinchGroup : PreviewSemanticPalette.InactivePinch,
+            isSelected ? 5d : 4d);
     }
 
     internal readonly record struct PinchMarkerVisualStyle(Color Fill, double Radius);

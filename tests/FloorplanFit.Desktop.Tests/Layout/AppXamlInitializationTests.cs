@@ -227,6 +227,64 @@ public sealed class AppXamlInitializationTests
     }
 
     [Fact]
+    public void Commissioned_adjustment_shows_truthful_structural_before_after_overlays_before_its_single_primary_action()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var xaml = File.ReadAllText(Path.Combine(
+            solutionRoot,
+            "src",
+            "FloorplanFit.Desktop",
+            "SitePlanAdjustmentWindow.axaml"));
+
+        Assert.Contains("IsVisible=\"{Binding IsCommissionedAutoFit}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Antes · FloorPlan + Electrical registrado (estructura WALL)", xaml, StringComparison.Ordinal);
+        Assert.Contains("Después · FloorPlan ajustado = ArchitecturalBase de Electrical", xaml, StringComparison.Ordinal);
+        Assert.Contains("CanonicalGeometry=\"{Binding CommissionedBeforeFloorGeometry}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ElectricalGeometry=\"{Binding CommissionedBeforeElectricalGeometry}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("CanonicalGeometry=\"{Binding CommissionedAfterFloorGeometry}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ElectricalGeometry=\"{Binding CommissionedAfterElectricalGeometry}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding CommissionedComparisonStatus}\"", xaml, StringComparison.Ordinal);
+        Assert.Equal(1, xaml.Split("Content=\"Confirmar y exportar\"", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("EntityId", xaml, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Commissioned_electrical_comparison_requires_confirmed_source_bound_geometry_and_exposes_unavailable_state()
+    {
+        var solutionRoot = FindSolutionRoot();
+        var codeBehind = File.ReadAllText(Path.Combine(
+            solutionRoot,
+            "src",
+            "FloorplanFit.Desktop",
+            "SitePlanAdjustmentWindow.axaml.cs"));
+        var viewModel = File.ReadAllText(Path.Combine(
+            solutionRoot,
+            "src",
+            "FloorplanFit.Desktop",
+            "ViewModels",
+            "SitePlanAdjustmentViewModel.cs"));
+
+        Assert.Contains("SheetRegistrationStatus.Confirmed", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("WholePlanRegistrationProof", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("IsAuthoritative", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ComputeSha256Async", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("IWallExtractor", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("RegistrationReviewData.TransformElectricalGeometry", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ApplyCommissionedStructuralComparison", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("MarkCommissionedComparisonUnavailable", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("public bool IsCommissionedComparisonAvailable", viewModel, StringComparison.Ordinal);
+        Assert.Contains("isCommissionedComparisonAvailable", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("ElectricalRecipeProjection", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("AdjustmentRecipeOperationDto", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("BuildCommissionedComparisonOperations", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResolveCommissionedComparisonOperationKind", viewModel, StringComparison.Ordinal);
+        Assert.Contains(
+            "CommissionedAfterElectricalGeometry = CommissionedAfterFloorGeometry;",
+            viewModel,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AppAxaml_promotes_interactive_style_colors_to_named_resources()
     {
         var solutionRoot = FindSolutionRoot();

@@ -43,7 +43,8 @@ internal sealed record PreviewRenderScene(
     ManualWallLineDraft? ManualWallLineDraft = null,
     IReadOnlyList<GeometryPathDto>? ChangePreviewGhostGeometry = null,
     double ChangePreviewGhostOpacity = 0d,
-    Guid? SelectedPinchMarkerId = null)
+    Guid? SelectedPinchMarkerId = null,
+    FloorPlanPreviewGeometry.PreviewCompressionEdge? ActiveDragEdge = null)
 {
     public bool HasGeometry => PreviewGeometry.Count > 0;
 

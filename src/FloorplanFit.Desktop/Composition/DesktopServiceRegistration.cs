@@ -4,6 +4,7 @@ using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Import;
 using FloorplanFit.Application.FloorPlans.Library;
 using FloorplanFit.Application.FloorPlans.Review;
+using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Application.PlanSets.Adjustment;
 using FloorplanFit.Application.PlanSets.Classification;
 using FloorplanFit.Application.PlanSets.Confirmation;
@@ -85,6 +86,7 @@ public static class DesktopServiceRegistration
         services.AddScoped<IFloorPlanCurationRepository, SqliteFloorPlanCurationRepository>();
         services.AddScoped<IPinchGroupRepository, SqlitePinchGroupRepository>();
         services.AddScoped<IPinchMarkerRepository, SqlitePinchMarkerRepository>();
+        services.AddScoped<ICommissionedHouseAdaptationProfileRepository, SqliteCommissionedHouseAdaptationProfileRepository>();
         services.AddScoped<IFloorPlanLibraryReader, SqliteFloorPlanLibraryReader>();
         services.AddScoped<IHousePlanSetRepository, SqliteHousePlanSetRepository>();
         services.AddScoped<SqlitePlanSheetRepository>();
@@ -164,6 +166,9 @@ public static class DesktopServiceRegistration
         services.AddScoped<ExportAdjustedDxfHandler>();
         services.AddScoped<RejectWallCandidateHandler>();
         services.AddScoped<PublishFloorPlanCurationHandler>();
+        services.AddScoped<SaveCommissionedHouseAdaptationProfileHandler>();
+        services.AddScoped<GetCommissionedHouseAdaptationReadinessHandler>();
+        services.AddScoped<GetCommissionedHouseAdaptationProfileHandler>();
 
         services.AddSingleton<LibraryViewModel>();
 

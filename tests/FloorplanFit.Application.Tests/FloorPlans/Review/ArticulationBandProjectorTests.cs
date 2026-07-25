@@ -6,7 +6,7 @@ namespace FloorplanFit.Application.Tests.FloorPlans.Review;
 public sealed class ArticulationBandProjectorTests
 {
     [Fact]
-    public void Build_projects_single_min_max_band_per_group_from_marker_geometry()
+    public void Build_projects_one_logical_capacity_from_the_limiting_paired_face()
     {
         var leftPathId = Guid.NewGuid();
         var rightPathId = Guid.NewGuid();
@@ -34,7 +34,7 @@ public sealed class ArticulationBandProjectorTests
         Assert.Equal("Width", band.AxisTag);
         Assert.Equal(100m, band.BandStartCoordinate);
         Assert.Equal(260m, band.BandEndCoordinate);
-        Assert.Equal(200m, band.MaxTrimMm);
+        Assert.Equal(80m, band.MaxTrimMm);
         Assert.Equal("Suggested", band.Status);
     }
 

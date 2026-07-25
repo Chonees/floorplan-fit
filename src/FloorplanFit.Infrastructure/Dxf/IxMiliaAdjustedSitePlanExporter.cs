@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using FloorplanFit.Application.Abstractions;
+using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Contracts.FloorPlans;
 using IxMilia.Dxf;
 using IxMilia.Dxf.Entities;
@@ -15,7 +16,7 @@ namespace FloorplanFit.Infrastructure.Dxf;
 /// </summary>
 public sealed class IxMiliaAdjustedSitePlanExporter : IAdjustedSitePlanExporter
 {
-    public Task<AdjustedSitePlanExportResult> ExportAsync(
+    public async Task<AdjustedSitePlanExportResult> ExportAsync(
         string floorPlanSourcePath,
         string sitePlanSourcePath,
         string outputFilePath,
@@ -38,9 +39,16 @@ public sealed class IxMiliaAdjustedSitePlanExporter : IAdjustedSitePlanExporter
 
         var warnings = new List<string>();
         var sourcePairs = ReadDxfPairs(floorPlanSourcePath);
-        var compressedPairs = placement.CompressionSteps.Count == 0
-            ? sourcePairs.ToList()
-            : ApplyCompression(sourcePairs, placement.CompressionSteps, cancellationToken);
+        var insertBindings = placement.StretchActions.Any(action =>
+                action.CanonicalEntityRoles.Any(role =>
+                    SourceReferenceHasKind(role.EntityRef, "INSERT")))
+            ? await ReadCommissionedInsertBindingsAsync(floorPlanSourcePath, cancellationToken)
+            : [];
+        var compressedPairs = placement.StretchActions.Count > 0
+            ? ApplyCadStretchActions(sourcePairs, placement.StretchActions, insertBindings, cancellationToken)
+            : placement.CompressionSteps.Count == 0
+                ? sourcePairs.ToList()
+                : ApplyCompression(sourcePairs, placement.CompressionSteps, cancellationToken);
         var patchedPairs = placement.AdjustedDimensions.Count == 0
             ? compressedPairs
             : DxfDimensionBlockPatcher.PatchGeometryBlocks(compressedPairs, placement.AdjustedDimensions, cancellationToken);
@@ -91,13 +99,721 @@ public sealed class IxMiliaAdjustedSitePlanExporter : IAdjustedSitePlanExporter
         }
 
         WriteDxfPairs(outputFilePath, finalPairs);
-        return Task.FromResult(new AdjustedSitePlanExportResult(
+        return new AdjustedSitePlanExportResult(
             outputFilePath,
             sitePlanInjection.EntityRecords.Count,
-            warnings));
+            warnings);
     }
 
     // ----- floor plan compression --------------------------------------------------------
+
+    private static List<DxfPair> ApplyCadStretchActions(
+        IReadOnlyList<DxfPair> sourcePairs,
+        IReadOnlyList<AdjustmentRecipeStretchActionDto> actions,
+        IReadOnlyList<CadInsertSourceBinding> insertBindings,
+        CancellationToken cancellationToken)
+    {
+        var actionIds = new HashSet<string>(StringComparer.Ordinal);
+        if (actions.Any(action => string.IsNullOrWhiteSpace(action.ActionId) || !actionIds.Add(action.ActionId)))
+        {
+            throw new InvalidOperationException("Canonical FloorPlan CAD stretch recipe contains a duplicate or empty action id.");
+        }
+
+        var sourceEntities = ReadCadStretchEntities(sourcePairs, insertBindings, cancellationToken);
+        var accumulated = new Dictionary<(int XPairIndex, int YPairIndex), (decimal DeltaX, decimal DeltaY)>();
+
+        foreach (var actionDto in actions)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var resolved = ResolveCadStretchAction(actionDto, sourceEntities);
+            var result = CadStretchDeformationEngine.Apply(
+                resolved.Action,
+                resolved.Entities,
+                resolved.Roles);
+            if (!result.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch action '{actionDto.ActionId}' rejected canonical FloorPlan export: {result.RejectionReason}");
+            }
+
+            foreach (var edit in result.Edits)
+            {
+                if (!resolved.Bindings.TryGetValue(edit.EntityId, out var entityBinding))
+                {
+                    throw new InvalidOperationException(
+                        $"CAD stretch action '{actionDto.ActionId}' produced an unbound edit for '{edit.EntityId}'.");
+                }
+
+                foreach (var vertex in edit.Vertices)
+                {
+                    if (vertex.VertexIndex < 0 || vertex.VertexIndex >= entityBinding.Points.Count)
+                    {
+                        throw new InvalidOperationException(
+                            $"CAD stretch action '{actionDto.ActionId}' produced invalid raw vertex {vertex.VertexIndex} for '{edit.EntityId}'.");
+                    }
+
+                    var point = entityBinding.Points[vertex.VertexIndex];
+                    var key = (point.XPairIndex, point.YPairIndex);
+                    accumulated.TryGetValue(key, out var previous);
+                    accumulated[key] = (
+                        previous.DeltaX + vertex.DeltaX,
+                        previous.DeltaY + vertex.DeltaY);
+                }
+            }
+        }
+
+        var patched = sourcePairs.ToList();
+        foreach (var (key, delta) in accumulated)
+        {
+            if (!TryParseDecimal(patched[key.XPairIndex].Value, out var x) ||
+                !TryParseDecimal(patched[key.YPairIndex].Value, out var y))
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch could not parse raw DXF coordinate pair {key.XPairIndex}/{key.YPairIndex}.");
+            }
+
+            if (delta.DeltaX != 0m)
+            {
+                patched[key.XPairIndex] = patched[key.XPairIndex] with { Value = FormatDecimal(x + delta.DeltaX) };
+            }
+
+            if (delta.DeltaY != 0m)
+            {
+                patched[key.YPairIndex] = patched[key.YPairIndex] with { Value = FormatDecimal(y + delta.DeltaY) };
+            }
+        }
+
+        return patched;
+    }
+
+    private static ResolvedCadStretchAction ResolveCadStretchAction(
+        AdjustmentRecipeStretchActionDto action,
+        IReadOnlyList<CadDxfEntity> sourceEntities)
+    {
+        if (action.TargetSpans.Count != 2)
+        {
+            throw new InvalidOperationException(
+                $"CAD stretch action '{action.ActionId}' requires exactly two canonical target spans.");
+        }
+
+        var rejectedRole = action.CanonicalEntityRoles.FirstOrDefault(role =>
+            string.Equals(role.Role, "Rejected", StringComparison.OrdinalIgnoreCase));
+        if (rejectedRole is not null)
+        {
+            throw new InvalidOperationException(
+                rejectedRole.Reason ?? $"CAD stretch action '{action.ActionId}' contains rejected entity '{rejectedRole.EntityRef}'.");
+        }
+
+        var duplicateRole = action.CanonicalEntityRoles
+            .GroupBy(role => role.EntityRef, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => string.IsNullOrWhiteSpace(group.Key) || group.Count() != 1);
+        if (duplicateRole is not null)
+        {
+            throw new InvalidOperationException(
+                $"CAD stretch action '{action.ActionId}' contains a duplicate or empty canonical role source '{duplicateRole.Key}'.");
+        }
+
+        var targetSourceRefs = action.TargetSpans
+            .Select(span => span.SourceEntityRef)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var targetSourceRef in targetSourceRefs)
+        {
+            var targetRole = action.CanonicalEntityRoles.SingleOrDefault(role =>
+                string.Equals(role.EntityRef, targetSourceRef, StringComparison.OrdinalIgnoreCase));
+            if (targetRole is null || !string.Equals(targetRole.Role, "Stretch", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch action '{action.ActionId}' target '{targetSourceRef}' requires one matching Stretch role.");
+            }
+        }
+
+        var invalidAuxiliaryStretch = action.CanonicalEntityRoles.FirstOrDefault(role =>
+            string.Equals(role.Role, "Stretch", StringComparison.OrdinalIgnoreCase) &&
+            !targetSourceRefs.Contains(role.EntityRef));
+        if (invalidAuxiliaryStretch is not null)
+        {
+            throw new InvalidOperationException(
+                $"CAD stretch action '{action.ActionId}' cannot deform auxiliary source '{invalidAuxiliaryStretch.EntityRef}' with a Stretch role.");
+        }
+
+        var entities = new List<CadStretchEntity>();
+        var roles = new List<CadStretchEntityRole>();
+        var bindings = new Dictionary<string, CadStretchRawBinding>(StringComparer.Ordinal);
+        var targetRawOrdinals = new HashSet<int>();
+        var targetIds = new List<string>(2);
+
+        foreach (var span in action.TargetSpans)
+        {
+            var target = ResolveTargetSpan(action, span, sourceEntities);
+            targetRawOrdinals.Add(target.RawEntity.Ordinal);
+            var entityId = $"TARGET:{action.ActionId}:{span.SourceEntityRef}";
+            if (!bindings.TryAdd(entityId, new CadStretchRawBinding(
+                    target.RawEntity.Ordinal,
+                    CadStretchRole.Stretch,
+                    target.Points)))
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch action '{action.ActionId}' resolved duplicate target '{span.SourceEntityRef}'.");
+            }
+
+            entities.Add(new CadStretchEntity(
+                entityId,
+                target.RawEntity.Kind,
+                target.Points.Select(point => new CadStretchPoint(point.X, point.Y)).ToArray(),
+                SupportsVertexStretch: true));
+            roles.Add(new CadStretchEntityRole(entityId, CadStretchRole.Stretch, [target.ClosingVertexIndex]));
+            targetIds.Add(entityId);
+        }
+
+        var persistedRoles = action.CanonicalEntityRoles
+            .Where(role => !targetSourceRefs.Contains(role.EntityRef))
+            .ToArray();
+        var persistedRolesByRawOrdinal = new Dictionary<int, CadStretchRole>();
+        foreach (var persisted in persistedRoles)
+        {
+            if (!TryParseAuxiliaryRole(persisted.Role, out var persistedRole))
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch action '{action.ActionId}' has unsupported persisted role '{persisted.Role}' for '{persisted.EntityRef}'; auxiliary sources require Fixed or RigidMove.");
+            }
+
+            if (!IsSupportedPersistedSourceReference(persisted.EntityRef))
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch action '{action.ActionId}' uses unsupported auxiliary source identity '{persisted.EntityRef}'. Supported raw identities are LINE, LWPOLYLINE, ARC, INSERT, TEXT, MTEXT, and DIMENSION.");
+            }
+
+            var matches = sourceEntities
+                .Where(entity => string.Equals(
+                    persisted.EntityRef,
+                    entity.AuxiliarySourceEntityRef,
+                    StringComparison.OrdinalIgnoreCase))
+                .GroupBy(entity => entity.Ordinal)
+                .Select(group => group.First())
+                .ToArray();
+            if (matches.Length != 1)
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch action '{action.ActionId}' expected one raw auxiliary source entity for '{persisted.EntityRef}', found {matches.Length}.");
+            }
+
+            var matched = matches[0];
+            if (targetRawOrdinals.Contains(matched.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch action '{action.ActionId}' auxiliary source '{persisted.EntityRef}' aliases a structural target.");
+            }
+
+            if (matched.Points.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"{matched.Kind} source '{persisted.EntityRef}' has unsupported geometry for canonical FloorPlan replay.");
+            }
+
+            if (string.Equals(matched.Kind, "LWPOLYLINE", StringComparison.OrdinalIgnoreCase) && matched.HasNonZeroBulge)
+            {
+                throw new InvalidOperationException(
+                    $"LWPOLYLINE source '{persisted.EntityRef}' has curved geometry that cannot be classified safely for canonical FloorPlan replay.");
+            }
+
+            var side = ClassifyCadEntity(matched, action);
+            if (side == CadCutSide.Crossing)
+            {
+                throw new InvalidOperationException(
+                    $"{matched.Kind} source '{persisted.EntityRef}' crosses the CAD stretch cut for action '{action.ActionId}' and cannot be deformed.");
+            }
+
+            var expectedRole = side == CadCutSide.Closing ? CadStretchRole.RigidMove : CadStretchRole.Fixed;
+            if (persistedRole != expectedRole)
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch action '{action.ActionId}' source-role mismatch for '{persisted.EntityRef}': persisted {persistedRole}, raw source requires {expectedRole}.");
+            }
+
+            if (persistedRole == CadStretchRole.RigidMove && !matched.SupportsRigidMove)
+            {
+                throw new InvalidOperationException(
+                    $"{matched.Kind} source '{persisted.EntityRef}' cannot be translated safely by CAD stretch action '{action.ActionId}'.");
+            }
+
+            if (!persistedRolesByRawOrdinal.TryAdd(matched.Ordinal, persistedRole))
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch action '{action.ActionId}' resolves multiple persisted sources to raw entity {matched.Ordinal}.");
+            }
+        }
+
+        foreach (var sourceEntity in sourceEntities.Where(entity => !targetRawOrdinals.Contains(entity.Ordinal)))
+        {
+            if (sourceEntity.Points.Count == 0)
+            {
+                continue;
+            }
+
+            var entityId = $"RAW:{sourceEntity.Ordinal}";
+            var side = ClassifyCadEntity(sourceEntity, action);
+
+            if (side == CadCutSide.Crossing)
+            {
+                throw new InvalidOperationException(
+                    $"{sourceEntity.Kind} raw entity {sourceEntity.Ordinal} crosses the CAD stretch cut for action '{action.ActionId}'.");
+            }
+
+            var role = persistedRolesByRawOrdinal.TryGetValue(sourceEntity.Ordinal, out var persistedRole)
+                ? persistedRole
+                : side == CadCutSide.Closing
+                    ? CadStretchRole.RigidMove
+                    : CadStretchRole.Fixed;
+            if (role == CadStretchRole.RigidMove && !sourceEntity.SupportsRigidMove)
+            {
+                throw new InvalidOperationException(
+                    $"{sourceEntity.Kind} raw entity {sourceEntity.Ordinal} cannot be translated safely by CAD stretch action '{action.ActionId}'.");
+            }
+
+            entities.Add(new CadStretchEntity(
+                entityId,
+                sourceEntity.Kind,
+                sourceEntity.Points.Select(point => new CadStretchPoint(point.X, point.Y)).ToArray()));
+            bindings.Add(entityId, new CadStretchRawBinding(sourceEntity.Ordinal, role, sourceEntity.Points));
+            if (role == CadStretchRole.RigidMove || persistedRolesByRawOrdinal.ContainsKey(sourceEntity.Ordinal))
+            {
+                roles.Add(new CadStretchEntityRole(entityId, role, []));
+            }
+        }
+
+        return new ResolvedCadStretchAction(
+            new CadStretchAction(
+                action.ActionId,
+                action.AxisTag,
+                action.Edge,
+                action.DeltaSourceUnits,
+                action.MaxDeltaSourceUnits,
+                targetIds,
+                action.CoordinateTolerance),
+            entities,
+            roles,
+            bindings);
+    }
+
+    private static ResolvedTargetSpan ResolveTargetSpan(
+        AdjustmentRecipeStretchActionDto action,
+        AdjustmentRecipeTargetSpanDto span,
+        IReadOnlyList<CadDxfEntity> sourceEntities)
+    {
+        var sourceBase = SourceReferenceBase(span.SourceEntityRef);
+        var matches = sourceEntities
+            .Where(entity => string.Equals(entity.StructuralSourceEntityRef, sourceBase, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (matches.Length != 1)
+        {
+            throw new InvalidOperationException(
+                $"CAD stretch action '{action.ActionId}' expected one raw source entity for '{span.SourceEntityRef}', found {matches.Length}.");
+        }
+
+        var rawEntity = matches[0];
+        IReadOnlyList<CadDxfPointBinding> points;
+        if (string.Equals(rawEntity.Kind, "LINE", StringComparison.OrdinalIgnoreCase))
+        {
+            points = rawEntity.Points;
+        }
+        else if (string.Equals(rawEntity.Kind, "LWPOLYLINE", StringComparison.OrdinalIgnoreCase) &&
+                 TryReadPolylineSegmentIndex(span.SourceEntityRef, out var segmentIndex) &&
+                 rawEntity.Points.Count == 2 &&
+                 segmentIndex == 0 &&
+                 !rawEntity.HasNonZeroBulge)
+        {
+            points = rawEntity.Points;
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                $"Target '{span.SourceEntityRef}' uses unsupported {rawEntity.Kind} geometry; v2 currently requires LINE or a straight two-vertex LWPOLYLINE.");
+        }
+
+        var direct = PointsMatch(points[0], span.StartX, span.StartY, action.CoordinateTolerance) &&
+                     PointsMatch(points[1], span.EndX, span.EndY, action.CoordinateTolerance);
+        var reversed = PointsMatch(points[1], span.StartX, span.StartY, action.CoordinateTolerance) &&
+                       PointsMatch(points[0], span.EndX, span.EndY, action.CoordinateTolerance);
+        if (!direct && !reversed)
+        {
+            throw new InvalidOperationException(
+                $"Raw target '{span.SourceEntityRef}' no longer matches its canonical source span for action '{action.ActionId}'.");
+        }
+
+        var closingVertexIndex = reversed ? 1 - span.ClosingVertexIndex : span.ClosingVertexIndex;
+        if (closingVertexIndex is < 0 or > 1)
+        {
+            throw new InvalidOperationException(
+                $"Target '{span.SourceEntityRef}' has invalid closing vertex {span.ClosingVertexIndex}.");
+        }
+
+        return new ResolvedTargetSpan(rawEntity, points, closingVertexIndex);
+    }
+
+    private static async Task<IReadOnlyList<CadInsertSourceBinding>> ReadCommissionedInsertBindingsAsync(
+        string floorPlanSourcePath,
+        CancellationToken cancellationToken)
+    {
+        var components = await new IxMiliaFixedPlanComponentExtractor()
+            .ExtractAsync(floorPlanSourcePath, cancellationToken);
+        var bindings = new List<CadInsertSourceBinding>();
+        var sourceRefs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var component in components.Where(component =>
+                     string.Equals(component.SourceEntityKind, "INSERT", StringComparison.OrdinalIgnoreCase)))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var points = component.GeometryPaths.SelectMany(path => path).ToArray();
+            if (string.IsNullOrWhiteSpace(component.SourceEntityRef) ||
+                string.IsNullOrWhiteSpace(component.SourceBlockName) ||
+                points.Length == 0 ||
+                !sourceRefs.Add(component.SourceEntityRef))
+            {
+                throw new InvalidOperationException(
+                    "Commissioned INSERT source identities are missing, duplicate, or have unsupported geometry.");
+            }
+
+            bindings.Add(new CadInsertSourceBinding(
+                component.SourceEntityRef,
+                component.SourceLayer ?? string.Empty,
+                component.SourceBlockName,
+                new CadDxfBounds(
+                    points.Min(point => point.X),
+                    points.Min(point => point.Y),
+                    points.Max(point => point.X),
+                    points.Max(point => point.Y))));
+        }
+
+        return bindings;
+    }
+
+    private static IReadOnlyList<CadDxfEntity> ReadCadStretchEntities(
+        IReadOnlyList<DxfPair> sourcePairs,
+        IReadOnlyList<CadInsertSourceBinding> insertBindings,
+        CancellationToken cancellationToken)
+    {
+        var entities = new List<CadDxfEntity>();
+        var wallLineIndex = 0;
+        var wallPolylineIndex = 0;
+        var auxiliaryEntityIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var insertBindingIndex = 0;
+        var ordinal = 0;
+        string? currentSection = null;
+
+        for (var index = 0; index < sourcePairs.Count;)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var pair = sourcePairs[index];
+            if (IsEntityStart(pair, "SECTION"))
+            {
+                index++;
+                currentSection = index < sourcePairs.Count && string.Equals(sourcePairs[index].Code, "2", StringComparison.Ordinal)
+                    ? sourcePairs[index].Value.Trim()
+                    : null;
+                index++;
+                continue;
+            }
+
+            if (IsEntityStart(pair, "ENDSEC"))
+            {
+                currentSection = null;
+                index++;
+                continue;
+            }
+
+            if (!string.Equals(currentSection, "ENTITIES", StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(pair.Code, "0", StringComparison.Ordinal))
+            {
+                index++;
+                continue;
+            }
+
+            var recordStart = index;
+            var record = ReadRecord(sourcePairs, ref index);
+            var kind = record[0].Value.Trim().ToUpperInvariant();
+            var layer = FirstGroupValue(record, "8");
+            string? structuralSourceReference = null;
+            if (DxfExtractionProfile.PointeHomes.IsWallCandidateLayer(layer))
+            {
+                if (kind == "LINE")
+                {
+                    structuralSourceReference = $"LINE:{++wallLineIndex}";
+                }
+                else if (kind == "LWPOLYLINE")
+                {
+                    structuralSourceReference = $"LWPOLYLINE:{++wallPolylineIndex}";
+                }
+            }
+
+            string? auxiliarySourceReference = null;
+            CadDxfBounds? sourceBounds = null;
+            if (kind is "LINE" or "ARC" or "LWPOLYLINE" or "TEXT" or "MTEXT")
+            {
+                auxiliarySourceReference = NextSourceReference(auxiliaryEntityIndexes, kind);
+            }
+            else if (kind == "DIMENSION")
+            {
+                var dimensionIndex = NextSourceIndex(auxiliaryEntityIndexes, kind);
+                var handle = FirstGroupValue(record, "5")?.Trim();
+                auxiliarySourceReference = !string.IsNullOrWhiteSpace(handle)
+                    ? $"DIMENSION:{handle}"
+                    : $"DIMENSION:{dimensionIndex.ToString(CultureInfo.InvariantCulture)}";
+            }
+            else if (kind == "INSERT" && insertBindingIndex < insertBindings.Count)
+            {
+                var candidate = insertBindings[insertBindingIndex];
+                if (string.Equals(candidate.SourceLayer, layer ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(candidate.SourceBlockName, FirstGroupValue(record, "2")?.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    auxiliarySourceReference = candidate.SourceEntityRef;
+                    sourceBounds = candidate.Bounds;
+                    insertBindingIndex++;
+                }
+            }
+
+            entities.Add(BuildCadDxfEntity(
+                ordinal++,
+                kind,
+                structuralSourceReference,
+                auxiliarySourceReference,
+                sourceBounds,
+                record,
+                recordStart));
+        }
+
+        return entities;
+    }
+
+    private static CadDxfEntity BuildCadDxfEntity(
+        int ordinal,
+        string kind,
+        string? structuralSourceEntityRef,
+        string? auxiliarySourceEntityRef,
+        CadDxfBounds? sourceBounds,
+        IReadOnlyList<DxfPair> record,
+        int recordStart)
+    {
+        var points = new List<CadDxfPointBinding>();
+        var supportsRigidMove = true;
+        var envelopeExpansion = 0m;
+
+        switch (kind)
+        {
+            case "LINE":
+                AddPoint(record, recordStart, "10", "20", points);
+                AddPoint(record, recordStart, "11", "21", points);
+                break;
+            case "ARC":
+            case "CIRCLE":
+                AddPoint(record, recordStart, "10", "20", points);
+                envelopeExpansion = ReadFirstDecimal(record, "40") ?? 0m;
+                break;
+            case "ELLIPSE":
+                AddPoint(record, recordStart, "10", "20", points);
+                var majorX = ReadFirstDecimal(record, "11") ?? 0m;
+                var majorY = ReadFirstDecimal(record, "21") ?? 0m;
+                var ratio = ReadFirstDecimal(record, "40") ?? 1m;
+                var majorLength = decimal.CreateChecked(Math.Sqrt((double)((majorX * majorX) + (majorY * majorY))));
+                envelopeExpansion = ratio > 0m && ratio < 1m ? majorLength : majorLength * ratio;
+                break;
+            case "TEXT":
+                AddPoint(record, recordStart, "10", "20", points);
+                AddPoint(record, recordStart, "11", "21", points);
+                envelopeExpansion = (ReadFirstDecimal(record, "40") ?? 0m) / 2m;
+                break;
+            case "MTEXT":
+                AddPoint(record, recordStart, "10", "20", points);
+                envelopeExpansion = (ReadFirstDecimal(record, "40") ?? 0m) / 2m;
+                break;
+            case "POINT":
+            case "VERTEX":
+            case "INSERT":
+                AddPoint(record, recordStart, "10", "20", points);
+                break;
+            case "LWPOLYLINE":
+            case "HATCH":
+            case "SPLINE":
+                AddRepeatedPoints(record, recordStart, "10", "20", points);
+                break;
+            case "SOLID":
+            case "3DFACE":
+            case "TRACE":
+                AddPoint(record, recordStart, "10", "20", points);
+                AddPoint(record, recordStart, "11", "21", points);
+                AddPoint(record, recordStart, "12", "22", points);
+                AddPoint(record, recordStart, "13", "23", points);
+                break;
+            case "DIMENSION":
+                foreach (var code in new[] { "10", "11", "12", "13", "14", "15", "16" })
+                {
+                    AddPoint(record, recordStart, code, (int.Parse(code, CultureInfo.InvariantCulture) + 10).ToString(CultureInfo.InvariantCulture), points);
+                }
+                break;
+            default:
+                supportsRigidMove = false;
+                AddRepeatedPoints(record, recordStart, "10", "20", points);
+                break;
+        }
+
+        var hasNonZeroBulge = record
+            .Where(pair => string.Equals(pair.Code, "42", StringComparison.Ordinal))
+            .Any(pair => TryParseDecimal(pair.Value, out var bulge) && bulge != 0m);
+        return new CadDxfEntity(
+            ordinal,
+            kind,
+            structuralSourceEntityRef,
+            auxiliarySourceEntityRef,
+            points,
+            supportsRigidMove,
+            hasNonZeroBulge,
+            envelopeExpansion,
+            sourceBounds);
+    }
+
+    private static CadCutSide ClassifyCadEntity(
+        CadDxfEntity entity,
+        AdjustmentRecipeStretchActionDto action)
+    {
+        var isWidth = string.Equals(action.AxisTag, "Width", StringComparison.OrdinalIgnoreCase);
+        var sourceBounds = entity.SourceBounds;
+        var min = sourceBounds is not null
+            ? (isWidth ? sourceBounds.MinX : sourceBounds.MinY)
+            : entity.Points.Min(point => isWidth ? point.X : point.Y) - entity.EnvelopeExpansion;
+        var max = sourceBounds is not null
+            ? (isWidth ? sourceBounds.MaxX : sourceBounds.MaxY)
+            : entity.Points.Max(point => isWidth ? point.X : point.Y) + entity.EnvelopeExpansion;
+        var minDistance = SignedClosingDistance(min, action.CutCoordinate, action.Edge);
+        var maxDistance = SignedClosingDistance(max, action.CutCoordinate, action.Edge);
+        var lower = decimal.Min(minDistance, maxDistance);
+        var upper = decimal.Max(minDistance, maxDistance);
+        if (lower > action.CoordinateTolerance)
+        {
+            return CadCutSide.Closing;
+        }
+
+        if (upper < -action.CoordinateTolerance)
+        {
+            return CadCutSide.Fixed;
+        }
+
+        return CadCutSide.Crossing;
+    }
+
+    private static decimal SignedClosingDistance(decimal coordinate, decimal cutCoordinate, string edge)
+        => string.Equals(edge, "Right", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(edge, "Top", StringComparison.OrdinalIgnoreCase)
+            ? coordinate - cutCoordinate
+            : cutCoordinate - coordinate;
+
+    private static bool PointsMatch(
+        CadDxfPointBinding point,
+        decimal expectedX,
+        decimal expectedY,
+        decimal tolerance)
+        => Math.Abs(point.X - expectedX) <= tolerance && Math.Abs(point.Y - expectedY) <= tolerance;
+
+    private static string SourceReferenceBase(string sourceReference)
+    {
+        var parts = sourceReference.Split(':', StringSplitOptions.TrimEntries);
+        return parts.Length >= 2 ? $"{parts[0]}:{parts[1]}" : sourceReference;
+    }
+
+    private static bool SourceReferenceHasKind(string? sourceReference, string expectedKind)
+    {
+        if (string.IsNullOrEmpty(sourceReference))
+        {
+            return false;
+        }
+
+        var separator = sourceReference.IndexOf(':');
+        return separator > 0 &&
+               string.Equals(sourceReference[..separator], expectedKind, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSupportedPersistedSourceReference(string sourceReference)
+        => new[] { "LINE", "LWPOLYLINE", "ARC", "INSERT", "TEXT", "MTEXT", "DIMENSION" }
+            .Any(kind => SourceReferenceHasKind(sourceReference, kind));
+
+    private static bool TryParseAuxiliaryRole(string role, out CadStretchRole parsed)
+    {
+        if (string.Equals(role, "Fixed", StringComparison.OrdinalIgnoreCase))
+        {
+            parsed = CadStretchRole.Fixed;
+            return true;
+        }
+
+        if (string.Equals(role, "RigidMove", StringComparison.OrdinalIgnoreCase))
+        {
+            parsed = CadStretchRole.RigidMove;
+            return true;
+        }
+
+        parsed = default;
+        return false;
+    }
+
+    private static string NextSourceReference(IDictionary<string, int> indexes, string kind)
+        => $"{kind}:{NextSourceIndex(indexes, kind).ToString(CultureInfo.InvariantCulture)}";
+
+    private static int NextSourceIndex(IDictionary<string, int> indexes, string kind)
+    {
+        indexes.TryGetValue(kind, out var current);
+        var next = current + 1;
+        indexes[kind] = next;
+        return next;
+    }
+
+    private static bool TryReadPolylineSegmentIndex(string sourceReference, out int segmentIndex)
+    {
+        segmentIndex = default;
+        var parts = sourceReference.Split(':', StringSplitOptions.TrimEntries);
+        return parts.Length == 3 &&
+               string.Equals(parts[0], "LWPOLYLINE", StringComparison.OrdinalIgnoreCase) &&
+               int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out segmentIndex);
+    }
+
+    private static void AddPoint(
+        IReadOnlyList<DxfPair> record,
+        int recordStart,
+        string xCode,
+        string yCode,
+        ICollection<CadDxfPointBinding> points)
+    {
+        var xIndex = IndexOfGroupCode(record, xCode);
+        var yIndex = IndexOfGroupCode(record, yCode);
+        if (xIndex >= 0 && yIndex >= 0 &&
+            TryParseDecimal(record[xIndex].Value, out var x) &&
+            TryParseDecimal(record[yIndex].Value, out var y))
+        {
+            points.Add(new CadDxfPointBinding(x, y, recordStart + xIndex, recordStart + yIndex));
+        }
+    }
+
+    private static void AddRepeatedPoints(
+        IReadOnlyList<DxfPair> record,
+        int recordStart,
+        string xCode,
+        string yCode,
+        ICollection<CadDxfPointBinding> points)
+    {
+        var xIndices = IndicesOfGroupCode(record, xCode);
+        var yIndices = IndicesOfGroupCode(record, yCode);
+        for (var index = 0; index < Math.Min(xIndices.Count, yIndices.Count); index++)
+        {
+            var xIndex = xIndices[index];
+            var yIndex = yIndices[index];
+            if (TryParseDecimal(record[xIndex].Value, out var x) &&
+                TryParseDecimal(record[yIndex].Value, out var y))
+            {
+                points.Add(new CadDxfPointBinding(x, y, recordStart + xIndex, recordStart + yIndex));
+            }
+        }
+    }
+
+    private static decimal? ReadFirstDecimal(IReadOnlyList<DxfPair> record, string code)
+    {
+        var value = FirstGroupValue(record, code);
+        return value is not null && TryParseDecimal(value, out var parsed) ? parsed : null;
+    }
 
     private static List<DxfPair> ApplyCompression(
         IReadOnlyList<DxfPair> sourcePairs,
@@ -1240,6 +1956,58 @@ public sealed class IxMiliaAdjustedSitePlanExporter : IAdjustedSitePlanExporter
 
     private static string FormatDouble(double value)
         => value.ToString("0.###############", CultureInfo.InvariantCulture);
+
+    private sealed record CadDxfPointBinding(
+        decimal X,
+        decimal Y,
+        int XPairIndex,
+        int YPairIndex);
+
+    private sealed record CadDxfEntity(
+        int Ordinal,
+        string Kind,
+        string? StructuralSourceEntityRef,
+        string? AuxiliarySourceEntityRef,
+        IReadOnlyList<CadDxfPointBinding> Points,
+        bool SupportsRigidMove,
+        bool HasNonZeroBulge,
+        decimal EnvelopeExpansion,
+        CadDxfBounds? SourceBounds);
+
+    private sealed record CadDxfBounds(
+        decimal MinX,
+        decimal MinY,
+        decimal MaxX,
+        decimal MaxY);
+
+    private sealed record CadInsertSourceBinding(
+        string SourceEntityRef,
+        string SourceLayer,
+        string SourceBlockName,
+        CadDxfBounds Bounds);
+
+    private sealed record CadStretchRawBinding(
+        int RawEntityOrdinal,
+        CadStretchRole Role,
+        IReadOnlyList<CadDxfPointBinding> Points);
+
+    private sealed record ResolvedTargetSpan(
+        CadDxfEntity RawEntity,
+        IReadOnlyList<CadDxfPointBinding> Points,
+        int ClosingVertexIndex);
+
+    private sealed record ResolvedCadStretchAction(
+        CadStretchAction Action,
+        IReadOnlyList<CadStretchEntity> Entities,
+        IReadOnlyList<CadStretchEntityRole> Roles,
+        IReadOnlyDictionary<string, CadStretchRawBinding> Bindings);
+
+    private enum CadCutSide
+    {
+        Fixed,
+        Closing,
+        Crossing
+    }
 
     private sealed record SitePlanInjection(
         IReadOnlyList<IReadOnlyList<DxfPair>> EntityRecords,

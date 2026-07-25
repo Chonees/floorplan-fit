@@ -8,7 +8,6 @@ namespace FloorplanFit.Desktop.Controls.Preview;
 internal static class CompressionHandlePreviewLayerRenderer
 {
     private const double CornerRadius = 6d;
-    private static readonly IBrush HandleBrush = PreviewSemanticPalette.Brush(PreviewSemanticPalette.HandleFill);
     private static readonly Pen HandlePen = new(PreviewSemanticPalette.Brush(PreviewSemanticPalette.HandleStroke), 1.5);
 
     public static void Render(
@@ -17,13 +16,26 @@ internal static class CompressionHandlePreviewLayerRenderer
         PinchAxisTag axisTag,
         bool isPinchPlacementArmed,
         IReadOnlyList<PinchMarkerDto>? pinchMarkers,
-        Guid? previewPinchGroupId)
+        Guid? previewPinchGroupId,
+        FloorPlanPreviewGeometry.PreviewCompressionEdge? activeDragEdge)
     {
         foreach (var handle in GetVisibleHandles(bounds, axisTag, isPinchPlacementArmed, pinchMarkers, previewPinchGroupId))
         {
-            context.DrawRectangle(HandleBrush, HandlePen, handle.Rect, CornerRadius, CornerRadius);
+            context.DrawRectangle(
+                PreviewSemanticPalette.Brush(ResolveFillColor(handle.Edge, activeDragEdge)),
+                HandlePen,
+                handle.Rect,
+                CornerRadius,
+                CornerRadius);
         }
     }
+
+    internal static Color ResolveFillColor(
+        FloorPlanPreviewGeometry.PreviewCompressionEdge edge,
+        FloorPlanPreviewGeometry.PreviewCompressionEdge? activeDragEdge)
+        => edge == activeDragEdge
+            ? PreviewSemanticPalette.ActivePinchGroup
+            : PreviewSemanticPalette.HandleFill;
 
     internal static IReadOnlyList<FloorPlanPreviewGeometry.CompressionHandle> GetVisibleHandles(
         Rect bounds,

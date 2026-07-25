@@ -4,7 +4,7 @@ namespace FloorplanFit.Infrastructure.Persistence;
 
 public static class SqliteSchemaInitializer
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public static Task InitializeAsync(string databasePath, CancellationToken cancellationToken)
     {
@@ -21,13 +21,22 @@ public static class SqliteSchemaInitializer
 
         if (schemaVersion == CurrentSchemaVersion)
         {
+            EnsureCommissionedHouseAdaptationProfilesSchema(connection);
             EnsureSheetRegistrationsSchema(connection);
+            return Task.CompletedTask;
+        }
+
+        if (schemaVersion == 2)
+        {
+            EnsureSheetRegistrationsSchema(connection);
+            MigrateSchemaVersion2To3(connection);
             return Task.CompletedTask;
         }
 
         if (schemaVersion == 1)
         {
             EnsureSheetRegistrationsSchema(connection);
+            EnsureCommissionedHouseAdaptationProfilesSchema(connection);
             RepairSheetRegistrationCanonicalIds(connection);
             return Task.CompletedTask;
         }
@@ -598,6 +607,7 @@ public static class SqliteSchemaInitializer
         EnsurePinchMarkersSchema(connection);
         EnsureFloorPlanVersionsSoftDeleteSchema(connection);
         EnsureDeletionPipelineIndexes(connection);
+        EnsureCommissionedHouseAdaptationProfilesSchema(connection);
         cancellationToken.ThrowIfCancellationRequested();
         RepairSheetRegistrationCanonicalIds(connection);
         return Task.CompletedTask;
@@ -618,6 +628,35 @@ public static class SqliteSchemaInitializer
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = $"PRAGMA user_version = {version}";
+        command.ExecuteNonQuery();
+    }
+
+    private static void MigrateSchemaVersion2To3(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        ExecuteNonQuery(
+            connection,
+            transaction,
+            """
+            CREATE TABLE IF NOT EXISTS commissioned_house_adaptation_profiles (
+                floorplan_version_id TEXT PRIMARY KEY,
+                profile_json TEXT NOT NULL
+            )
+            """);
+        SetUserVersion(connection, transaction, CurrentSchemaVersion);
+        transaction.Commit();
+    }
+
+    private static void EnsureCommissionedHouseAdaptationProfilesSchema(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            CREATE TABLE IF NOT EXISTS commissioned_house_adaptation_profiles (
+                floorplan_version_id TEXT PRIMARY KEY,
+                profile_json TEXT NOT NULL
+            )
+            """;
         command.ExecuteNonQuery();
     }
 

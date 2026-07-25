@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Media;
+using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Domain.FloorPlans;
 
@@ -234,6 +235,142 @@ internal static class FloorPlanPreviewGeometry
                 }).ToArray()))
             .ToArray();
     }
+
+    public static IReadOnlyList<GeometryPathDto> CreatePreviewGeometry(
+        IReadOnlyList<GeometryPathDto>? geometryPaths,
+        IReadOnlyList<AdjustmentRecipeStretchActionDto>? stretchActions)
+    {
+        if (geometryPaths is not { Count: > 0 } || stretchActions is not { Count: > 0 })
+        {
+            return geometryPaths ?? [];
+        }
+
+        var entities = geometryPaths
+            .SelectMany(path => path.Segments.Select(segment => new CadStretchEntity(
+                SegmentEntityId(path.Id, segment.SortOrder),
+                "LINE",
+                [
+                    new CadStretchPoint(segment.StartX, segment.StartY),
+                    new CadStretchPoint(segment.EndX, segment.EndY)
+                ])))
+            .ToArray();
+        var pathSegments = geometryPaths.ToDictionary(
+            path => path.Id,
+            path => path.Segments.ToDictionary(segment => segment.SortOrder));
+        var accumulated = new Dictionary<(string EntityId, int VertexIndex), (decimal DeltaX, decimal DeltaY)>();
+        foreach (var actionDto in stretchActions)
+        {
+            var roles = ExpandPreviewRoles(actionDto, pathSegments);
+            var targetEntityIds = actionDto.TargetSpans
+                .Select(span => SegmentEntityId(span.GeometryPathId, span.SegmentSortOrder))
+                .ToArray();
+            var result = CadStretchDeformationEngine.Apply(
+                new CadStretchAction(
+                    actionDto.ActionId,
+                    actionDto.AxisTag,
+                    actionDto.Edge,
+                    actionDto.DeltaSourceUnits,
+                    actionDto.MaxDeltaSourceUnits,
+                    targetEntityIds,
+                    actionDto.CoordinateTolerance),
+                entities,
+                roles);
+            if (!result.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch action '{actionDto.ActionId}' rejected preview deformation: {result.RejectionReason}");
+            }
+
+            foreach (var edit in result.Edits)
+            {
+                foreach (var vertex in edit.Vertices)
+                {
+                    var key = (edit.EntityId, vertex.VertexIndex);
+                    accumulated.TryGetValue(key, out var previous);
+                    accumulated[key] = (
+                        previous.DeltaX + vertex.DeltaX,
+                        previous.DeltaY + vertex.DeltaY);
+                }
+            }
+        }
+
+        return geometryPaths
+            .Select(path => new GeometryPathDto(
+                path.Id,
+                path.IsClosed,
+                path.Segments.Select(segment =>
+                {
+                    var entityId = SegmentEntityId(path.Id, segment.SortOrder);
+                    accumulated.TryGetValue((entityId, 0), out var startDelta);
+                    accumulated.TryGetValue((entityId, 1), out var endDelta);
+                    return new GeometrySegmentDto(
+                        path.Id,
+                        segment.SortOrder,
+                        segment.StartX + startDelta.DeltaX,
+                        segment.StartY + startDelta.DeltaY,
+                        segment.EndX + endDelta.DeltaX,
+                        segment.EndY + endDelta.DeltaY);
+                }).ToArray()))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<CadStretchEntityRole> ExpandPreviewRoles(
+        AdjustmentRecipeStretchActionDto action,
+        IReadOnlyDictionary<Guid, Dictionary<int, GeometrySegmentDto>> pathSegments)
+    {
+        var roles = new List<CadStretchEntityRole>();
+        foreach (var roleDto in action.CanonicalEntityRoles)
+        {
+            var role = ParseRole(roleDto.Role);
+            if (!roleDto.GeometryPathId.HasValue ||
+                !pathSegments.TryGetValue(roleDto.GeometryPathId.Value, out var segments))
+            {
+                roles.Add(new CadStretchEntityRole(
+                    roleDto.EntityRef,
+                    CadStretchRole.Rejected,
+                    [],
+                    roleDto.Reason ?? $"Recipe role '{roleDto.EntityRef}' has no preview geometry path."));
+                continue;
+            }
+
+            var selectedSegments = roleDto.SegmentSortOrder.HasValue
+                ? segments.Where(pair => pair.Key == roleDto.SegmentSortOrder.Value).Select(pair => pair.Value).ToArray()
+                : segments.Values.ToArray();
+            if (selectedSegments.Length == 0)
+            {
+                roles.Add(new CadStretchEntityRole(
+                    roleDto.EntityRef,
+                    CadStretchRole.Rejected,
+                    [],
+                    roleDto.Reason ?? $"Recipe role '{roleDto.EntityRef}' has no matching preview segment."));
+                continue;
+            }
+
+            foreach (var segment in selectedSegments)
+            {
+                roles.Add(new CadStretchEntityRole(
+                    SegmentEntityId(roleDto.GeometryPathId.Value, segment.SortOrder),
+                    role,
+                    role == CadStretchRole.Stretch ? roleDto.VertexIndices : [],
+                    roleDto.Reason));
+            }
+        }
+
+        return roles;
+    }
+
+    private static CadStretchRole ParseRole(string role)
+        => role.Trim() switch
+        {
+            var value when value.Equals("Stretch", StringComparison.OrdinalIgnoreCase) => CadStretchRole.Stretch,
+            var value when value.Equals("RigidMove", StringComparison.OrdinalIgnoreCase) => CadStretchRole.RigidMove,
+            var value when value.Equals("Fixed", StringComparison.OrdinalIgnoreCase) => CadStretchRole.Fixed,
+            var value when value.Equals("Rejected", StringComparison.OrdinalIgnoreCase) => CadStretchRole.Rejected,
+            _ => CadStretchRole.Rejected
+        };
+
+    private static string SegmentEntityId(Guid pathId, int segmentSortOrder)
+        => $"{pathId:N}:{segmentSortOrder}";
 
     public static IReadOnlyList<CompressionHandle> GetCompressionHandleRects(Rect bounds, PinchAxisTag axisTag)
     {

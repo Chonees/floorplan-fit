@@ -319,6 +319,100 @@ public sealed class PlanSetExportManifestWriterTests
     }
 
     [Fact]
+    public void BuildVerificationReport_counts_v2_stretch_actions_as_canonical_operations()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-v2-verification-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var floorPath = Path.Combine(tempRoot, "floor.dxf");
+            var electricalPath = Path.Combine(tempRoot, "electrical.dxf");
+            WriteRectangleDxf(floorPath);
+            WriteRectangleDxf(electricalPath);
+            var baseAudit = CreateAutomaticVerificationAudit(floorPath, electricalPath, electricalEntityCount: 4);
+            var action = new AdjustmentRecipeStretchActionDto(
+                "paired-wall",
+                "Width",
+                "Right",
+                5m,
+                2m,
+                4m,
+                0.05m,
+                new AdjustmentRecipeBoundsDto(0m, 0m, 10m, 10m),
+                [
+                    new AdjustmentRecipeTargetSpanDto("FLOOR:1", Guid.NewGuid(), 0, 0m, 0m, 10m, 0m, 1),
+                    new AdjustmentRecipeTargetSpanDto("FLOOR:2", Guid.NewGuid(), 0, 0m, 4m, 10m, 4m, 1)
+                ],
+                []);
+            var floorImpact = new FloorPlanAdjustmentOperationImpactDto(
+                action.ActionId,
+                0,
+                "CadStretch",
+                action.AxisTag,
+                action.Edge,
+                action.CutCoordinate,
+                action.DeltaSourceUnits,
+                2,
+                2,
+                2m,
+                2m,
+                "Applied");
+            var placement = baseAudit.CanonicalPlacement! with
+            {
+                StretchActions = [action],
+                FloorPlanImpactAudit = [floorImpact]
+            };
+            var electricalOperation = new ProjectedPlanSheetOperationAuditDto(
+                action.ActionId,
+                0,
+                "CadStretch",
+                action.AxisTag,
+                action.Edge,
+                action.CutCoordinate,
+                action.DeltaSourceUnits,
+                2,
+                2,
+                2m,
+                2m,
+                "Applied",
+                "Resolved Electrical targets by registered geometry.");
+            var sheets = baseAudit.Sheets
+                .Select(sheet => sheet.SheetKind == "ElectricalPlan"
+                    ? sheet with
+                    {
+                        ExportAudit = sheet.ExportAudit! with
+                        {
+                            Operations = [electricalOperation]
+                        }
+                    }
+                    : sheet)
+                .ToArray();
+            var audit = baseAudit with
+            {
+                CanonicalPlacement = placement,
+                CanonicalRecipe = AdjustmentRecipeSummaryDto.FromPlacement(placement),
+                Sheets = sheets
+            };
+            var writer = new PlanSetExportManifestWriter(new AppWorkspace(Path.Combine(tempRoot, "workspace")));
+
+            var report = writer.BuildVerificationReport(audit);
+
+            Assert.Equal(1, report.FloorPlanOperations.ExpectedOperationCount);
+            Assert.Equal(1, report.FloorPlanOperations.AppliedOperationCount);
+            Assert.Equal(1, report.DependentOperations.ExpectedOperationCount);
+            Assert.Equal(1, report.DependentOperations.AppliedOperationCount);
+            Assert.DoesNotContain(
+                report.Reasons,
+                reason => reason.Code == PlanSetVerificationReasonCode.CanonicalOperationMismatch);
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void BuildVerificationReport_accepts_matching_outer_outlines_when_full_span_internal_walls_tie_support()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-verification-{Guid.NewGuid():N}");
@@ -520,6 +614,100 @@ public sealed class PlanSetExportManifestWriterTests
             Assert.Equal(electricalVerificationPath, finalOutputCongruence.GetProperty("ElectricalOutputPath").GetString());
             Assert.NotEqual(floorStoragePath, finalOutputCongruence.GetProperty("FloorOutputPath").GetString());
             Assert.NotEqual(electricalStoragePath, finalOutputCongruence.GetProperty("ElectricalOutputPath").GetString());
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task WritePackageArtifactsAsync_writes_truthful_five_class_package_without_comparison_dxf()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"floorplan-fit-user-package-{Guid.NewGuid():N}");
+        var stagingDirectory = Path.Combine(tempRoot, ".X-plan-set.staging-test");
+        var finalDirectory = Path.Combine(tempRoot, "X-plan-set");
+        Directory.CreateDirectory(stagingDirectory);
+
+        try
+        {
+            var stagedFloorPath = Path.Combine(stagingDirectory, "X-floorplan.dxf");
+            var stagedElectricalPath = Path.Combine(stagingDirectory, "X-electrical.dxf");
+            var finalFloorPath = Path.Combine(finalDirectory, "X-floorplan.dxf");
+            var finalElectricalPath = Path.Combine(finalDirectory, "X-electrical.dxf");
+            var finalManifestPath = Path.Combine(finalDirectory, "manifest.json");
+            WriteRectangleDxf(stagedFloorPath);
+            WriteRectangleDxf(stagedElectricalPath);
+            Assert.False(Directory.Exists(finalDirectory));
+            var verificationAudit = CreateAutomaticVerificationAudit(
+                stagedFloorPath,
+                stagedElectricalPath,
+                electricalEntityCount: 4);
+            var audit = verificationAudit with
+            {
+                Status = "RequiresManualConfirmation",
+                Verification = CreateBlockedVerification(),
+                HumanSummary = ["FloorPlan and ElectricalPlan final outputs were verified."],
+                PackageManifestPath = Path.Combine(tempRoot, "workspace", "exports", "manifest.json"),
+                Sheets = verificationAudit.Sheets
+                    .Select(sheet => sheet.SheetKind switch
+                    {
+                        "CanonicalFloorPlan" => sheet with
+                        {
+                            StoragePath = finalFloorPath,
+                            VerificationPath = stagedFloorPath
+                        },
+                        "ElectricalPlan" => sheet with
+                        {
+                            StoragePath = finalElectricalPath,
+                            VerificationPath = stagedElectricalPath
+                        },
+                        _ => sheet
+                    })
+                    .ToArray(),
+                Artifacts =
+                [
+                    new PlanSetPackageArtifactDto("FloorPlan", finalFloorPath),
+                    new PlanSetPackageArtifactDto("ElectricalPlan", finalElectricalPath),
+                    new PlanSetPackageArtifactDto("Comparison", Path.Combine(finalDirectory, "X-comparison.json")),
+                    new PlanSetPackageArtifactDto("Manifest", finalManifestPath),
+                    new PlanSetPackageArtifactDto("Audit", Path.Combine(finalDirectory, "X-audit.txt"))
+                ]
+            };
+            var writer = new PlanSetExportManifestWriter(new AppWorkspace(Path.Combine(tempRoot, "workspace")));
+
+            await writer.WritePackageArtifactsAsync(audit, stagingDirectory, CancellationToken.None);
+
+            Assert.Equal(
+                ["manifest.json", "X-audit.txt", "X-comparison.json", "X-electrical.dxf", "X-floorplan.dxf"],
+                Directory.GetFiles(stagingDirectory).Select(Path.GetFileName).Order().ToArray());
+            Assert.False(File.Exists(Path.Combine(stagingDirectory, "X-comparison.dxf")));
+            Assert.Contains(
+                "final outputs were verified",
+                await File.ReadAllTextAsync(Path.Combine(stagingDirectory, "X-audit.txt")),
+                StringComparison.Ordinal);
+
+            var comparisonJson = await File.ReadAllTextAsync(Path.Combine(stagingDirectory, "X-comparison.json"));
+            Assert.DoesNotContain(".staging-", comparisonJson, StringComparison.Ordinal);
+            using var comparison = JsonDocument.Parse(comparisonJson);
+            Assert.Equal("final-output-congruence", comparison.RootElement.GetProperty("stage").GetString());
+            var congruence = comparison.RootElement
+                .GetProperty("sheets")[0]
+                .GetProperty("finalOutputCongruence");
+            Assert.Equal("FinalOutputCongruent", congruence.GetProperty("Status").GetString());
+            Assert.True(congruence.GetProperty("FloorStructuralSegmentCount").GetInt32() > 0);
+            Assert.True(congruence.GetProperty("ElectricalStructuralSegmentCount").GetInt32() > 0);
+            Assert.Equal(finalFloorPath, congruence.GetProperty("FloorOutputPath").GetString());
+            Assert.Equal(finalElectricalPath, congruence.GetProperty("ElectricalOutputPath").GetString());
+
+            var manifestJson = await File.ReadAllTextAsync(Path.Combine(stagingDirectory, "manifest.json"));
+            Assert.DoesNotContain(".staging-", manifestJson, StringComparison.Ordinal);
+            using var manifest = JsonDocument.Parse(manifestJson);
+            Assert.Equal(finalManifestPath, manifest.RootElement.GetProperty("PackageManifestPath").GetString());
+            var artifacts = manifest.RootElement.GetProperty("Artifacts").EnumerateArray().ToArray();
+            Assert.Equal(5, artifacts.Length);
+            Assert.All(artifacts, artifact =>
+                Assert.StartsWith(finalDirectory, artifact.GetProperty("Path").GetString(), StringComparison.Ordinal));
         }
         finally
         {

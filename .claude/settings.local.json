@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "mcp__plugin_engram_engram__mem_current_project",
-      "mcp__plugin_engram_engram__mem_search"
+      "mcp__plugin_engram_engram__mem_search",
+      "Bash(git branch:*)",
+      "Bash(git switch:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "stitch"
+  ],
+  "enableAllProjectMcpServers": true
 }

@@ -97,6 +97,132 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void BuildInteractiveCompressionPreviewGeometry_uses_recipe_v2_roles_and_clamps_to_capacity()
+    {
+        var groupId = Guid.NewGuid();
+        var faceAPathId = Guid.NewGuid();
+        var faceBPathId = Guid.NewGuid();
+        var closingStructurePathId = Guid.NewGuid();
+        var unrelatedFixedPathId = Guid.NewGuid();
+        var faceACandidateId = Guid.NewGuid();
+        var faceBCandidateId = Guid.NewGuid();
+
+        GeometryPathDto[] geometryPaths =
+        [
+            Path(faceAPathId, 0m, 0m, 10m, 0m),
+            Path(faceBPathId, 0m, 4m, 10m, 4m),
+            Path(closingStructurePathId, 10m, 0m, 10m, 4m),
+            Path(unrelatedFixedPathId, 14m, 0m, 14m, 4m)
+        ];
+        PinchMarkerDto[] markers =
+        [
+            new(Guid.NewGuid(), groupId, "Patio", faceACandidateId, faceAPathId, "Width", 0.5m, 6m, 1),
+            new(Guid.NewGuid(), groupId, "Patio", faceBCandidateId, faceBPathId, "Width", 0.5m, 4m, 2)
+        ];
+        WallCandidateDto[] wallCandidates =
+        [
+            Candidate(faceACandidateId, "LINE:1", faceAPathId, 1),
+            Candidate(faceBCandidateId, "LINE:2", faceBPathId, 2),
+            Candidate(Guid.NewGuid(), "LINE:3", closingStructurePathId, 3),
+            Candidate(Guid.NewGuid(), "LINE:4", unrelatedFixedPathId, 4)
+        ];
+
+        var preview = FloorPlanPreviewControl.BuildInteractiveCompressionPreviewGeometry(
+            geometryPaths,
+            markers,
+            wallCandidates,
+            groupId,
+            new MeasurementContextDto("Millimeter", 1m, 1m, 1m),
+            Domain.FloorPlans.PinchAxisTag.Width,
+            requestedTrimSourceUnits: 2m,
+            edge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Right);
+
+        Assert.Equal([0m, 8m], preview.Single(path => path.Id == faceAPathId).Segments
+            .SelectMany(segment => new[] { segment.StartX, segment.EndX }).ToArray());
+        Assert.Equal([0m, 8m], preview.Single(path => path.Id == faceBPathId).Segments
+            .SelectMany(segment => new[] { segment.StartX, segment.EndX }).ToArray());
+        Assert.Equal(8m, preview.Single(path => path.Id == closingStructurePathId).Segments.Single().StartX);
+        Assert.Equal(8m, preview.Single(path => path.Id == closingStructurePathId).Segments.Single().EndX);
+        Assert.Equal(14m, preview.Single(path => path.Id == unrelatedFixedPathId).Segments.Single().StartX);
+        Assert.Equal(14m, preview.Single(path => path.Id == unrelatedFixedPathId).Segments.Single().EndX);
+
+        var previewPastCapacity = FloorPlanPreviewControl.BuildInteractiveCompressionPreviewGeometry(
+            geometryPaths,
+            markers,
+            wallCandidates,
+            groupId,
+            new MeasurementContextDto("Millimeter", 1m, 1m, 1m),
+            Domain.FloorPlans.PinchAxisTag.Width,
+            requestedTrimSourceUnits: 20m,
+            edge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Right);
+
+        Assert.Equal([0m, 6m], previewPastCapacity.Single(path => path.Id == faceAPathId).Segments
+            .SelectMany(segment => new[] { segment.StartX, segment.EndX }).ToArray());
+
+        static GeometryPathDto Path(Guid id, decimal x1, decimal y1, decimal x2, decimal y2)
+            => new(id, false, [new GeometrySegmentDto(id, 0, x1, y1, x2, y2)]);
+
+        static WallCandidateDto Candidate(Guid id, string sourceRef, Guid pathId, int sortOrder)
+            => new(id, sourceRef, "WALL", "Accepted", 1m, 4m, null, pathId, sortOrder);
+    }
+
+    [Fact]
+    public void BuildInteractiveCompressionPreviewGeometry_applies_one_total_delta_across_sequential_pairs()
+    {
+        var groupId = Guid.NewGuid();
+        var pathIds = Enumerable.Range(0, 4).Select(_ => Guid.NewGuid()).ToArray();
+        var candidateIds = Enumerable.Range(0, 4).Select(_ => Guid.NewGuid()).ToArray();
+        GeometryPathDto[] geometryPaths =
+        [
+            Path(pathIds[0], 0m, 0m, 10m, 0m),
+            Path(pathIds[1], 0m, 4m, 10m, 4m),
+            Path(pathIds[2], 10m, 0m, 20m, 0m),
+            Path(pathIds[3], 10m, 4m, 20m, 4m)
+        ];
+        PinchMarkerDto[] markers =
+        [
+            Marker(candidateIds[0], pathIds[0], 0.4m, 4m, 1),
+            Marker(candidateIds[1], pathIds[1], 0.6m, 6m, 2),
+            Marker(candidateIds[2], pathIds[2], 0.4m, 1m, 3),
+            Marker(candidateIds[3], pathIds[3], 0.6m, 3m, 4)
+        ];
+        WallCandidateDto[] candidates =
+        [
+            Candidate(candidateIds[0], "STATION:0:A", pathIds[0], 1),
+            Candidate(candidateIds[1], "STATION:0:B", pathIds[1], 2),
+            Candidate(candidateIds[2], "STATION:1:A", pathIds[2], 3),
+            Candidate(candidateIds[3], "STATION:1:B", pathIds[3], 4)
+        ];
+
+        var preview = FloorPlanPreviewControl.BuildInteractiveCompressionPreviewGeometry(
+            geometryPaths,
+            markers,
+            candidates,
+            groupId,
+            new MeasurementContextDto("Millimeter", 1m, 1m, 1m),
+            Domain.FloorPlans.PinchAxisTag.Width,
+            requestedTrimSourceUnits: 3.6m,
+            edge: FloorPlanPreviewGeometry.PreviewCompressionEdge.Right);
+
+        Assert.Equal(16.4m, preview.SelectMany(path => path.Segments)
+            .SelectMany(segment => new[] { segment.StartX, segment.EndX })
+            .Max());
+        Assert.Equal([0m, 7.4m], preview.Single(path => path.Id == pathIds[0]).Segments
+            .SelectMany(segment => new[] { segment.StartX, segment.EndX }).ToArray());
+        Assert.Equal([7.4m, 16.4m], preview.Single(path => path.Id == pathIds[2]).Segments
+            .SelectMany(segment => new[] { segment.StartX, segment.EndX }).ToArray());
+
+        PinchMarkerDto Marker(Guid candidateId, Guid pathId, decimal ratio, decimal maxTrim, int sortOrder)
+            => new(Guid.NewGuid(), groupId, "Sequential", candidateId, pathId, "Width", ratio, maxTrim, sortOrder);
+
+        static GeometryPathDto Path(Guid id, decimal x1, decimal y1, decimal x2, decimal y2)
+            => new(id, false, [new GeometrySegmentDto(id, 0, x1, y1, x2, y2)]);
+
+        static WallCandidateDto Candidate(Guid id, string sourceRef, Guid pathId, int sortOrder)
+            => new(id, sourceRef, "WALL", "Accepted", 1m, 4m, null, pathId, sortOrder);
+    }
+
+    [Fact]
     public void Preview_control_exposes_dimensions_for_canvas_overlay()
     {
         var changedDimensionId = Guid.NewGuid();
@@ -1438,6 +1564,60 @@ public sealed class FloorPlanPreviewControlTests
         Assert.InRange(Math.Abs(anchorScreenPoint.Y - projectedAfter.Y), 0d, 0.001d);
     }
 
+    [Theory]
+    [InlineData(FloorPlanPreviewGeometry.PreviewCompressionEdge.Right, Domain.FloorPlans.PinchAxisTag.Width)]
+    [InlineData(FloorPlanPreviewGeometry.PreviewCompressionEdge.Top, Domain.FloorPlans.PinchAxisTag.Height)]
+    public void ResolveCapturedViewportForActiveEdgeDrag_keeps_the_press_viewport_stable(
+        FloorPlanPreviewGeometry.PreviewCompressionEdge edge,
+        Domain.FloorPlans.PinchAxisTag axisTag)
+    {
+        var capturedBaseViewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0, 0, 1200, 700),
+            MinX: 12d,
+            MinY: 24d,
+            Scale: 2d,
+            OffsetX: 120d,
+            OffsetY: 90d);
+        var zoomState = new FloorPlanPreviewControl.PreviewZoomState(
+            ZoomFactor: 1.35d,
+            PanOffset: new Vector(24d, -16d));
+
+        var viewport = FloorPlanPreviewControl.ResolveCapturedViewportForActiveEdgeDrag(
+            edge,
+            axisTag,
+            capturedBaseViewport,
+            axisTag,
+            zoomState);
+
+        Assert.NotNull(viewport);
+        Assert.Equal(capturedBaseViewport.WithUserTransform(zoomState.ZoomFactor, zoomState.PanOffset), viewport.Value);
+    }
+
+    [Fact]
+    public void ResolveCapturedViewportForActiveEdgeDrag_does_not_reuse_a_stale_viewport()
+    {
+        var capturedBaseViewport = new FloorPlanPreviewGeometry.PreviewViewport(
+            new Rect(0, 0, 1200, 700),
+            MinX: 12d,
+            MinY: 24d,
+            Scale: 2d,
+            OffsetX: 120d,
+            OffsetY: 90d);
+
+        Assert.Null(FloorPlanPreviewControl.ResolveCapturedViewportForActiveEdgeDrag(
+            null,
+            Domain.FloorPlans.PinchAxisTag.Width,
+            capturedBaseViewport,
+            Domain.FloorPlans.PinchAxisTag.Width,
+            FloorPlanPreviewControl.PreviewZoomState.Default));
+        Assert.Null(FloorPlanPreviewControl.ResolveCapturedViewportForActiveEdgeDrag(
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Right,
+            Domain.FloorPlans.PinchAxisTag.Height,
+            capturedBaseViewport,
+            Domain.FloorPlans.PinchAxisTag.Width,
+            FloorPlanPreviewControl.PreviewZoomState.Default));
+    }
+
     [Fact]
     public void ShouldPreserveViewportOnBoundsChange_only_when_render_size_changes()
     {
@@ -1569,6 +1749,24 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
+    public void CompressionHandlePreviewLayerRenderer_colors_only_the_active_drag_edge_green()
+    {
+        var active = CompressionHandlePreviewLayerRenderer.ResolveFillColor(
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Top,
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Top);
+        var inactive = CompressionHandlePreviewLayerRenderer.ResolveFillColor(
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Bottom,
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Top);
+        var idle = CompressionHandlePreviewLayerRenderer.ResolveFillColor(
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Top,
+            activeDragEdge: null);
+
+        Assert.Equal(PreviewSemanticPalette.ActivePinchGroup, active);
+        Assert.Equal(PreviewSemanticPalette.HandleFill, inactive);
+        Assert.Equal(PreviewSemanticPalette.HandleFill, idle);
+    }
+
+    [Fact]
     public void PinchMarkerPreviewLayerRenderer_filters_markers_to_selected_preview_group()
     {
         var selectedGroupId = Guid.NewGuid();
@@ -1596,29 +1794,56 @@ public sealed class FloorPlanPreviewControlTests
     }
 
     [Fact]
-    public void PinchMarkerPreviewLayerRenderer_styles_only_the_exact_selected_marker_as_active()
+    public void PinchMarkerPreviewLayerRenderer_preserves_idle_selection_and_highlights_active_drag_group_axis()
     {
-        var selectedGroupId = Guid.NewGuid();
-        var selectedMarker = CreatePinchMarker(selectedGroupId, "Height");
-        var sameGroupMarker = CreatePinchMarker(selectedGroupId, "Height");
-        var sameAxisMarker = CreatePinchMarker(Guid.NewGuid(), "Height");
-        var otherAxisMarker = CreatePinchMarker(Guid.NewGuid(), "Width");
+        var activeGroupId = Guid.NewGuid();
+        var selectedMarker = CreatePinchMarker(activeGroupId, "Height");
+        var sameGroupAxisMarker = CreatePinchMarker(activeGroupId, "Height");
+        var otherGroupMarker = CreatePinchMarker(Guid.NewGuid(), "Height");
+        var otherAxisMarker = CreatePinchMarker(activeGroupId, "Width");
 
-        var selectedStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(selectedMarker, selectedMarker.PinchMarkerId);
-        var sameGroupStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(sameGroupMarker, selectedMarker.PinchMarkerId);
-        var sameAxisStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(sameAxisMarker, selectedMarker.PinchMarkerId);
-        var otherAxisStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(otherAxisMarker, selectedMarker.PinchMarkerId);
-        var noSelectionStyles = new[] { selectedMarker, sameGroupMarker, sameAxisMarker, otherAxisMarker }
-            .Select(marker => PinchMarkerPreviewLayerRenderer.ResolveStyle(marker, selectedPinchMarkerId: null))
-            .ToArray();
+        var selectedStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(
+            selectedMarker,
+            selectedMarker.PinchMarkerId,
+            activeGroupId,
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Top);
+        var sameGroupAxisStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(
+            sameGroupAxisMarker,
+            selectedMarker.PinchMarkerId,
+            activeGroupId,
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Top);
+        var selectedOtherGroupDuringDragStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(
+            otherGroupMarker,
+            otherGroupMarker.PinchMarkerId,
+            activeGroupId,
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Top);
+        var otherAxisStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(
+            otherAxisMarker,
+            selectedMarker.PinchMarkerId,
+            activeGroupId,
+            FloorPlanPreviewGeometry.PreviewCompressionEdge.Top);
+        var idleSelectedStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(
+            selectedMarker,
+            selectedMarker.PinchMarkerId,
+            activeGroupId,
+            activeDragEdge: null);
+        var idleUnselectedStyle = PinchMarkerPreviewLayerRenderer.ResolveStyle(
+            sameGroupAxisMarker,
+            selectedMarker.PinchMarkerId,
+            activeGroupId,
+            activeDragEdge: null);
 
         Assert.Equal(Colors.SeaGreen, selectedStyle.Fill);
-        Assert.Equal(5d, selectedStyle.Radius);
-        Assert.Equal(Colors.SlateGray, sameGroupStyle.Fill);
-        Assert.Equal(Colors.SlateGray, sameAxisStyle.Fill);
+        Assert.Equal(Colors.SeaGreen, sameGroupAxisStyle.Fill);
+        Assert.Equal(Colors.SlateGray, selectedOtherGroupDuringDragStyle.Fill);
         Assert.Equal(Colors.SlateGray, otherAxisStyle.Fill);
-        Assert.All(noSelectionStyles, style => Assert.Equal(Colors.SlateGray, style.Fill));
-        Assert.All(noSelectionStyles, style => Assert.Equal(4d, style.Radius));
+        Assert.Equal(Colors.SeaGreen, idleSelectedStyle.Fill);
+        Assert.Equal(Colors.SlateGray, idleUnselectedStyle.Fill);
+        Assert.Equal(5d, selectedStyle.Radius);
+        Assert.Equal(4d, sameGroupAxisStyle.Radius);
+        Assert.Equal(5d, selectedOtherGroupDuringDragStyle.Radius);
+        Assert.Equal(5d, idleSelectedStyle.Radius);
+        Assert.Equal(4d, idleUnselectedStyle.Radius);
     }
 
     private static PinchMarkerDto CreatePinchMarker(Guid pinchGroupId, string axisTag)

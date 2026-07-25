@@ -100,10 +100,25 @@ public sealed class ExportProjectedPlanSheetHandler
     {
         if (recipe is null ||
             projection.CanonicalCompressionStepCount == 0 ||
-            string.IsNullOrWhiteSpace(projection.RecipeHandlingSummary) ||
-            !projection.RecipeHandlingSummary.Contains(
-                "requires review before DXF deformation",
-                StringComparison.OrdinalIgnoreCase))
+            string.IsNullOrWhiteSpace(projection.RecipeHandlingSummary))
+        {
+            return;
+        }
+
+        var appliedSummary = projection.RecipeHandlingSummary
+            .Replace(
+                "local recipe requires review before DXF deformation",
+                "recipe-aware DXF export applied canonical operations",
+                StringComparison.OrdinalIgnoreCase)
+            .Replace(
+                "recipe-aware DXF export will apply canonical operations",
+                "recipe-aware DXF export applied canonical operations",
+                StringComparison.OrdinalIgnoreCase)
+            .Replace(
+                "recipe-aware DXF export will apply CAD stretch actions",
+                "recipe-aware DXF export applied CAD stretch actions",
+                StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(appliedSummary, projection.RecipeHandlingSummary, StringComparison.Ordinal))
         {
             return;
         }
@@ -122,10 +137,7 @@ public sealed class ExportProjectedPlanSheetHandler
             projection.CanonicalCompressionStepCount,
             projection.CreatedAtUtc,
             projection.RuleSummary,
-            projection.RecipeHandlingSummary.Replace(
-                "local recipe requires review before DXF deformation",
-                "recipe-aware DXF export applied canonical operations",
-                StringComparison.OrdinalIgnoreCase));
+            appliedSummary);
 
         await sheetAdjustmentProjectionRepository.UpdateAsync(updatedProjection, cancellationToken);
         if (unitOfWork is not null)
@@ -176,8 +188,7 @@ public sealed class ExportProjectedPlanSheetHandler
         string sourceFilePath,
         CancellationToken cancellationToken)
     {
-        if (projection.Method is not SheetAdjustmentProjectionMethod.ElectricalWholeSheetSimilarity ||
-            projection.CanonicalCompressionStepCount == 0)
+        if (projection.Method is not SheetAdjustmentProjectionMethod.ElectricalWholeSheetSimilarity)
         {
             return null;
         }
@@ -252,7 +263,8 @@ public sealed class ExportProjectedPlanSheetHandler
                 originalDimensions.Width,
                 originalDimensions.Height,
                 RegistrationStatus: registration.Status,
-                WholePlanRegistrationProof: registration.WholePlanRegistrationProof);
+                WholePlanRegistrationProof: registration.WholePlanRegistrationProof,
+                CanonicalFloorPlanExportPath: canonicalAdjustment.CanonicalFloorPlanExportPath);
     }
 
     private static async Task<string> ComputeSha256Async(

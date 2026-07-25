@@ -35,8 +35,8 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
             throw new ArgumentException("Package directory is required.", nameof(request));
         }
 
-        var exportableProjections = await ResolveExportableProjectionsAsync(request, cancellationToken);
-        var exportedProjectionRequests = new List<MultiSheetExportProjectionRequestDto>(exportableProjections.Count);
+        var requestedProjections = await ResolveRequestedProjectionsAsync(request, cancellationToken);
+        var exportedProjectionRequests = new List<MultiSheetExportProjectionRequestDto>(requestedProjections.Count);
         var packageArtifacts = new List<PlanSetPackageArtifactDto>();
         var failureStage = PlanSetExportFailureStage.UserPackagePublication;
         var auditStarted = false;
@@ -58,8 +58,12 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
                     packageArtifacts.Add(new PlanSetPackageArtifactDto("FloorPlan", finalFloorPath));
 
                     failureStage = PlanSetExportFailureStage.DependentSheetGeneration;
+                    await EnsureRequiredElectricalProjectionIsReadyAsync(
+                        request,
+                        requestedProjections,
+                        stagingCancellationToken);
                     var usedOutputNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var projection in exportableProjections)
+                    foreach (var projection in requestedProjections)
                     {
                         if (projection.Status is not SheetAdjustmentProjectionStatus.ReadyForExport)
                         {
@@ -96,10 +100,16 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
                             packageArtifacts.Add(new PlanSetPackageArtifactDto(sheetSource.SheetType, finalOutputPath));
                         }
                         catch (ProjectedPlanSheetManualReviewRequiredException)
+                            when (!RequiresAtomicAutomaticElectricalExport(request, sheetSource))
                         {
                             exportedProjectionRequests.Add(new MultiSheetExportProjectionRequestDto(projection.Id));
                         }
                     }
+
+                    AddPackageDocumentArtifacts(
+                        packageArtifacts,
+                        request.PackageDirectory,
+                        packageStem);
                 },
                 async (publishPackageAsync, publicationCancellationToken) =>
                 {
@@ -121,7 +131,8 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
                             CanonicalPlacement = request.CanonicalPlacement,
                             CanonicalRecipe = request.CanonicalRecipe,
                             CanonicalFloorPlanVerificationPath = canonicalVerificationPath,
-                            PackageArtifacts = packageArtifacts
+                            PackageArtifacts = packageArtifacts,
+                            PackageStagingDirectory = Path.GetDirectoryName(canonicalVerificationPath)
                         },
                         publishPackageAsync,
                         publicationCancellationToken);
@@ -158,12 +169,14 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
         }
     }
 
-    private async Task<IReadOnlyList<SheetAdjustmentProjection>> ResolveExportableProjectionsAsync(
+    private async Task<IReadOnlyList<SheetAdjustmentProjection>> ResolveRequestedProjectionsAsync(
         ExportMultiSheetPlanSetPackageRequest request,
         CancellationToken cancellationToken)
     {
         if (request.DependentProjectionIds.Count == 0)
         {
+            // Automatic discovery keeps non-ready latest projections visible so the required
+            // Electrical gate can inspect them; the export loop still skips them as audit-only.
             var projections = await sheetAdjustmentProjectionRepository.ListByPlanSetVersionAndCanonicalAdjustmentAsync(
                 request.PlanSetVersionId,
                 request.CanonicalAdjustmentId,
@@ -174,7 +187,6 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
                     .OrderBy(projection => projection.CreatedAtUtc)
                     .ThenBy(projection => projection.Id)
                     .Last())
-                .Where(projection => projection.Status is SheetAdjustmentProjectionStatus.ReadyForExport)
                 .OrderBy(projection => projection.Id)
                 .ToArray();
         }
@@ -208,6 +220,48 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
         return selected;
     }
 
+    private async Task EnsureRequiredElectricalProjectionIsReadyAsync(
+        ExportMultiSheetPlanSetPackageRequest request,
+        IReadOnlyList<SheetAdjustmentProjection> requestedProjections,
+        CancellationToken cancellationToken)
+    {
+        if (!request.RequireReadyElectricalPlan || request.DependentProjectionIds.Count != 0)
+        {
+            return;
+        }
+
+        var hasReadyElectrical = false;
+        foreach (var projection in requestedProjections)
+        {
+            var sheetSource = await planSheetSourceReader.GetBySheetIdAsync(
+                projection.DependentSheetId,
+                cancellationToken);
+            if (sheetSource is null || !RequiresAtomicAutomaticElectricalExport(request, sheetSource))
+            {
+                continue;
+            }
+
+            if (projection.Status is not SheetAdjustmentProjectionStatus.ReadyForExport)
+            {
+                var warning = string.IsNullOrWhiteSpace(projection.Warning)
+                    ? string.Empty
+                    : $" {projection.Warning}";
+                throw new ProjectedPlanSheetManualReviewRequiredException(
+                    $"Automatic package export requires ElectricalPlan '{sheetSource.Name}' to be ready for export, " +
+                    $"but its latest projection is {projection.Status}.{warning}");
+            }
+
+            hasReadyElectrical = true;
+        }
+
+        if (!hasReadyElectrical)
+        {
+            throw new ProjectedPlanSheetManualReviewRequiredException(
+                "Automatic package export requires an ElectricalPlan projection that is ready for export, " +
+                "but none exists for this canonical adjustment.");
+        }
+    }
+
     private static string BuildOutputFileName(
         string packageStem,
         string sheetType,
@@ -224,6 +278,31 @@ public sealed class ExportMultiSheetPlanSetPackageHandler
         }
 
         return candidate;
+    }
+
+    private static bool RequiresAtomicAutomaticElectricalExport(
+        ExportMultiSheetPlanSetPackageRequest request,
+        PlanSheetSourceDto sheetSource)
+        => request.DependentProjectionIds.Count == 0 &&
+           string.Equals(
+               sheetSource.SheetType,
+               nameof(PlanSheetType.ElectricalPlan),
+               StringComparison.OrdinalIgnoreCase);
+
+    private static void AddPackageDocumentArtifacts(
+        ICollection<PlanSetPackageArtifactDto> artifacts,
+        string packageDirectory,
+        string packageStem)
+    {
+        artifacts.Add(new PlanSetPackageArtifactDto(
+            "Comparison",
+            Path.Combine(packageDirectory, $"{packageStem}-comparison.json")));
+        artifacts.Add(new PlanSetPackageArtifactDto(
+            "Manifest",
+            Path.Combine(packageDirectory, "manifest.json")));
+        artifacts.Add(new PlanSetPackageArtifactDto(
+            "Audit",
+            Path.Combine(packageDirectory, $"{packageStem}-audit.txt")));
     }
 
     public static string BuildCanonicalFloorPlanPath(

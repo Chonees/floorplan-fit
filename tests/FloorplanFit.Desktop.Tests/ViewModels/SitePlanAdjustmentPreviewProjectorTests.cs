@@ -1107,6 +1107,66 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests : IDisposable
     }
 
     [Fact]
+    public void ApplyAutoFitPlan_with_paired_wall_candidates_records_one_measured_v2_action()
+    {
+        var groupId = Guid.NewGuid();
+        var faceAPathId = Guid.NewGuid();
+        var faceBPathId = Guid.NewGuid();
+        var faceACandidateId = Guid.NewGuid();
+        var faceBCandidateId = Guid.NewGuid();
+        var facts = new AutoFitSuggestionFacts(
+            new AutoFitEnvelopeDeficitDto(2m, 0m, 0m, 2m, 0m, 0m),
+            [new AutoFitCandidateGroupDto(groupId, "Pared doble", "Width", 4m, 5m, 5m, 0)],
+            []);
+        var plan = new AutoFitSuggestionPlan(
+            "Trim paired wall.",
+            [new AutoFitSuggestionStep("Pared doble", "Width", 2m, "One logical delta.")],
+            "Both faces shorten once.");
+        var viewModel = new SitePlanAdjustmentViewModel(
+            "Adjust",
+            "Subtitle",
+            "Selection",
+            "Status",
+            sitePlanGeometryPaths: [],
+            sitePlanRenderPaths: [],
+            sitePlanTexts: [],
+            floorPlanGeometryPaths:
+            [
+                new GeometryPathDto(faceAPathId, false, [new GeometrySegmentDto(faceAPathId, 0, 0m, 0m, 10m, 0m)]),
+                new GeometryPathDto(faceBPathId, false, [new GeometrySegmentDto(faceBPathId, 0, 0m, 4m, 10m, 4m)])
+            ],
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            autoFitSuggestionFacts: facts,
+            autoFitPlanSuggester: null,
+            sitePlanToMillimetersFactor: 25.4m,
+            pinchMarkers:
+            [
+                new PinchMarkerDto(Guid.NewGuid(), groupId, "Pared doble", faceACandidateId, faceAPathId, "Width", 0.5m, 101.6m, 1),
+                new PinchMarkerDto(Guid.NewGuid(), groupId, "Pared doble", faceBCandidateId, faceBPathId, "Width", 0.5m, 101.6m, 2)
+            ],
+            wallCandidates:
+            [
+                new WallCandidateDto(faceACandidateId, "LINE:1", "WALLS", "Accepted", 1m, null, null, faceAPathId, 1),
+                new WallCandidateDto(faceBCandidateId, "LINE:2", "WALLS", "Accepted", 1m, null, null, faceBPathId, 2)
+            ]);
+
+        viewModel.ApplyAutoFitPlan(new AutoFitSuggestionOptionViewModel(1, plan));
+
+        var placement = viewModel.BuildAdjustedSitePlanPlacement();
+        var action = Assert.Single(placement.StretchActions);
+        Assert.Equal(2m, action.DeltaSourceUnits);
+        Assert.Equal(2, action.TargetSpans.Count);
+        Assert.Equal(8m, viewModel.FloorPlanGeometryPaths.Single(path => path.Id == faceAPathId).Segments.Single().EndX);
+        Assert.Equal(8m, viewModel.FloorPlanGeometryPaths.Single(path => path.Id == faceBPathId).Segments.Single().EndX);
+        var impact = Assert.Single(placement.FloorPlanImpactAudit);
+        Assert.Equal("Applied", impact.Status);
+        Assert.Equal(2m, impact.MeasuredMinDeltaSourceUnits);
+        Assert.Equal(2m, impact.MeasuredMaxDeltaSourceUnits);
+    }
+
+    [Fact]
     public async Task ExportAdjustedSitePlanAsync_invokes_exporter_with_current_placement_and_paths()
     {
         var pathId = Guid.NewGuid();
@@ -1503,6 +1563,129 @@ public sealed class SitePlanAdjustmentPreviewProjectorTests : IDisposable
             "combined-plan-set",
             "combined-floorplan-plan-set")));
         Assert.Contains("combined-confirmed-plan-set", projectedSheetExporter.LastOutputFilePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExportAdjustedSitePlanAsync_commissioned_fails_closed_without_package_when_electrical_requires_manual_confirmation()
+    {
+        var planSetVersionId = Guid.NewGuid();
+        var floorPlanVersionId = Guid.NewGuid();
+        var dependentSheetId = Guid.NewGuid();
+        var adjustmentRepository = new CapturingCanonicalFloorPlanAdjustmentRepository();
+        var registration = new SheetRegistration(
+            Guid.NewGuid(),
+            planSetVersionId,
+            dependentSheetId,
+            floorPlanVersionId,
+            SheetRegistrationMethod.WholeSheetSimilarity,
+            new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+            0.25m,
+            SheetRegistrationStatus.Confirmed,
+            new DateTime(2026, 7, 1, 16, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 7, 1, 16, 0, 0, DateTimeKind.Utc),
+            warning: "Needs visual review",
+            ruleSummary: "low confidence");
+        var registrationRepository = new StaticSheetRegistrationRepository(registration);
+        var projectionRepository = new CapturingSheetAdjustmentProjectionRepository();
+        var projectionUnitOfWork = new CapturingUnitOfWork();
+        var projectionClock = new FakeClock(new DateTime(2026, 7, 1, 16, 5, 0, DateTimeKind.Utc));
+        var registeredSheetProjector = new ProjectRegisteredPlanSetSheetsHandler(
+            registrationRepository,
+            new ProjectElectricalSheetAdjustmentHandler(
+                registrationRepository,
+                projectionRepository,
+                projectionUnitOfWork,
+                projectionClock),
+            new ProjectRoofSheetAdjustmentHandler(
+                registrationRepository,
+                projectionRepository,
+                projectionUnitOfWork,
+                projectionClock),
+            new ProjectFacadeElevationSheetAdjustmentHandler(
+                registrationRepository,
+                projectionRepository,
+                projectionUnitOfWork,
+                projectionClock));
+        var projectedSheetExporter = new CapturingProjectedPlanSheetExporter();
+        var packageExporter = new ExportMultiSheetPlanSetPackageHandler(
+            projectionRepository,
+            new StaticPlanSheetSourceReader(
+                dependentSheetId,
+                new PlanSheetSourceDto(
+                    dependentSheetId,
+                    PlanSheetType.ElectricalPlan.ToString(),
+                    "Electrical",
+                    Guid.NewGuid(),
+                    @"C:\plans\electrical.dxf")),
+            new ExportProjectedPlanSheetHandler(projectionRepository, projectedSheetExporter),
+            new CreateMultiSheetExportAuditHandler(
+                projectionRepository,
+                new StaticPlanSheetReader(
+                    planSetVersionId,
+                    [
+                        new PlanSetSheetDto(
+                            dependentSheetId,
+                            PlanSheetType.ElectricalPlan.ToString(),
+                            "Electrical",
+                            Guid.NewGuid(),
+                            floorPlanVersionId,
+                            IsCanonical: false,
+                            RegistrationStatus: "Confirmed",
+                            ProjectionStatus: "RequiresManualConfirmation")
+                    ]),
+                new CapturingPlanSetExportRepository(),
+                new CapturingPlanSetAuditEventRepository(),
+                new CapturingPlanSetExportManifestWriter(@"C:\out\manifest.json"),
+                new CapturingUnitOfWork(),
+                new FakeClock(new DateTime(2026, 7, 1, 16, 6, 0, DateTimeKind.Utc)),
+                canonicalFloorPlanAdjustmentRepository: adjustmentRepository));
+        var recorder = new RecordCanonicalFloorPlanAdjustmentHandler(
+            adjustmentRepository,
+            new CapturingUnitOfWork(),
+            new FakeClock(new DateTime(2026, 7, 1, 16, 8, 0, DateTimeKind.Utc)));
+        var floorGeometry = CreateRectangle(Guid.NewGuid(), minX: 0m, minY: 0m, maxX: 10m, maxY: 10m);
+        var viewModel = new SitePlanAdjustmentViewModel(
+            "Adjust",
+            "Subtitle",
+            "Selection",
+            "Status",
+            sitePlanGeometryPaths: [],
+            sitePlanRenderPaths: [],
+            sitePlanTexts: [],
+            floorPlanGeometryPaths: [floorGeometry],
+            roomLabels: [],
+            openingLabels: [],
+            dimensions: [],
+            floorPlanSourcePath: @"C:\plans\floor.dxf",
+            sitePlanSourcePath: @"C:\plans\site.dxf",
+            adjustedSitePlanExporter: new FakeAdjustedSitePlanExporter(),
+            planSetVersionId: planSetVersionId,
+            canonicalFloorPlanVersionId: floorPlanVersionId,
+            canonicalAdjustmentRecorder: recorder,
+            planSetPackageExporter: packageExporter,
+            registeredSheetProjector: registeredSheetProjector);
+        viewModel.ApplyCommissionedHouseFit(new CommissionedHouseFitResult(
+            Succeeded: true,
+            IsRigidPlacement: true,
+            WidthReductionInches: 0m,
+            DepthReductionInches: 0m,
+            Actions: [],
+            RejectionReason: string.Empty));
+        viewModel.ApplyCommissionedStructuralComparison(
+            [floorGeometry],
+            "Confirmed whole-plan registration");
+        Assert.True(viewModel.IsCommissionedAutoFit);
+        Assert.True(viewModel.CanExportAdjustedSitePlan);
+
+        await viewModel.ExportAdjustedSitePlanAsync(CreateAtomicPackageOutputPath(), CancellationToken.None);
+
+        Assert.Null(viewModel.LastPlanSetExportAudit);
+        Assert.Contains("no se pudo exportar el paquete HousePlanSet", viewModel.AutoFitSuggestionStatus, StringComparison.Ordinal);
+        Assert.Contains("ElectricalPlan", viewModel.AutoFitSuggestionStatus, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(atomicPackageTempRoot, "combined-plan-set")));
+        Assert.Empty(Directory.GetDirectories(atomicPackageTempRoot, ".combined-plan-set.staging-*"));
+        Assert.True(File.Exists(Path.Combine(atomicPackageTempRoot, "combined.dxf")));
+        Assert.Null(projectedSheetExporter.LastOutputFilePath);
     }
 
     private string CreateAtomicPackageOutputPath()

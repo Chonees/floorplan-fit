@@ -3,6 +3,7 @@ using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Library;
 using FloorplanFit.Application.FloorPlans.Review;
+using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Application.PlanSets.Classification;
 using FloorplanFit.Application.PlanSets.Confirmation;
 using FloorplanFit.Application.PlanSets.Import;
@@ -56,8 +57,106 @@ public sealed class LibraryViewModelTests
             ]);
     }
 
+    private static FloorPlanLibraryVersionDto LibraryVersion(
+        Guid versionId,
+        int versionNumber,
+        Guid publishedCurationId,
+        bool isCurrent = false)
+        => new(
+            versionId,
+            versionNumber,
+            "Published",
+            new DateTime(2026, 7, 21, 12, 0, 0, DateTimeKind.Utc),
+            "inch",
+            isCurrent,
+            publishedCurationId);
+
+    private static LibraryViewModel CreateReadinessLibraryViewModel(
+        FloorPlanLibraryItemDto item,
+        ICommissionedHouseAdaptationProfileRepository profiles)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanLibraryReader>(new FakeFloorPlanLibraryReader([item]));
+        services.AddSingleton(profiles);
+        services.AddTransient<GetFloorPlanLibraryHandler>();
+        services.AddTransient<GetCommissionedHouseAdaptationReadinessHandler>();
+        var provider = services.BuildServiceProvider();
+        return new LibraryViewModel(provider.GetRequiredService<IServiceScopeFactory>());
+    }
+
+    private static CommissionedHouseAdaptationProfile CreateReadyAutoFitProfile(
+        Guid versionId,
+        Guid publishedCurationId)
+    {
+        const string protectedLabel = "LABEL:A";
+        return new CommissionedHouseAdaptationProfile(
+            versionId,
+            publishedCurationId,
+            SourceToMillimetersFactor: 25.4m,
+            Variables:
+            [
+                new CommissionedAdaptationVariable(
+                    "width",
+                    "Width",
+                    HouseAdaptationAxis.Width,
+                    1,
+                    [ReadyAction("width", "Width", "Right", protectedLabel)]),
+                new CommissionedAdaptationVariable(
+                    "depth",
+                    "Depth",
+                    HouseAdaptationAxis.Depth,
+                    1,
+                    [ReadyAction("depth", "Height", "Top", protectedLabel)])
+            ],
+            ImmutableSizeEntityRefs: [],
+            ProtectedEntityRefs: [protectedLabel])
+        {
+            AuxiliaryEntityBindings =
+            [
+                new CommissionExistingCurationAuxiliaryEntityBinding(
+                    protectedLabel,
+                    CommissionExistingCurationAuxiliaryEntityKind.Label,
+                    new AdjustmentRecipeBoundsDto(1m, 1m, 2m, 2m),
+                    GeometryPathId: null,
+                    SegmentSortOrder: null,
+                    IsImmutableSize: false,
+                    IsProtected: true)
+            ]
+        };
+    }
+
+    private static AdjustmentRecipeStretchActionDto ReadyAction(
+        string id,
+        string axis,
+        string edge,
+        string protectedLabel)
+    {
+        var firstPath = Guid.NewGuid();
+        var secondPath = Guid.NewGuid();
+        var firstEntity = $"{id}:A";
+        var secondEntity = $"{id}:B";
+        return new AdjustmentRecipeStretchActionDto(
+            id,
+            axis,
+            edge,
+            CutCoordinate: 10m,
+            DeltaSourceUnits: 0m,
+            MaxDeltaSourceUnits: 1m,
+            CoordinateTolerance: 0.01m,
+            new AdjustmentRecipeBoundsDto(0m, 0m, 10m, 10m),
+            [
+                new AdjustmentRecipeTargetSpanDto(firstEntity, firstPath, 1, 0m, 0m, 10m, 0m, 1),
+                new AdjustmentRecipeTargetSpanDto(secondEntity, secondPath, 1, 0m, 10m, 10m, 10m, 1)
+            ],
+            [
+                new AdjustmentRecipeEntityRoleDto(firstEntity, firstPath, 1, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto(secondEntity, secondPath, 1, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto(protectedLabel, null, null, "Fixed", [])
+            ]);
+    }
+
     [Fact]
-    public void FloorPlanLibraryVersionDto_enables_site_plan_adjustment_only_for_active_published_versions()
+    public void FloorPlanLibraryVersionDto_requires_exact_auto_fit_readiness_for_site_plan_adjustment()
     {
         var published = new FloorPlanLibraryVersionDto(
             Guid.NewGuid(),
@@ -67,6 +166,7 @@ public sealed class LibraryViewModelTests
             "inch",
             IsCurrent: true,
             ActivePublishedCurationId: Guid.NewGuid());
+        var ready = published with { IsAutoFitReady = true };
         var draft = new FloorPlanLibraryVersionDto(
             Guid.NewGuid(),
             VersionNumber: 4,
@@ -75,8 +175,104 @@ public sealed class LibraryViewModelTests
             "inch",
             IsCurrent: true);
 
-        Assert.True(published.CanAdjustToSitePlan);
+        Assert.False(published.CanAdjustToSitePlan);
+        Assert.Equal("Setup required", published.AutoFitReadinessLabel);
+        Assert.True(ready.CanAdjustToSitePlan);
+        Assert.Equal("Auto-fit ready", ready.AutoFitReadinessLabel);
         Assert.False(draft.CanAdjustToSitePlan);
+    }
+
+    [Fact]
+    public async Task LoadAsync_marks_only_the_exact_commissioned_version_auto_fit_ready()
+    {
+        var templateId = Guid.NewGuid();
+        var uncommissionedVersionId = Guid.NewGuid();
+        var failedVersionId = Guid.NewGuid();
+        var readyVersionId = Guid.NewGuid();
+        var uncommissionedCurationId = Guid.NewGuid();
+        var failedCurationId = Guid.NewGuid();
+        var readyCurationId = Guid.NewGuid();
+        var readyProfile = CreateReadyAutoFitProfile(readyVersionId, readyCurationId);
+        var item = new FloorPlanLibraryItemDto(
+            templateId,
+            "house",
+            "House",
+            VersionCount: 3,
+            CurrentVersionId: readyVersionId,
+            CurrentVersionNumber: 3,
+            Versions:
+            [
+                LibraryVersion(uncommissionedVersionId, 1, uncommissionedCurationId),
+                LibraryVersion(failedVersionId, 2, failedCurationId),
+                LibraryVersion(readyVersionId, 3, readyCurationId, isCurrent: true)
+            ]);
+        var profiles = new AutoFitProfileRepository(
+            [readyProfile],
+            failedVersionIds: [failedVersionId]);
+        var viewModel = CreateReadinessLibraryViewModel(item, profiles);
+
+        await viewModel.LoadAsync(CancellationToken.None);
+
+        var versions = Assert.Single(viewModel.Items).Versions;
+        Assert.False(versions.Single(version => version.VersionId == uncommissionedVersionId).CanAdjustToSitePlan);
+        Assert.False(versions.Single(version => version.VersionId == failedVersionId).CanAdjustToSitePlan);
+        Assert.True(versions.Single(version => version.VersionId == readyVersionId).CanAdjustToSitePlan);
+        Assert.Equal(
+            new (Guid VersionId, Guid PublishedCurationId)[]
+            {
+                (uncommissionedVersionId, uncommissionedCurationId),
+                (failedVersionId, failedCurationId),
+                (readyVersionId, readyCurationId)
+            },
+            profiles.Requests);
+    }
+
+    [Fact]
+    public async Task OpenVersionSitePlanAdjustmentAsync_blocks_setup_required_version_with_visible_reason()
+    {
+        var versionId = Guid.NewGuid();
+        var curationId = Guid.NewGuid();
+        var item = CreateLibraryItem(
+            Guid.NewGuid(),
+            versionId,
+            "Published",
+            activePublishedCurationId: curationId);
+        var viewModel = CreateReadinessLibraryViewModel(item, new AutoFitProfileRepository([]));
+        await viewModel.LoadAsync(CancellationToken.None);
+        var loadedItem = Assert.Single(viewModel.Items);
+        var version = Assert.Single(loadedItem.Versions);
+        Assert.Equal("Setup required", version.AutoFitReadinessLabel);
+        Assert.False(version.CanAdjustToSitePlan);
+
+        var adjustment = await viewModel.OpenVersionSitePlanAdjustmentAsync(
+            loadedItem,
+            version,
+            "site.dxf",
+            CancellationToken.None);
+
+        Assert.Null(adjustment);
+        Assert.Equal(
+            "Complete Auto-fit setup before adjusting this floor plan to a site plan.",
+            viewModel.StatusMessage);
+        Assert.Null(viewModel.ActiveSitePlanAdjustmentViewModel);
+    }
+
+    [Fact]
+    public async Task LoadAsync_propagates_auto_fit_readiness_cancellation()
+    {
+        var versionId = Guid.NewGuid();
+        var curationId = Guid.NewGuid();
+        var item = CreateLibraryItem(
+            Guid.NewGuid(),
+            versionId,
+            "Published",
+            activePublishedCurationId: curationId);
+        var viewModel = CreateReadinessLibraryViewModel(item, new AutoFitProfileRepository([]));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => viewModel.LoadAsync(cancellation.Token));
     }
 
     [Fact]
@@ -1804,6 +2000,49 @@ public sealed class LibraryViewModelTests
         {
             return Task.FromResult(items);
         }
+    }
+
+    private sealed class AutoFitProfileRepository : ICommissionedHouseAdaptationProfileRepository
+    {
+        private readonly IReadOnlyDictionary<Guid, CommissionedHouseAdaptationProfile> profiles;
+        private readonly IReadOnlySet<Guid> failedVersionIds;
+
+        public AutoFitProfileRepository(
+            IEnumerable<CommissionedHouseAdaptationProfile> profiles,
+            IEnumerable<Guid>? failedVersionIds = null)
+        {
+            this.profiles = profiles.ToDictionary(profile => profile.FloorPlanVersionId);
+            this.failedVersionIds = (failedVersionIds ?? []).ToHashSet();
+        }
+
+        public List<(Guid VersionId, Guid PublishedCurationId)> Requests { get; } = [];
+
+        public Task UpsertAsync(
+            CommissionedHouseAdaptationProfile profile,
+            CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<CommissionedHouseAdaptationProfile?> GetByFloorPlanVersionIdAsync(
+            Guid floorPlanVersionId,
+            Guid expectedPublishedCurationId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Requests.Add((floorPlanVersionId, expectedPublishedCurationId));
+            if (failedVersionIds.Contains(floorPlanVersionId))
+            {
+                throw new InvalidOperationException("Readiness probe failed.");
+            }
+
+            profiles.TryGetValue(floorPlanVersionId, out var profile);
+            return Task.FromResult(
+                profile?.PublishedCurationId == expectedPublishedCurationId ? profile : null);
+        }
+
+        public Task RemoveByFloorPlanVersionIdAsync(
+            Guid floorPlanVersionId,
+            CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class FakeDxfGateway : IDxfGateway

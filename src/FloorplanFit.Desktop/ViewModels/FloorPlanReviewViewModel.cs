@@ -2,11 +2,13 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FloorplanFit.Application.FloorPlans.Curation;
+using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.Controls;
 using FloorplanFit.Desktop.Controls.Preview;
 using FloorplanFit.Desktop.Presentation;
 using FloorplanFit.Domain.FloorPlans;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FloorplanFit.Desktop.ViewModels;
 
@@ -29,6 +31,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private readonly FloorPlanReviewInspectorCoordinator inspectorCoordinator;
     private readonly FloorPlanReviewNotificationCoordinator notificationCoordinator;
     private readonly FloorPlanReviewSessionCoordinator sessionCoordinator;
+    private readonly IServiceScopeFactory scopeFactory;
     private readonly Guid templateId;
     private readonly Guid? floorPlanVersionId;
     private IReadOnlyDictionary<Guid, DimensionAssociationDto> dimensionAssociationsById = new Dictionary<Guid, DimensionAssociationDto>();
@@ -53,6 +56,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         inspectorCoordinator = new FloorPlanReviewInspectorCoordinator();
         notificationCoordinator = new FloorPlanReviewNotificationCoordinator();
         sessionCoordinator = new FloorPlanReviewSessionCoordinator(scopeFactory);
+        this.scopeFactory = scopeFactory;
         this.templateId = templateId;
         this.floorPlanVersionId = floorPlanVersionId;
     }
@@ -771,10 +775,11 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return;
         }
 
+        var publishedCurationId = DraftCurationId;
         StatusMessage = "Publishing curation...";
         try
         {
-            await mutationCoordinator.PublishCurationAsync(templateId, DraftCurationId, cancellationToken);
+            await mutationCoordinator.PublishCurationAsync(templateId, publishedCurationId, cancellationToken);
         }
         catch (InvalidOperationException exception)
         {
@@ -788,8 +793,796 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return;
         }
 
+        var commissioningStatus = floorPlanVersionId.HasValue
+            ? await CommissionPublishedCurationAsync(
+                floorPlanVersionId.Value,
+                publishedCurationId,
+                cancellationToken)
+            : "Publicado, pero no qued\u00F3 Auto-fit ready: la revisi\u00F3n no est\u00E1 vinculada a una versi\u00F3n can\u00F3nica exacta.";
         await RefreshSessionAsync(SelectedCandidate?.CandidateId, SelectedPinchMarker?.PinchMarkerId, SelectedPinchGroup?.PinchGroupId, GetSelectedCuratedArtifactSelection(), cancellationToken);
-        StatusMessage = $"Published curation for {Name}";
+        StatusMessage = commissioningStatus;
+    }
+
+    private async Task<string> CommissionPublishedCurationAsync(
+        Guid publishedFloorPlanVersionId,
+        Guid publishedCurationId,
+        CancellationToken cancellationToken)
+    {
+        const string failurePrefix = "Publicado, pero no qued\u00F3 Auto-fit ready: ";
+        if (MeasurementContext is null || MeasurementContext.ToMillimetersFactor <= 0m)
+        {
+            return failurePrefix + "falta un contexto de unidades v\u00E1lido en la curaci\u00F3n publicada.";
+        }
+
+        decimal coordinateTolerance;
+        try
+        {
+            coordinateTolerance = MeasurementContext.LinearToleranceMm / MeasurementContext.ToMillimetersFactor;
+        }
+        catch (OverflowException)
+        {
+            return failurePrefix + "la tolerancia lineal no se puede representar en unidades del plano.";
+        }
+
+        if (coordinateTolerance < 0m)
+        {
+            return failurePrefix + "la tolerancia lineal no puede ser negativa.";
+        }
+
+        if (!TryBuildCommissioningAuxiliaryBindings(
+                coordinateTolerance,
+                out var auxiliaryBindings,
+                out var auxiliaryReason))
+        {
+            return failurePrefix + auxiliaryReason;
+        }
+
+        var compilation = CompileUniqueCommissionedProfile(
+            publishedFloorPlanVersionId,
+            publishedCurationId,
+            MeasurementContext.ToMillimetersFactor,
+            coordinateTolerance,
+            auxiliaryBindings);
+        if (!compilation.Succeeded || compilation.Profile is null)
+        {
+            return failurePrefix + (compilation.RejectionReason ?? "la receta comisionada no pudo compilarse de forma segura.");
+        }
+
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var handler = scope.ServiceProvider.GetRequiredService<SaveCommissionedHouseAdaptationProfileHandler>();
+            var readiness = await handler.HandleAsync(
+                compilation.Profile,
+                cancellationToken);
+            if (!readiness.IsReady)
+            {
+                return failurePrefix + string.Join("; ", readiness.Reasons);
+            }
+
+            return $"Publicado {Name}. Auto-fit ready: ancho {readiness.WidthCapacityInches:0.###}\"; profundidad {readiness.DepthCapacityInches:0.###}\".";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return failurePrefix + exception.Message;
+        }
+    }
+
+    private CommissionExistingCurationProfileCompilationResult CompileUniqueCommissionedProfile(
+        Guid publishedFloorPlanVersionId,
+        Guid publishedCurationId,
+        decimal sourceToMillimetersFactor,
+        decimal coordinateTolerance,
+        IReadOnlyList<CommissionExistingCurationAuxiliaryEntityBinding> auxiliaryBindings)
+    {
+        var widthGroups = PinchGroups
+            .Where(group => string.Equals(group.AxisTag, nameof(PinchAxisTag.Width), StringComparison.OrdinalIgnoreCase))
+            .OrderBy(group => group.SortOrder)
+            .ThenBy(group => group.PinchGroupId)
+            .ToArray();
+        var depthGroups = PinchGroups
+            .Where(group => string.Equals(group.AxisTag, nameof(PinchAxisTag.Height), StringComparison.OrdinalIgnoreCase))
+            .OrderBy(group => group.SortOrder)
+            .ThenBy(group => group.PinchGroupId)
+            .ToArray();
+        if (widthGroups.Length == 0 || depthGroups.Length == 0)
+        {
+            var missing = widthGroups.Length == 0 ? "Width" : "Height";
+            return new(false, null, $"falta al menos un grupo {missing} publicado para comisionar ancho y profundidad.");
+        }
+
+        var successes = new List<CommissionExistingCurationProfileCompilationResult>(1);
+        var rejections = new List<string>();
+        foreach (var widthEdge in new[] { "Right", "Left" })
+        {
+            foreach (var depthEdge in new[] { "Top", "Bottom" })
+            {
+                CommissionExistingCurationVariableSelection[] variables =
+                [
+                    new(
+                        "width",
+                        "Commissioned width",
+                        HouseAdaptationAxis.Width,
+                        Priority: 1,
+                        widthGroups.Select(group =>
+                            new CommissionExistingCurationPinchGroupSelection(group.PinchGroupId, widthEdge)).ToArray()),
+                    new(
+                        "depth",
+                        "Commissioned depth",
+                        HouseAdaptationAxis.Depth,
+                        Priority: 1,
+                        depthGroups.Select(group =>
+                            new CommissionExistingCurationPinchGroupSelection(group.PinchGroupId, depthEdge)).ToArray())
+                ];
+                var result = CommissionExistingCurationProfileCompiler.Compile(
+                    new CommissionExistingCurationProfileCompilationRequest(
+                        publishedFloorPlanVersionId,
+                        publishedCurationId,
+                        sourceToMillimetersFactor,
+                        coordinateTolerance,
+                        variables,
+                        PinchGroups.ToArray(),
+                        PinchMarkers.ToArray(),
+                        WallCandidates.ToArray(),
+                        GeometryPaths.ToArray(),
+                        auxiliaryBindings));
+                if (result.Succeeded)
+                {
+                    successes.Add(result);
+                }
+                else if (!string.IsNullOrWhiteSpace(result.RejectionReason))
+                {
+                    rejections.Add(result.RejectionReason);
+                }
+            }
+        }
+
+        return successes.Count switch
+        {
+            1 => successes[0],
+            > 1 => new(
+                false,
+                null,
+                "la geometr\u00EDa admite m\u00E1s de un borde de cierre; dej\u00E1 una sola combinaci\u00F3n estructural completa en la curaci\u00F3n."),
+            _ => new(
+                false,
+                null,
+                "ninguna combinaci\u00F3n Left/Right y Top/Bottom cerr\u00F3 de forma segura. " +
+                (rejections.FirstOrDefault() ?? "Revis\u00E1 los grupos, pares de paredes y capacidades."))
+        };
+    }
+
+    private bool TryBuildCommissioningAuxiliaryBindings(
+        decimal coordinateTolerance,
+        out IReadOnlyList<CommissionExistingCurationAuxiliaryEntityBinding> bindings,
+        out string reason)
+    {
+        bindings = [];
+        reason = string.Empty;
+        var duplicatePath = GeometryPaths
+            .GroupBy(path => path.Id)
+            .FirstOrDefault(group => group.Count() != 1);
+        if (duplicatePath is not null)
+        {
+            reason = $"la geometr\u00EDa auxiliar contiene el path duplicado {duplicatePath.Key:D}.";
+            return false;
+        }
+
+        var pathsById = GeometryPaths.ToDictionary(path => path.Id);
+        var acceptedWallCandidates = WallCandidates
+            .Where(candidate => string.Equals(candidate.Status, "Accepted", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(candidate => candidate.SortOrder)
+            .ThenBy(candidate => candidate.CandidateId)
+            .ToArray();
+        var result = new List<CommissionExistingCurationAuxiliaryEntityBinding>();
+        foreach (var artifact in VisibleCuratedPlanArtifacts)
+        {
+            var isOpening = string.Equals(
+                artifact.SourceArtifactKind,
+                FloorPlanArtifactSourceKinds.OpeningCandidate,
+                StringComparison.Ordinal);
+            var isProtected = string.Equals(
+                                  artifact.SourceArtifactKind,
+                                  FloorPlanArtifactSourceKinds.FixedPlanComponent,
+                                  StringComparison.Ordinal) ||
+                              string.Equals(
+                                  artifact.SourceArtifactKind,
+                                  FloorPlanArtifactSourceKinds.ProtectedDetailAssembly,
+                                  StringComparison.Ordinal);
+            if (!isOpening && !isProtected)
+            {
+                continue;
+            }
+
+            if (!TryResolveGeometryBounds(
+                    artifact.GeometryPathIds,
+                    pathsById,
+                    artifact.TranslationDx,
+                    artifact.TranslationDy,
+                    out var sourceBounds))
+            {
+                reason = $"el objeto {artifact.SourceEntityRef} no tiene geometr\u00EDa auxiliar completa.";
+                return false;
+            }
+
+            Guid? geometryPathId = null;
+            int? segmentSortOrder = null;
+            Guid? hostGeometryPathId = null;
+            int? hostSegmentSortOrder = null;
+            var artifactPathIds = artifact.GeometryPathIds.Distinct().ToArray();
+            if (isOpening)
+            {
+                if (artifactPathIds.Length != 1 ||
+                    !pathsById.TryGetValue(artifactPathIds[0], out var openingPath) ||
+                    openingPath.Segments.Count != 1)
+                {
+                    reason = $"la abertura {artifact.SourceEntityRef} necesita un \u00FAnico path y segmento de geometr\u00EDa propia antes de publicar Auto-fit.";
+                    return false;
+                }
+
+                geometryPathId = openingPath.Id;
+                segmentSortOrder = openingPath.Segments[0].SortOrder;
+                if (!TryResolveOpeningWallHost(
+                        artifact,
+                        openingPath,
+                        acceptedWallCandidates,
+                        pathsById,
+                        coordinateTolerance,
+                        out hostGeometryPathId,
+                        out hostSegmentSortOrder,
+                        out reason))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                if (artifactPathIds.Length != 1)
+                {
+                    reason = $"el objeto protegido {artifact.SourceEntityRef} necesita un \u00FAnico path geom\u00E9trico antes de publicar Auto-fit.";
+                    return false;
+                }
+
+                geometryPathId = artifactPathIds[0];
+            }
+
+            result.Add(new CommissionExistingCurationAuxiliaryEntityBinding(
+                artifact.SourceEntityRef,
+                isOpening
+                    ? CommissionExistingCurationAuxiliaryEntityKind.Opening
+                    : CommissionExistingCurationAuxiliaryEntityKind.ProtectedEntity,
+                sourceBounds,
+                geometryPathId,
+                segmentSortOrder,
+                IsImmutableSize: true,
+                IsProtected: isProtected)
+            {
+                HostGeometryPathId = hostGeometryPathId,
+                HostSegmentSortOrder = hostSegmentSortOrder
+            });
+        }
+
+        foreach (var label in RoomLabels)
+        {
+            if (!TryCreateLabelBounds(label.X, label.Y, label.TextHeight, coordinateTolerance, out var sourceBounds))
+            {
+                reason = $"el label {label.SourceEntityRef} no tiene coordenadas representables.";
+                return false;
+            }
+
+            result.Add(new CommissionExistingCurationAuxiliaryEntityBinding(
+                label.SourceEntityRef,
+                CommissionExistingCurationAuxiliaryEntityKind.Label,
+                sourceBounds,
+                GeometryPathId: null,
+                SegmentSortOrder: null,
+                IsImmutableSize: true,
+                IsProtected: false));
+        }
+
+        foreach (var label in OpeningLabels)
+        {
+            if (!TryCreateLabelBounds(label.X, label.Y, label.TextHeight, coordinateTolerance, out var sourceBounds))
+            {
+                reason = $"el label {label.SourceEntityRef} no tiene coordenadas representables.";
+                return false;
+            }
+
+            result.Add(new CommissionExistingCurationAuxiliaryEntityBinding(
+                label.SourceEntityRef,
+                CommissionExistingCurationAuxiliaryEntityKind.Label,
+                sourceBounds,
+                GeometryPathId: null,
+                SegmentSortOrder: null,
+                IsImmutableSize: true,
+                IsProtected: false));
+        }
+
+        foreach (var dimension in Dimensions)
+        {
+            if (string.IsNullOrWhiteSpace(dimension.SourceEntityRef))
+            {
+                reason = "una cota DIMENSION no tiene una referencia fuente exacta.";
+                return false;
+            }
+
+            if (!string.Equals(dimension.SourceEntityKind, "DIMENSION", StringComparison.OrdinalIgnoreCase))
+            {
+                reason = $"la cota {dimension.SourceEntityRef} usa el tipo no soportado '{dimension.SourceEntityKind}'.";
+                return false;
+            }
+
+            if (!TryCreateDimensionBounds(dimension, coordinateTolerance, out var sourceBounds))
+            {
+                reason = $"la cota {dimension.SourceEntityRef} no tiene bounds completos y representables.";
+                return false;
+            }
+
+            result.Add(new CommissionExistingCurationAuxiliaryEntityBinding(
+                dimension.SourceEntityRef,
+                CommissionExistingCurationAuxiliaryEntityKind.Label,
+                sourceBounds,
+                GeometryPathId: null,
+                SegmentSortOrder: null,
+                IsImmutableSize: true,
+                IsProtected: false));
+        }
+
+        var duplicateRef = result
+            .GroupBy(binding => binding.SourceEntityRef, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group.Count() != 1);
+        if (duplicateRef is not null)
+        {
+            reason = $"la referencia auxiliar {duplicateRef.Key} aparece más de una vez en el commissioning.";
+            return false;
+        }
+
+        if (result.Count == 0)
+        {
+            reason = "faltan bindings expl\u00EDcitos para aberturas, labels, cotas o elementos protegidos.";
+            return false;
+        }
+
+        bindings = result;
+        return true;
+    }
+
+    private static bool TryResolveOpeningWallHost(
+        CuratedPlanArtifactDto opening,
+        GeometryPathDto openingPath,
+        IReadOnlyList<WallCandidateDto> acceptedWallCandidates,
+        IReadOnlyDictionary<Guid, GeometryPathDto> pathsById,
+        decimal coordinateTolerance,
+        out Guid? hostGeometryPathId,
+        out int? hostSegmentSortOrder,
+        out string reason)
+    {
+        hostGeometryPathId = null;
+        hostSegmentSortOrder = null;
+        reason = string.Empty;
+
+        var sourceSegment = openingPath.Segments[0];
+        (decimal StartX, decimal StartY, decimal EndX, decimal EndY) openingSegment;
+        try
+        {
+            openingSegment = (
+                checked(sourceSegment.StartX + opening.TranslationDx),
+                checked(sourceSegment.StartY + opening.TranslationDy),
+                checked(sourceSegment.EndX + opening.TranslationDx),
+                checked(sourceSegment.EndY + opening.TranslationDy));
+        }
+        catch (OverflowException)
+        {
+            reason = $"la abertura {opening.SourceEntityRef} tiene coordenadas host no representables.";
+            return false;
+        }
+
+        if (openingSegment.StartX == openingSegment.EndX && openingSegment.StartY == openingSegment.EndY)
+        {
+            reason = $"la abertura {opening.SourceEntityRef} no tiene un segmento propio representable para resolver su pared host.";
+            return false;
+        }
+
+        var tolerance = Math.Max(0m, coordinateTolerance);
+        var matches = new List<(Guid PathId, int SegmentSortOrder)>();
+        var crossingCount = 0;
+        try
+        {
+            foreach (var candidate in acceptedWallCandidates)
+            {
+                if (!candidate.GeometryPathId.HasValue ||
+                    candidate.GeometryPathId.Value == openingPath.Id ||
+                    !pathsById.TryGetValue(candidate.GeometryPathId.Value, out var candidatePath))
+                {
+                    continue;
+                }
+
+                foreach (var candidateSegment in candidatePath.Segments)
+                {
+                    if (IsOpeningSupportedByWallSegment(openingSegment, candidateSegment, tolerance))
+                    {
+                        matches.Add((candidatePath.Id, candidateSegment.SortOrder));
+                        continue;
+                    }
+
+                    if (SegmentsCrossWithoutCollinearSupport(openingSegment, candidateSegment, tolerance))
+                    {
+                        crossingCount++;
+                    }
+                }
+            }
+        }
+        catch (OverflowException)
+        {
+            reason = $"la abertura {opening.SourceEntityRef} no permite resolver su pared host sin desbordar las coordenadas.";
+            return false;
+        }
+
+        if (matches.Count == 1 && crossingCount == 0)
+        {
+            hostGeometryPathId = matches[0].PathId;
+            hostSegmentSortOrder = matches[0].SegmentSortOrder;
+            return true;
+        }
+
+        if (matches.Count == 1)
+        {
+            reason = $"la abertura {opening.SourceEntityRef} tiene un candidato de pared host con soporte colineal completo, pero además cruza {crossingCount} segmento(s) estructural(es).";
+            return false;
+        }
+
+        if (matches.Count > 1)
+        {
+            reason = $"la abertura {opening.SourceEntityRef} tiene {matches.Count} candidatos de pared host; debe quedar exactamente uno.";
+            return false;
+        }
+
+        reason = crossingCount > 0
+            ? $"la abertura {opening.SourceEntityRef} cruza {crossingCount} segmento(s) estructural(es), pero ninguno la soporta como pared host."
+            : $"la abertura {opening.SourceEntityRef} tiene 0 candidatos de pared host con soporte colineal completo.";
+        return false;
+    }
+
+    private static bool IsOpeningSupportedByWallSegment(
+        (decimal StartX, decimal StartY, decimal EndX, decimal EndY) opening,
+        GeometrySegmentDto wall,
+        decimal tolerance)
+    {
+        if (wall.StartX == wall.EndX && wall.StartY == wall.EndY)
+        {
+            return false;
+        }
+
+        return IsPointOnInfiniteLine(
+                   wall.StartX,
+                   wall.StartY,
+                   wall.EndX,
+                   wall.EndY,
+                   opening.StartX,
+                   opening.StartY,
+                   tolerance) &&
+               IsPointOnInfiniteLine(
+                   wall.StartX,
+                   wall.StartY,
+                   wall.EndX,
+                   wall.EndY,
+                   opening.EndX,
+                   opening.EndY,
+                   tolerance) &&
+               IsPointWithinSegmentBounds(opening.StartX, opening.StartY, wall, tolerance) &&
+               IsPointWithinSegmentBounds(opening.EndX, opening.EndY, wall, tolerance);
+    }
+
+    private static bool SegmentsCrossWithoutCollinearSupport(
+        (decimal StartX, decimal StartY, decimal EndX, decimal EndY) opening,
+        GeometrySegmentDto wall,
+        decimal tolerance)
+    {
+        var openingIsCollinear = IsPointOnInfiniteLine(
+                                     wall.StartX,
+                                     wall.StartY,
+                                     wall.EndX,
+                                     wall.EndY,
+                                     opening.StartX,
+                                     opening.StartY,
+                                     tolerance) &&
+                                 IsPointOnInfiniteLine(
+                                     wall.StartX,
+                                     wall.StartY,
+                                     wall.EndX,
+                                     wall.EndY,
+                                     opening.EndX,
+                                     opening.EndY,
+                                     tolerance);
+        if (openingIsCollinear)
+        {
+            return false;
+        }
+
+        var wallStartSide = OrientationSign(
+            opening.StartX,
+            opening.StartY,
+            opening.EndX,
+            opening.EndY,
+            wall.StartX,
+            wall.StartY,
+            tolerance);
+        var wallEndSide = OrientationSign(
+            opening.StartX,
+            opening.StartY,
+            opening.EndX,
+            opening.EndY,
+            wall.EndX,
+            wall.EndY,
+            tolerance);
+        var openingStartSide = OrientationSign(
+            wall.StartX,
+            wall.StartY,
+            wall.EndX,
+            wall.EndY,
+            opening.StartX,
+            opening.StartY,
+            tolerance);
+        var openingEndSide = OrientationSign(
+            wall.StartX,
+            wall.StartY,
+            wall.EndX,
+            wall.EndY,
+            opening.EndX,
+            opening.EndY,
+            tolerance);
+
+        if (wallStartSide * wallEndSide < 0 && openingStartSide * openingEndSide < 0)
+        {
+            return true;
+        }
+
+        return wallStartSide == 0 && IsPointWithinSegmentBounds(wall.StartX, wall.StartY, opening, tolerance) ||
+               wallEndSide == 0 && IsPointWithinSegmentBounds(wall.EndX, wall.EndY, opening, tolerance) ||
+               openingStartSide == 0 && IsPointWithinSegmentBounds(opening.StartX, opening.StartY, wall, tolerance) ||
+               openingEndSide == 0 && IsPointWithinSegmentBounds(opening.EndX, opening.EndY, wall, tolerance);
+    }
+
+    private static int OrientationSign(
+        decimal startX,
+        decimal startY,
+        decimal endX,
+        decimal endY,
+        decimal pointX,
+        decimal pointY,
+        decimal tolerance)
+    {
+        var cross = Cross(startX, startY, endX, endY, pointX, pointY);
+        var scaledTolerance = tolerance * Math.Max(Math.Abs(endX - startX), Math.Abs(endY - startY));
+        if (Math.Abs(cross) <= scaledTolerance)
+        {
+            return 0;
+        }
+
+        return cross < 0m ? -1 : 1;
+    }
+
+    private static bool IsPointOnInfiniteLine(
+        decimal startX,
+        decimal startY,
+        decimal endX,
+        decimal endY,
+        decimal pointX,
+        decimal pointY,
+        decimal tolerance)
+    {
+        var lineScale = Math.Max(Math.Abs(endX - startX), Math.Abs(endY - startY));
+        return lineScale > 0m &&
+               Math.Abs(Cross(startX, startY, endX, endY, pointX, pointY)) <= tolerance * lineScale;
+    }
+
+    private static decimal Cross(
+        decimal startX,
+        decimal startY,
+        decimal endX,
+        decimal endY,
+        decimal pointX,
+        decimal pointY)
+        => (endX - startX) * (pointY - startY) - (endY - startY) * (pointX - startX);
+
+    private static bool IsPointWithinSegmentBounds(
+        decimal pointX,
+        decimal pointY,
+        GeometrySegmentDto segment,
+        decimal tolerance)
+        => pointX >= Math.Min(segment.StartX, segment.EndX) - tolerance &&
+           pointX <= Math.Max(segment.StartX, segment.EndX) + tolerance &&
+           pointY >= Math.Min(segment.StartY, segment.EndY) - tolerance &&
+           pointY <= Math.Max(segment.StartY, segment.EndY) + tolerance;
+
+    private static bool IsPointWithinSegmentBounds(
+        decimal pointX,
+        decimal pointY,
+        (decimal StartX, decimal StartY, decimal EndX, decimal EndY) segment,
+        decimal tolerance)
+        => pointX >= Math.Min(segment.StartX, segment.EndX) - tolerance &&
+           pointX <= Math.Max(segment.StartX, segment.EndX) + tolerance &&
+           pointY >= Math.Min(segment.StartY, segment.EndY) - tolerance &&
+           pointY <= Math.Max(segment.StartY, segment.EndY) + tolerance;
+
+    private static bool TryResolveGeometryBounds(
+        IReadOnlyList<Guid> pathIds,
+        IReadOnlyDictionary<Guid, GeometryPathDto> pathsById,
+        decimal translationDx,
+        decimal translationDy,
+        out AdjustmentRecipeBoundsDto? bounds)
+    {
+        bounds = null;
+        var segments = new List<GeometrySegmentDto>();
+        foreach (var pathId in pathIds.Distinct())
+        {
+            if (!pathsById.TryGetValue(pathId, out var path) || path.Segments.Count == 0)
+            {
+                return false;
+            }
+
+            segments.AddRange(path.Segments);
+        }
+
+        if (segments.Count == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var minX = checked(segments.Min(segment => Math.Min(segment.StartX, segment.EndX)) + translationDx);
+            var minY = checked(segments.Min(segment => Math.Min(segment.StartY, segment.EndY)) + translationDy);
+            var maxX = checked(segments.Max(segment => Math.Max(segment.StartX, segment.EndX)) + translationDx);
+            var maxY = checked(segments.Max(segment => Math.Max(segment.StartY, segment.EndY)) + translationDy);
+            if (minX == maxX && minY == maxY)
+            {
+                return false;
+            }
+
+            bounds = new AdjustmentRecipeBoundsDto(minX, minY, maxX, maxY);
+            return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryCreateLabelBounds(
+        decimal x,
+        decimal y,
+        decimal? textHeight,
+        decimal coordinateTolerance,
+        out AdjustmentRecipeBoundsDto? bounds)
+    {
+        bounds = null;
+        var halfExtent = Math.Max(
+            0.001m,
+            Math.Max(coordinateTolerance, textHeight is > 0m ? textHeight.Value / 2m : 0m));
+        try
+        {
+            bounds = new AdjustmentRecipeBoundsDto(
+                checked(x - halfExtent),
+                checked(y - halfExtent),
+                checked(x + halfExtent),
+                checked(y + halfExtent));
+            return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryCreateDimensionBounds(
+        DimensionDto dimension,
+        decimal coordinateTolerance,
+        out AdjustmentRecipeBoundsDto? bounds)
+    {
+        bounds = null;
+        if (dimension.LineSegments is null ||
+            dimension.LinePrimitives is null ||
+            dimension.TextPrimitives is null ||
+            dimension.InsertPrimitives is null ||
+            dimension.CirclePrimitives is null ||
+            dimension.ArcPrimitives is null ||
+            dimension.SolidPrimitives is null ||
+            dimension.RenderTextX.HasValue != dimension.RenderTextY.HasValue ||
+            dimension.RenderTextHeight is < 0m ||
+            dimension.TextPrimitives.Any(text => text.Height < 0m) ||
+            dimension.CirclePrimitives.Any(circle => circle.Radius < 0m) ||
+            dimension.ArcPrimitives.Any(arc => arc.Radius < 0m))
+        {
+            return false;
+        }
+
+        var points = new List<(decimal X, decimal Y)>
+        {
+            (dimension.DefPointX, dimension.DefPointY),
+            (dimension.DefPoint2X, dimension.DefPoint2Y),
+            (dimension.DefPoint3X, dimension.DefPoint3Y)
+        };
+
+        try
+        {
+            foreach (var segment in dimension.LineSegments)
+            {
+                points.Add((segment.StartX, segment.StartY));
+                points.Add((segment.EndX, segment.EndY));
+            }
+
+            foreach (var line in dimension.LinePrimitives)
+            {
+                points.Add((line.StartX, line.StartY));
+                points.Add((line.EndX, line.EndY));
+            }
+
+            if (dimension.RenderTextX.HasValue)
+            {
+                AddExtent(
+                    dimension.RenderTextX.Value,
+                    dimension.RenderTextY!.Value,
+                    dimension.RenderTextHeight);
+            }
+
+            foreach (var text in dimension.TextPrimitives)
+            {
+                AddExtent(text.X, text.Y, text.Height);
+            }
+
+            points.AddRange(dimension.InsertPrimitives.Select(insert => (insert.X, insert.Y)));
+            foreach (var circle in dimension.CirclePrimitives)
+            {
+                AddExtent(circle.CenterX, circle.CenterY, checked(circle.Radius * 2m));
+            }
+
+            foreach (var arc in dimension.ArcPrimitives)
+            {
+                AddExtent(arc.CenterX, arc.CenterY, checked(arc.Radius * 2m));
+            }
+
+            foreach (var solid in dimension.SolidPrimitives)
+            {
+                points.Add((solid.Point1X, solid.Point1Y));
+                points.Add((solid.Point2X, solid.Point2Y));
+                points.Add((solid.Point3X, solid.Point3Y));
+                points.Add((solid.Point4X, solid.Point4Y));
+            }
+
+            var minX = points.Min(point => point.X);
+            var minY = points.Min(point => point.Y);
+            var maxX = points.Max(point => point.X);
+            var maxY = points.Max(point => point.Y);
+            if (minX == maxX && minY == maxY)
+            {
+                var extent = Math.Max(0.001m, coordinateTolerance);
+                minX = checked(minX - extent);
+                minY = checked(minY - extent);
+                maxX = checked(maxX + extent);
+                maxY = checked(maxY + extent);
+            }
+
+            bounds = new AdjustmentRecipeBoundsDto(minX, minY, maxX, maxY);
+            return true;
+
+            void AddExtent(decimal x, decimal y, decimal? fullExtent)
+            {
+                var halfExtent = Math.Max(
+                    0.001m,
+                    Math.Max(coordinateTolerance, fullExtent.GetValueOrDefault() / 2m));
+                points.Add((checked(x - halfExtent), checked(y - halfExtent)));
+                points.Add((checked(x + halfExtent), checked(y + halfExtent)));
+            }
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
     }
 
     public Task AddPinchGroupAsync(CancellationToken cancellationToken)

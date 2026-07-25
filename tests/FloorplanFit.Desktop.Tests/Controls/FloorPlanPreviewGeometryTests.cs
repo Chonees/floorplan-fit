@@ -303,6 +303,147 @@ public sealed class FloorPlanPreviewGeometryTests
     }
 
     [Fact]
+    public void CreatePreviewGeometry_v2_applies_explicit_stretch_and_rigid_roles_only()
+    {
+        var faceA = Guid.NewGuid();
+        var faceB = Guid.NewGuid();
+        var rigid = Guid.NewGuid();
+        var fixedPath = Guid.NewGuid();
+        GeometryPathDto[] paths =
+        [
+            new(faceA, false, [new GeometrySegmentDto(faceA, 0, 0m, 0m, 10m, 0m)]),
+            new(faceB, false, [new GeometrySegmentDto(faceB, 0, 0m, 4m, 10m, 4m)]),
+            new(rigid, false, [new GeometrySegmentDto(rigid, 0, 12m, 0m, 12m, 4m)]),
+            new(fixedPath, false, [new GeometrySegmentDto(fixedPath, 0, -4m, 0m, -4m, 4m)])
+        ];
+        var action = new AdjustmentRecipeStretchActionDto(
+            "paired-wall",
+            "Width",
+            "Right",
+            5m,
+            2m,
+            4m,
+            0.001m,
+            new AdjustmentRecipeBoundsDto(-4m, 0m, 12m, 4m),
+            [
+                new AdjustmentRecipeTargetSpanDto("LINE:1", faceA, 0, 0m, 0m, 10m, 0m, 1),
+                new AdjustmentRecipeTargetSpanDto("LINE:2", faceB, 0, 0m, 4m, 10m, 4m, 1)
+            ],
+            [
+                new AdjustmentRecipeEntityRoleDto("LINE:1", faceA, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:2", faceB, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:3", rigid, null, "RigidMove", [])
+            ]);
+
+        var preview = FloorPlanPreviewGeometry.CreatePreviewGeometry(paths, [action]);
+
+        Assert.Equal(8m, preview.Single(path => path.Id == faceA).Segments.Single().EndX);
+        Assert.Equal(8m, preview.Single(path => path.Id == faceB).Segments.Single().EndX);
+        Assert.Equal(10m, preview.Single(path => path.Id == rigid).Segments.Single().StartX);
+        Assert.Equal(10m, preview.Single(path => path.Id == rigid).Segments.Single().EndX);
+        Assert.Equal(-4m, preview.Single(path => path.Id == fixedPath).Segments.Single().StartX);
+        Assert.Equal(-4m, preview.Single(path => path.Id == fixedPath).Segments.Single().EndX);
+    }
+
+    [Fact]
+    public void CreatePreviewGeometry_v2_composes_independent_actions_when_an_entity_changes_role()
+    {
+        var firstFaceA = Guid.NewGuid();
+        var firstFaceB = Guid.NewGuid();
+        var secondFaceA = Guid.NewGuid();
+        var secondFaceB = Guid.NewGuid();
+        GeometryPathDto[] paths =
+        [
+            new(firstFaceA, false, [new GeometrySegmentDto(firstFaceA, 0, 0m, 0m, 10m, 0m)]),
+            new(firstFaceB, false, [new GeometrySegmentDto(firstFaceB, 0, 0m, 4m, 10m, 4m)]),
+            new(secondFaceA, false, [new GeometrySegmentDto(secondFaceA, 0, 12m, 8m, 20m, 8m)]),
+            new(secondFaceB, false, [new GeometrySegmentDto(secondFaceB, 0, 12m, 12m, 20m, 12m)])
+        ];
+        var firstAction = new AdjustmentRecipeStretchActionDto(
+            "first-wall",
+            "Width",
+            "Right",
+            5m,
+            2m,
+            4m,
+            0.001m,
+            new AdjustmentRecipeBoundsDto(0m, 0m, 20m, 12m),
+            [
+                new AdjustmentRecipeTargetSpanDto("LINE:1", firstFaceA, 0, 0m, 0m, 10m, 0m, 1),
+                new AdjustmentRecipeTargetSpanDto("LINE:2", firstFaceB, 0, 0m, 4m, 10m, 4m, 1)
+            ],
+            [
+                new AdjustmentRecipeEntityRoleDto("LINE:1", firstFaceA, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:2", firstFaceB, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:3", secondFaceA, null, "RigidMove", []),
+                new AdjustmentRecipeEntityRoleDto("LINE:4", secondFaceB, null, "RigidMove", [])
+            ]);
+        var secondAction = new AdjustmentRecipeStretchActionDto(
+            "second-wall",
+            "Width",
+            "Right",
+            16m,
+            1m,
+            3m,
+            0.001m,
+            new AdjustmentRecipeBoundsDto(0m, 0m, 20m, 12m),
+            [
+                new AdjustmentRecipeTargetSpanDto("LINE:3", secondFaceA, 0, 12m, 8m, 20m, 8m, 1),
+                new AdjustmentRecipeTargetSpanDto("LINE:4", secondFaceB, 0, 12m, 12m, 20m, 12m, 1)
+            ],
+            [
+                new AdjustmentRecipeEntityRoleDto("LINE:3", secondFaceA, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:4", secondFaceB, 0, "Stretch", [1])
+            ]);
+
+        var preview = FloorPlanPreviewGeometry.CreatePreviewGeometry(paths, [firstAction, secondAction]);
+
+        Assert.Equal(8m, preview.Single(path => path.Id == firstFaceA).Segments.Single().EndX);
+        Assert.Equal(8m, preview.Single(path => path.Id == firstFaceB).Segments.Single().EndX);
+        Assert.Equal(10m, preview.Single(path => path.Id == secondFaceA).Segments.Single().StartX);
+        Assert.Equal(17m, preview.Single(path => path.Id == secondFaceA).Segments.Single().EndX);
+        Assert.Equal(10m, preview.Single(path => path.Id == secondFaceB).Segments.Single().StartX);
+        Assert.Equal(17m, preview.Single(path => path.Id == secondFaceB).Segments.Single().EndX);
+    }
+
+    [Fact]
+    public void CreatePreviewGeometry_v2_fails_closed_when_an_action_contains_a_rejected_role()
+    {
+        var faceA = Guid.NewGuid();
+        var faceB = Guid.NewGuid();
+        var crossing = Guid.NewGuid();
+        GeometryPathDto[] paths =
+        [
+            new(faceA, false, [new GeometrySegmentDto(faceA, 0, 0m, 0m, 10m, 0m)]),
+            new(faceB, false, [new GeometrySegmentDto(faceB, 0, 0m, 4m, 10m, 4m)]),
+            new(crossing, false, [new GeometrySegmentDto(crossing, 0, 2m, 8m, 8m, 8m)])
+        ];
+        var action = new AdjustmentRecipeStretchActionDto(
+            "paired-wall",
+            "Width",
+            "Right",
+            5m,
+            2m,
+            4m,
+            0.001m,
+            new AdjustmentRecipeBoundsDto(0m, 0m, 10m, 8m),
+            [
+                new AdjustmentRecipeTargetSpanDto("LINE:1", faceA, 0, 0m, 0m, 10m, 0m, 1),
+                new AdjustmentRecipeTargetSpanDto("LINE:2", faceB, 0, 0m, 4m, 10m, 4m, 1)
+            ],
+            [
+                new AdjustmentRecipeEntityRoleDto("LINE:1", faceA, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:2", faceB, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:3", crossing, null, "Rejected", [], "Crossing entity")
+            ]);
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            FloorPlanPreviewGeometry.CreatePreviewGeometry(paths, [action]));
+
+        Assert.Contains("Crossing", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void GetGeometryViewportBounds_for_height_leaves_rendering_space_between_top_and_bottom_handles()
     {
         var bounds = new Rect(0, 0, 1000, 700);

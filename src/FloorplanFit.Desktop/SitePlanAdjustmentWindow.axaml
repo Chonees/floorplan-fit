@@ -45,21 +45,67 @@
             Grid.Column="0"
             Classes="panel-card"
             ClipToBounds="True">
-      <controls:FloorPlanPreviewControl x:Name="PreviewControl"
-                                        MinHeight="0"
-                                        HorizontalAlignment="Stretch"
-                                        VerticalAlignment="Stretch"
-                                        ClipToBounds="True"
-                                        IsFloorPlanMoveToolActive="{Binding IsFloorPlanMoveToolActive}"
-                                        SitePlanGeometryPaths="{Binding SitePlanGeometryPaths}"
-                                        SitePlanRenderPaths="{Binding SitePlanRenderPaths}"
-                                        SitePlanTexts="{Binding SitePlanTexts}"
-                                        GeometryPaths="{Binding FloorPlanGeometryPaths}"
-                                        RoomLabels="{Binding RoomLabels}"
-                                        OpeningLabels="{Binding OpeningLabels}"
-                                        Dimensions="{Binding Dimensions}"
-                                        ChangedNumberDimensionIds="{Binding ChangedNumberDimensionIds}"
-                                        AreDimensionsVisible="{Binding ArePreviewDimensionsVisible}" />
+      <Grid RowDefinitions="*,Auto">
+        <controls:FloorPlanPreviewControl x:Name="PreviewControl"
+                                          MinHeight="0"
+                                          HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Stretch"
+                                          ClipToBounds="True"
+                                          IsFloorPlanMoveToolActive="{Binding IsFloorPlanMoveToolActive}"
+                                          SitePlanGeometryPaths="{Binding SitePlanGeometryPaths}"
+                                          SitePlanRenderPaths="{Binding SitePlanRenderPaths}"
+                                          SitePlanTexts="{Binding SitePlanTexts}"
+                                          GeometryPaths="{Binding FloorPlanGeometryPaths}"
+                                          RoomLabels="{Binding RoomLabels}"
+                                          OpeningLabels="{Binding OpeningLabels}"
+                                          Dimensions="{Binding Dimensions}"
+                                          ChangedNumberDimensionIds="{Binding ChangedNumberDimensionIds}"
+                                          AreDimensionsVisible="{Binding ArePreviewDimensionsVisible}" />
+
+        <Border Grid.Row="1"
+                Height="238"
+                Padding="12"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource BorderBrushMuted}"
+                IsVisible="{Binding IsCommissionedAutoFit}">
+          <Grid RowDefinitions="Auto,*"
+                RowSpacing="8">
+            <Grid ColumnDefinitions="*,Auto"
+                  ColumnSpacing="12">
+              <TextBlock Text="{Binding CommissionedComparisonStatus}"
+                         TextWrapping="Wrap" />
+              <StackPanel Grid.Column="1"
+                          Orientation="Horizontal"
+                          Spacing="12">
+                <TextBlock Text="FloorPlan · blanco" />
+                <TextBlock Foreground="#B922D3EE"
+                           Text="Electrical · cian" />
+              </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="1"
+                  ColumnDefinitions="*,*"
+                  ColumnSpacing="10"
+                  IsVisible="{Binding IsCommissionedComparisonAvailable}">
+              <Grid RowDefinitions="Auto,*">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Antes · FloorPlan + Electrical registrado (estructura WALL)" />
+                <controls:RegistrationOverlayPreviewControl Grid.Row="1"
+                    CanonicalGeometry="{Binding CommissionedBeforeFloorGeometry}"
+                    ElectricalGeometry="{Binding CommissionedBeforeElectricalGeometry}" />
+              </Grid>
+              <Grid Grid.Column="1"
+                    RowDefinitions="Auto,*">
+                <TextBlock FontWeight="SemiBold"
+                           Text="Después · FloorPlan ajustado = ArchitecturalBase de Electrical" />
+                <controls:RegistrationOverlayPreviewControl Grid.Row="1"
+                    CanonicalGeometry="{Binding CommissionedAfterFloorGeometry}"
+                    ElectricalGeometry="{Binding CommissionedAfterElectricalGeometry}" />
+              </Grid>
+            </Grid>
+          </Grid>
+        </Border>
+      </Grid>
     </Border>
 
     <Border x:Name="AdjustmentSidebar"
@@ -98,6 +144,7 @@
                        TextWrapping="Wrap" />
             <TextBlock Classes="muted"
                        Text="{Binding AutoFitCandidateSummary}"
+                       IsVisible="{Binding !IsCommissionedAutoFit}"
                        TextWrapping="Wrap" />
             <TextBlock FontWeight="SemiBold"
                        Text="{Binding AutoFitSuggestionStatus}"
@@ -106,6 +153,7 @@
                        TextWrapping="Wrap" />
             <TextBlock Classes="muted"
                        Text="{Binding AutoFitSuggestionPlanDetails}"
+                       IsVisible="{Binding !IsCommissionedAutoFit}"
                        TextWrapping="Wrap" />
             <ItemsControl ItemsSource="{Binding PlanSetExportAuditLines}">
               <ItemsControl.ItemTemplate>
@@ -122,21 +170,32 @@
         <StackPanel Spacing="8">
           <Button HorizontalAlignment="Stretch"
                   Content="Sugerir ajuste (AI)"
+                  IsVisible="{Binding !IsCommissionedAutoFit}"
                   Command="{Binding SuggestAutoFitPlanCommand}"
                   ToolTip.Tip="AI ordena; el validador determinístico decide si el plan es válido." />
           <Button HorizontalAlignment="Stretch"
                   Content="Exportar DXF"
+                  IsVisible="{Binding !IsCommissionedAutoFit}"
                   IsEnabled="{Binding CanExportAdjustedSitePlan}"
                   Click="ExportAdjustedSitePlanButton_OnClick"
                   ToolTip.Tip="Genera un DXF con el floor plan ajustado (recortes aplicados) y el site plan con sus capas, listo para CAD." />
           <Button HorizontalAlignment="Stretch"
+                  Content="Confirmar y exportar"
+                  AutomationProperties.Name="Confirmar ajuste automático y exportar"
+                  IsVisible="{Binding IsCommissionedAutoFit}"
+                  IsEnabled="{Binding CanExportAdjustedSitePlan}"
+                  Click="ExportAdjustedSitePlanButton_OnClick"
+                  ToolTip.Tip="Confirma la propuesta automática mostrada y exporta el ajuste." />
+          <Button HorizontalAlignment="Stretch"
                   Content="Confirmar manuales + re-exportar"
+                  IsVisible="{Binding !IsCommissionedAutoFit}"
                   IsEnabled="{Binding CanConfirmManualPlanSetProjections}"
                   Command="{Binding ConfirmManualPlanSetProjectionsAndReExportCommand}"
                   ToolTip.Tip="Confirma las proyecciones manuales del último paquete y re-exporta usando el mismo ajuste canónico." />
         </StackPanel>
 
-        <ItemsControl ItemsSource="{Binding AutoFitSuggestionOptions}">
+        <ItemsControl ItemsSource="{Binding AutoFitSuggestionOptions}"
+                      IsVisible="{Binding !IsCommissionedAutoFit}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
                 <StackPanel Orientation="Vertical"

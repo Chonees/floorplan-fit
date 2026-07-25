@@ -89,4 +89,26 @@ public sealed class AutoFitSuggestionPlanValidatorTests
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, error => error.Contains("axis", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public void Validate_rejects_repeating_one_pinch_group_as_multiple_logical_actions()
+    {
+        var groupId = Guid.NewGuid();
+        var facts = new AutoFitSuggestionFacts(
+            new AutoFitEnvelopeDeficitDto(WidthInches: 2m, HeightInches: 0m, LeftInches: 1m, RightInches: 1m, BottomInches: 0m, TopInches: 0m),
+            [new AutoFitCandidateGroupDto(groupId, "Patio", "Width", 3m, 10m, 20m, 0)],
+            []);
+        var plan = new AutoFitSuggestionPlan(
+            "Duplicate logical action",
+            [
+                new AutoFitSuggestionStep("Patio", "Width", 1m, "first half"),
+                new AutoFitSuggestionStep("Patio", "Width", 1m, "second half")
+            ],
+            "A paired pinch group must carry one total delta.");
+
+        var result = AutoFitSuggestionPlanValidator.Validate(facts, plan);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("one logical action", StringComparison.OrdinalIgnoreCase));
+    }
 }

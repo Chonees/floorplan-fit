@@ -3,6 +3,7 @@ using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Library;
 using FloorplanFit.Application.FloorPlans.Review;
+using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Desktop.Composition;
 using FloorplanFit.Desktop.ViewModels;
 using FloorplanFit.Infrastructure.Dxf;
@@ -51,6 +52,11 @@ public sealed class DesktopServiceRegistrationTests
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<RejectWallCandidateHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<PublishFloorPlanCurationHandler>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<ExtractWallCandidatesHandler>());
+            Assert.IsType<SqliteCommissionedHouseAdaptationProfileRepository>(
+                scope.ServiceProvider.GetRequiredService<ICommissionedHouseAdaptationProfileRepository>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<SaveCommissionedHouseAdaptationProfileHandler>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<GetCommissionedHouseAdaptationReadinessHandler>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<GetCommissionedHouseAdaptationProfileHandler>());
             Assert.IsType<OpenAiAutoFitPlanSuggester>(scope.ServiceProvider.GetRequiredService<IAutoFitPlanSuggester>());
             Assert.IsType<DxfElectricalFloorRegistrationEstimator>(
                 scope.ServiceProvider.GetRequiredService<IElectricalFloorRegistrationEstimator>());

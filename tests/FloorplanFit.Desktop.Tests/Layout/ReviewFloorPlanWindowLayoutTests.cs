@@ -163,61 +163,26 @@ public sealed class ReviewFloorPlanWindowLayoutTests
     }
 
     [Fact]
-    public void Adjust_to_site_plan_entry_offers_import_or_simulate_paths()
+    public void Adjust_to_site_plan_entry_opens_the_site_plan_picker_directly()
     {
         var solutionRoot = FindSolutionRoot();
         var mainCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "MainWindow.axaml.cs");
-        var dialogXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "AdjustSitePlanSetupDialog.axaml");
-        var dialogCodeBehindPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "AdjustSitePlanSetupDialog.axaml.cs");
         var mainCodeBehind = File.ReadAllText(mainCodeBehindPath);
-        var dialogXaml = File.ReadAllText(dialogXamlPath);
-        var dialogCodeBehind = File.ReadAllText(dialogCodeBehindPath);
 
-        Assert.Contains("AdjustSitePlanSetupDialog", mainCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("ShowDialog<AdjustSitePlanSetupResult?>", mainCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("OpenSitePlanPickerAsync", mainCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("SyntheticSitePlanDxfWriter.WriteToTempFile", mainCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("Importar DXF", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("Simular site plan", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"BuildableWidthFeetTextBox\"", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"BuildableHeightFeetTextBox\"", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("AdjustSitePlanSetupMode.Import", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("AdjustSitePlanSetupMode.Simulate", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("TryCreateSimulation", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("architectural feet/inches", dialogXaml, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Watermark=\"39'-0&quot;\"", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("Watermark=\"77'-6&quot;\"", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("Ej: 39, 39'-0&quot;", dialogXaml, StringComparison.Ordinal);
+        var handlerStart = mainCodeBehind.IndexOf(
+            "private async void AdjustVersionToSitePlanButton_OnClick",
+            StringComparison.Ordinal);
+        var pickerStart = mainCodeBehind.IndexOf(
+            "private async Task<string?> OpenSitePlanPickerAsync",
+            StringComparison.Ordinal);
+        Assert.True(handlerStart >= 0 && pickerStart > handlerStart);
 
-        Assert.Contains("Content=\"- 1/2&quot;\"", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("Content=\"+ 1/2&quot;\"", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("Click=\"DecreaseBuildableWidthButton_OnClick\"", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("Click=\"IncreaseBuildableWidthButton_OnClick\"", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("Click=\"DecreaseBuildableHeightButton_OnClick\"", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("Click=\"IncreaseBuildableHeightButton_OnClick\"", dialogXaml, StringComparison.Ordinal);
-        Assert.Contains("TryAdjustInches", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("ArchitecturalLengthDefaultUnit.Feet", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("deltaInches", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("out var formatted", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("textBox.Text = formatted;", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("ValidationText.IsVisible = false;", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains("ValidationText.IsVisible = true;", dialogCodeBehind, StringComparison.Ordinal);
-        Assert.Contains(
-            "=> AdjustBuildableLength(BuildableWidthFeetTextBox, -0.5m);",
-            dialogCodeBehind,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "=> AdjustBuildableLength(BuildableWidthFeetTextBox, 0.5m);",
-            dialogCodeBehind,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "=> AdjustBuildableLength(BuildableHeightFeetTextBox, -0.5m);",
-            dialogCodeBehind,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "=> AdjustBuildableLength(BuildableHeightFeetTextBox, 0.5m);",
-            dialogCodeBehind,
-            StringComparison.Ordinal);
+        var handler = mainCodeBehind[handlerStart..pickerStart];
+        Assert.Contains("var sitePlanFilePath = await OpenSitePlanPickerAsync();", handler, StringComparison.Ordinal);
+        Assert.DoesNotContain("AdjustSitePlanSetupDialog", handler, StringComparison.Ordinal);
+        Assert.DoesNotContain("SyntheticSitePlanDxfWriter", handler, StringComparison.Ordinal);
+        Assert.Contains("if (sitePlanFilePath is null)", handler, StringComparison.Ordinal);
+        Assert.Contains("ShowVersionSitePlanAdjustmentAsync", handler, StringComparison.Ordinal);
     }
 
     [Fact]

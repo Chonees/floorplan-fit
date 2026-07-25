@@ -56,7 +56,7 @@ public static class ArticulationBandProjector
                 group.AxisTag,
                 markers[0].Coordinate,
                 markers[^1].Coordinate,
-                markers.Sum(item => item.MaxTrimMm),
+                markers.Min(item => item.MaxTrimMm),
                 "Suggested"));
         }
 

@@ -177,6 +177,14 @@ public sealed class CreateMultiSheetExportAuditHandler
             }
 
             failureStage = PlanSetExportFailureStage.UserPackagePublication;
+            if (!string.IsNullOrWhiteSpace(request.PackageStagingDirectory))
+            {
+                await planSetExportManifestWriter.WritePackageArtifactsAsync(
+                    draftAudit with { PackageManifestPath = packageManifestPath },
+                    request.PackageStagingDirectory,
+                    cancellationToken);
+            }
+
             await publishPackageAsync(cancellationToken);
         }
         catch (Exception exception)
@@ -630,24 +638,26 @@ public sealed class CreateMultiSheetExportAuditHandler
     {
         var floorPlanImpacts = canonicalPlacement?.FloorPlanImpactAudit ?? [];
         var recipeOperations = canonicalRecipe?.Operations ?? [];
-        var floorPlanTotal = recipeOperations.Count == 0 ? floorPlanImpacts.Count : recipeOperations.Count;
+        var stretchActions = canonicalRecipe?.StretchActions ?? [];
+        var floorPlanTotal = stretchActions.Count > 0
+            ? stretchActions.Count
+            : recipeOperations.Count == 0
+                ? floorPlanImpacts.Count
+                : recipeOperations.Count;
         var floorPlanApplied = floorPlanImpacts.Count(operation => operation.Status == "Applied");
         var floorPlanWarnings = floorPlanImpacts.Count(operation =>
             operation.Status != "Applied" || !string.IsNullOrWhiteSpace(operation.Warning));
-        var widthDelta = SumRecipeDelta(recipeOperations, "Width");
-        var heightDelta = SumRecipeDelta(recipeOperations, "Height");
-        var widthOperationCount = recipeOperations.Count(operation =>
-            string.Equals(operation.AxisTag, "Width", StringComparison.OrdinalIgnoreCase));
-        var heightOperationCount = recipeOperations.Count(operation =>
-            string.Equals(operation.AxisTag, "Height", StringComparison.OrdinalIgnoreCase));
+        var widthDelta = SumRecipeDelta(canonicalRecipe, "Width");
+        var heightDelta = SumRecipeDelta(canonicalRecipe, "Height");
+        var widthOperationCount = CountRecipeActions(canonicalRecipe, "Width");
+        var heightOperationCount = CountRecipeActions(canonicalRecipe, "Height");
 
         var electricalOperations = sheets
             .Where(sheet => sheet.SheetKind.Contains("Electrical", StringComparison.OrdinalIgnoreCase))
             .SelectMany(sheet => sheet.ExportAudit?.Operations ?? [])
             .ToArray();
         var electricalApplied = electricalOperations.Count(operation => operation.Status == "Applied");
-        var electricalWarnings = electricalOperations.Count(operation =>
-            operation.Status != "Applied" || !string.IsNullOrWhiteSpace(operation.Reason)) +
+        var electricalWarnings = electricalOperations.Count(operation => operation.Status != "Applied") +
             summary.ManualConfirmationRequiredSheetCount;
         var missingData = BuildMissingDataList(
             canonicalPlacement,
@@ -804,9 +814,10 @@ public sealed class CreateMultiSheetExportAuditHandler
             missing.Add("input-audit dimensions");
         }
 
-        if (canonicalRecipe?.Operations.Count is null or 0)
+        if (canonicalRecipe is null ||
+            canonicalRecipe.Operations.Count == 0 && canonicalRecipe.StretchActions.Count == 0)
         {
-            missing.Add("canonical recipe operations");
+            missing.Add("canonical recipe actions");
         }
 
         if (floorPlanImpactCount == 0)
@@ -833,11 +844,28 @@ public sealed class CreateMultiSheetExportAuditHandler
             .Any(sheet => sheet.ExportAudit?.OutlineCongruence is not null);
 
     private static decimal SumRecipeDelta(
-        IReadOnlyList<AdjustmentRecipeOperationDto> operations,
+        AdjustmentRecipeSummaryDto? recipe,
         string axisTag)
-        => operations
-            .Where(operation => string.Equals(operation.AxisTag, axisTag, StringComparison.OrdinalIgnoreCase))
-            .Sum(operation => operation.DeltaSourceUnits);
+        => recipe is null
+            ? 0m
+            : recipe.StretchActions.Count > 0
+                ? recipe.StretchActions
+                    .Where(action => string.Equals(action.AxisTag, axisTag, StringComparison.OrdinalIgnoreCase))
+                    .Sum(action => action.DeltaSourceUnits)
+                : recipe.Operations
+                    .Where(operation => string.Equals(operation.AxisTag, axisTag, StringComparison.OrdinalIgnoreCase))
+                    .Sum(operation => operation.DeltaSourceUnits);
+
+    private static int CountRecipeActions(
+        AdjustmentRecipeSummaryDto? recipe,
+        string axisTag)
+        => recipe is null
+            ? 0
+            : recipe.StretchActions.Count > 0
+                ? recipe.StretchActions.Count(action =>
+                    string.Equals(action.AxisTag, axisTag, StringComparison.OrdinalIgnoreCase))
+                : recipe.Operations.Count(operation =>
+                    string.Equals(operation.AxisTag, axisTag, StringComparison.OrdinalIgnoreCase));
 
     private static string FormatInches(decimal value)
         => $"{decimal.Round(value, 3, MidpointRounding.AwayFromZero).ToString("0.###", CultureInfo.InvariantCulture)}\"";

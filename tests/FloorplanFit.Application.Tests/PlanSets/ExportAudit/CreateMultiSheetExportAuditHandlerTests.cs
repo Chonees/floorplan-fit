@@ -1,6 +1,7 @@
 using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.PlanSets.DataCollection;
 using FloorplanFit.Application.PlanSets.ExportAudit;
+using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Domain.PlanSets;
 
@@ -322,6 +323,112 @@ public sealed class CreateMultiSheetExportAuditHandlerTests
         Assert.Equal("ReadyForExport", response.Status);
         Assert.True(response.Summary.CanExportPackageAutomatically);
         Assert.Equal(PlanSetExportStatus.ReadyForExport, Assert.Single(repository.Items).Status);
+    }
+
+    [Fact]
+    public async Task HandleAsync_human_summary_counts_one_v2_action_once_without_reporting_missing_recipe_data()
+    {
+        var repository = new CapturingPlanSetExportRepository();
+        var writer = new CapturingPlanSetExportManifestWriter(
+            "exports/package/manifest.json",
+            CreateGreenVerification());
+        var projection = CreateReadyProjection();
+        var faceA = Guid.NewGuid();
+        var faceB = Guid.NewGuid();
+        var action = new AdjustmentRecipeStretchActionDto(
+            "paired-wall",
+            "Width",
+            "Right",
+            5m,
+            2m,
+            4m,
+            0.001m,
+            new AdjustmentRecipeBoundsDto(0m, 0m, 10m, 4m),
+            [
+                new AdjustmentRecipeTargetSpanDto("LINE:1", faceA, 0, 0m, 0m, 10m, 0m, 1),
+                new AdjustmentRecipeTargetSpanDto("LINE:2", faceB, 0, 0m, 4m, 10m, 4m, 1)
+            ],
+            [
+                new AdjustmentRecipeEntityRoleDto("LINE:1", faceA, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:2", faceB, 0, "Stretch", [1])
+            ]);
+        var placement = new AdjustedSitePlanPlacementDto(1m, 0m, 0m, [])
+        {
+            InputAudit = new AdjustmentInputAuditDto(100m, 200m, 98m, 200m, 2m, 0m, "test"),
+            FloorPlanImpactAudit =
+            [
+                new FloorPlanAdjustmentOperationImpactDto(
+                    action.ActionId,
+                    0,
+                    "CadStretch",
+                    "Width",
+                    "Right",
+                    5m,
+                    2m,
+                    2,
+                    2,
+                    2m,
+                    2m,
+                    "Applied")
+            ],
+            StretchActions = [action]
+        };
+        var outline = new ProjectedPlanSheetOutlineDto(0m, 0m, 10m, 4m, 10m, 4m);
+        var exportAudit = new ProjectedPlanSheetExportAuditDto(
+            [
+                new ProjectedPlanSheetOperationAuditDto(
+                    action.ActionId,
+                    0,
+                    "CadStretch",
+                    "Width",
+                    "Right",
+                    5m,
+                    2m,
+                    2,
+                    2,
+                    2m,
+                    2m,
+                    "Applied")
+            ],
+            new ProjectedPlanSheetDxfSafetyAuditDto(true, 100, 4, 4, 0, 0, 0, 0, 0, 0, 0),
+            new ProjectedPlanSheetOutlineCongruenceAuditDto(
+                "Congruent",
+                "test",
+                0.01m,
+                false,
+                outline,
+                outline,
+                outline,
+                outline,
+                0m,
+                0m,
+                0m,
+                0m,
+                "Left",
+                "Bottom",
+                1m,
+                1m));
+        var request = new CreateMultiSheetExportAuditRequest(
+            projection.PlanSetVersionId,
+            Guid.NewGuid(),
+            projection.CanonicalAdjustmentId,
+            "exports/floor-plan.dxf",
+            [new MultiSheetExportProjectionRequestDto(projection.Id, "exports/electrical.dxf", exportAudit)])
+        {
+            CanonicalPlacement = placement,
+            CanonicalRecipe = AdjustmentRecipeSummaryDto.FromPlacement(placement)
+        };
+
+        var response = await CreateHandler(repository, writer, projection).HandleAsync(
+            request,
+            CancellationToken.None);
+
+        Assert.Contains(response.HumanSummary, line =>
+            line.Contains("ancho 2\" con 1 operacion", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(response.HumanSummary, line =>
+            line.Contains("FloorPlan: aplico 1/1", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(response.HumanSummary, line =>
+            line.Contains("canonical recipe actions", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

@@ -188,7 +188,7 @@ internal static class PreviewInteractionCoordinator
                 return new LeftButtonPressOutcome(
                     Handled: true,
                     CapturePointer: true,
-                    InvalidateVisual: false,
+                    InvalidateVisual: true,
                     DimensionClickedId: null,
                     RoomLabelClickedId: null,
                     OpeningLabelClickedId: null,

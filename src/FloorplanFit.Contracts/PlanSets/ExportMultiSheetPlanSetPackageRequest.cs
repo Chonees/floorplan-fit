@@ -15,4 +15,11 @@ public sealed record ExportMultiSheetPlanSetPackageRequest(
     public AdjustmentRecipeSummaryDto? CanonicalRecipe { get; init; }
 
     public bool DeleteCanonicalSourceAfterSuccess { get; init; }
+
+    /// <summary>
+    /// When true, automatic discovery requires the latest ElectricalPlan projection to be
+    /// ReadyForExport before any package staging. Missing or non-ready Electrical fails closed
+    /// instead of publishing a FloorPlan-only package. Explicit projection-ID requests are unaffected.
+    /// </summary>
+    public bool RequireReadyElectricalPlan { get; init; }
 }

@@ -4,6 +4,7 @@ using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Infrastructure.Dxf;
 using FloorplanFit.Infrastructure.Tests.TestSupport;
 using IxMilia.Dxf;
+using IxMilia.Dxf.Blocks;
 using IxMilia.Dxf.Entities;
 
 namespace FloorplanFit.Infrastructure.Tests.Dxf;
@@ -173,6 +174,647 @@ public sealed class IxMiliaAdjustedSitePlanExporterTests
     }
 
     [Fact]
+    public async Task ExportAsync_v2_shortens_paired_faces_once_moves_closing_wall_and_keeps_fixed_wall()
+    {
+        var floorPath = CreatePairedFloorPlanFixture(includeCrossingArc: false);
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var faceA = Guid.NewGuid();
+        var faceB = Guid.NewGuid();
+        var rigid = Guid.NewGuid();
+        var action = PairedStretchAction(faceA, faceB, rigid);
+        var placement = new AdjustedSitePlanPlacementDto(1m, 0m, 0m, [])
+        {
+            StretchActions = [action]
+        };
+
+        try
+        {
+            await new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                floorPath,
+                sitePath,
+                outputPath,
+                placement,
+                CancellationToken.None);
+
+            var lines = ReadLines(outputPath);
+            AssertHasLine(lines, "WALLS", 0m, 0m, 8m, 0m);
+            AssertHasLine(lines, "WALLS", 0m, 4m, 8m, 4m);
+            AssertHasLine(lines, "WALLS", 10m, 0m, 10m, 4m);
+            AssertHasLine(lines, "WALLS", -4m, 0m, -4m, 4m);
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_replays_fixed_text_and_rigid_insert_opening_without_deforming_payload()
+    {
+        var floorPath = CreateAuxiliaryReplayFloorPlanFixture();
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var action = WithAuxiliaryRoles(
+            PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
+            new AdjustmentRecipeEntityRoleDto("INSERT:1", Guid.NewGuid(), 0, "RigidMove", []),
+            new AdjustmentRecipeEntityRoleDto("TEXT:1", null, null, "Fixed", []));
+        var placement = new AdjustedSitePlanPlacementDto(1m, 0m, 0m, [])
+        {
+            StretchActions = [action]
+        };
+
+        try
+        {
+            var sourceInsert = FindEntityRecord(floorPath, "INSERT", "2", "SINK-OPENING");
+            var sourceText = FindEntityRecord(floorPath, "TEXT", "1", "KITCHEN");
+
+            await new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                floorPath,
+                sitePath,
+                outputPath,
+                placement,
+                CancellationToken.None);
+
+            var movedInsert = FindEntityRecord(outputPath, "INSERT", "2", "SINK-OPENING");
+            var fixedText = FindEntityRecord(outputPath, "TEXT", "1", "KITCHEN");
+            var expectedInsert = sourceInsert
+                .Select(pair => pair.Code == "10" ? (pair.Code, Value: "6") : pair)
+                .ToArray();
+
+            Assert.Equal(expectedInsert, movedInsert);
+            Assert.Equal(sourceText, fixedText);
+            Assert.Equal(
+                Assert.Single(sourceInsert, pair => pair.Code == "41").Value,
+                Assert.Single(movedInsert, pair => pair.Code == "41").Value);
+            Assert.Equal(
+                Assert.Single(sourceInsert, pair => pair.Code == "42").Value,
+                Assert.Single(movedInsert, pair => pair.Code == "42").Value);
+            Assert.Equal(
+                Assert.Single(sourceInsert, pair => pair.Code == "50").Value,
+                Assert.Single(movedInsert, pair => pair.Code == "50").Value);
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_composes_width_and_depth_for_rigid_insert_once_and_preserves_fixed_and_wall_payload()
+    {
+        var floorPath = CreateAuxiliaryReplayFloorPlanFixture(
+            insertX: 8d,
+            insertY: 8d,
+            wallHeight: 10d,
+            textY: -3d);
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var widthAction = WithAuxiliaryRoles(
+            PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()) with
+            {
+                CanonicalSourceBounds = new AdjustmentRecipeBoundsDto(-4m, -3m, 12m, 10m)
+            },
+            new AdjustmentRecipeEntityRoleDto("INSERT:1", Guid.NewGuid(), 0, "RigidMove", []),
+            new AdjustmentRecipeEntityRoleDto("TEXT:1", null, null, "Fixed", []));
+        var depthFaceA = Guid.NewGuid();
+        var depthFaceB = Guid.NewGuid();
+        var depthAction = new AdjustmentRecipeStretchActionDto(
+            "depth-wall",
+            "Height",
+            "Top",
+            5m,
+            1m,
+            3m,
+            0.001m,
+            new AdjustmentRecipeBoundsDto(-4m, -3m, 12m, 10m),
+            [
+                new AdjustmentRecipeTargetSpanDto("LINE:3", depthFaceA, 0, 12m, 0m, 12m, 10m, 1),
+                new AdjustmentRecipeTargetSpanDto("LINE:4", depthFaceB, 0, -4m, 0m, -4m, 10m, 1)
+            ],
+            [
+                new AdjustmentRecipeEntityRoleDto("LINE:3", depthFaceA, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:4", depthFaceB, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("INSERT:1", Guid.NewGuid(), 0, "RigidMove", []),
+                new AdjustmentRecipeEntityRoleDto("TEXT:1", null, null, "Fixed", [])
+            ]);
+
+        try
+        {
+            var sourceInsert = FindEntityRecord(floorPath, "INSERT", "2", "SINK-OPENING");
+            var sourceText = FindEntityRecord(floorPath, "TEXT", "1", "KITCHEN");
+
+            await new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                floorPath,
+                sitePath,
+                outputPath,
+                new AdjustedSitePlanPlacementDto(1m, 0m, 0m, [])
+                {
+                    StretchActions = [widthAction, depthAction]
+                },
+                CancellationToken.None);
+
+            var movedInsert = FindEntityRecord(outputPath, "INSERT", "2", "SINK-OPENING");
+            var fixedText = FindEntityRecord(outputPath, "TEXT", "1", "KITCHEN");
+            var expectedInsert = sourceInsert
+                .Select(pair => pair.Code switch
+                {
+                    "10" => (pair.Code, Value: "6"),
+                    "20" => (pair.Code, Value: "7"),
+                    _ => pair
+                })
+                .ToArray();
+
+            Assert.Equal(expectedInsert, movedInsert);
+            Assert.Equal(sourceText, fixedText);
+
+            var lines = ReadLines(outputPath);
+            AssertHasLine(lines, "WALLS", 0m, 0m, 8m, 0m);
+            AssertHasLine(lines, "WALLS", 0m, 4m, 8m, 4m);
+            AssertHasLine(lines, "WALLS", 10m, 0m, 10m, 9m);
+            AssertHasLine(lines, "WALLS", -4m, 0m, -4m, 9m);
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_keeps_the_complete_raw_fixed_insert_opening_record_unchanged()
+    {
+        var floorPath = CreateAuxiliaryReplayFloorPlanFixture(insertX: -8d);
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var action = WithAuxiliaryRoles(
+            PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
+            new AdjustmentRecipeEntityRoleDto("INSERT:1", Guid.NewGuid(), 0, "Fixed", []));
+
+        try
+        {
+            var sourceInsert = FindEntityRecord(floorPath, "INSERT", "2", "SINK-OPENING");
+
+            await new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                floorPath,
+                sitePath,
+                outputPath,
+                new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []) { StretchActions = [action] },
+                CancellationToken.None);
+
+            var fixedInsert = FindEntityRecord(outputPath, "INSERT", "2", "SINK-OPENING");
+            Assert.Equal(sourceInsert, fixedInsert);
+            Assert.Equal(
+                Assert.Single(sourceInsert, pair => pair.Code == "2").Value,
+                Assert.Single(fixedInsert, pair => pair.Code == "2").Value);
+            Assert.Equal(
+                Assert.Single(sourceInsert, pair => pair.Code == "41").Value,
+                Assert.Single(fixedInsert, pair => pair.Code == "41").Value);
+            Assert.Equal(
+                Assert.Single(sourceInsert, pair => pair.Code == "42").Value,
+                Assert.Single(fixedInsert, pair => pair.Code == "42").Value);
+            Assert.Equal(
+                Assert.Single(sourceInsert, pair => pair.Code == "50").Value,
+                Assert.Single(fixedInsert, pair => pair.Code == "50").Value);
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_rejects_auxiliary_source_role_mismatch_before_writing_output()
+    {
+        var floorPath = CreateAuxiliaryReplayFloorPlanFixture();
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var action = WithAuxiliaryRoles(
+            PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
+            new AdjustmentRecipeEntityRoleDto("INSERT:1", Guid.NewGuid(), 0, "Fixed", []));
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                    floorPath,
+                    sitePath,
+                    outputPath,
+                    new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []) { StretchActions = [action] },
+                    CancellationToken.None));
+
+            Assert.Contains("INSERT:1", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Fixed", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("RigidMove", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_rejects_auxiliary_stretch_before_writing_output()
+    {
+        var floorPath = CreateAuxiliaryReplayFloorPlanFixture();
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var action = WithAuxiliaryRoles(
+            PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
+            new AdjustmentRecipeEntityRoleDto("TEXT:1", null, null, "Stretch", [0]));
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                    floorPath,
+                    sitePath,
+                    outputPath,
+                    new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []) { StretchActions = [action] },
+                    CancellationToken.None));
+
+            Assert.Contains("TEXT:1", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("cannot deform", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_rejects_insert_whose_complete_geometry_crosses_cut_before_writing_output()
+    {
+        var floorPath = CreateAuxiliaryReplayFloorPlanFixture(insertX: 5d);
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var action = WithAuxiliaryRoles(
+            PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
+            new AdjustmentRecipeEntityRoleDto("INSERT:1", Guid.NewGuid(), 0, "RigidMove", []));
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                    floorPath,
+                    sitePath,
+                    outputPath,
+                    new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []) { StretchActions = [action] },
+                    CancellationToken.None));
+
+            Assert.Contains("INSERT:1", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("crosses", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_rejects_missing_duplicate_or_unsupported_auxiliary_identity_before_writing_output()
+    {
+        var floorPath = CreateAuxiliaryReplayFloorPlanFixture();
+        var sitePath = CreateSitePlanFixture();
+        var missingOutputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var duplicateOutputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var unsupportedOutputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var baseAction = PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var missing = WithAuxiliaryRoles(
+            baseAction,
+            new AdjustmentRecipeEntityRoleDto("INSERT:999", Guid.NewGuid(), 0, "RigidMove", []));
+        var duplicate = WithAuxiliaryRoles(
+            baseAction with { ActionId = "duplicate-role" },
+            new AdjustmentRecipeEntityRoleDto("TEXT:1", null, null, "Fixed", []),
+            new AdjustmentRecipeEntityRoleDto("TEXT:1", null, null, "Fixed", []));
+        var unsupported = WithAuxiliaryRoles(
+            baseAction with { ActionId = "unsupported-source" },
+            new AdjustmentRecipeEntityRoleDto("CIRCLE:1", null, null, "Fixed", []));
+
+        try
+        {
+            var missingError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                    floorPath,
+                    sitePath,
+                    missingOutputPath,
+                    new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []) { StretchActions = [missing] },
+                    CancellationToken.None));
+            var duplicateError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                    floorPath,
+                    sitePath,
+                    duplicateOutputPath,
+                    new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []) { StretchActions = [duplicate] },
+                    CancellationToken.None));
+            var unsupportedError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                    floorPath,
+                    sitePath,
+                    unsupportedOutputPath,
+                    new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []) { StretchActions = [unsupported] },
+                    CancellationToken.None));
+
+            Assert.Contains("INSERT:999", missingError.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("found 0", missingError.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("duplicate", duplicateError.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("TEXT:1", duplicateError.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("unsupported", unsupportedError.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("CIRCLE:1", unsupportedError.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(missingOutputPath));
+            Assert.False(File.Exists(duplicateOutputPath));
+            Assert.False(File.Exists(unsupportedOutputPath));
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(missingOutputPath);
+            File.Delete(duplicateOutputPath);
+            File.Delete(unsupportedOutputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_rejects_colliding_line_role_when_auxiliary_identity_aliases_target_before_writing_output()
+    {
+        var floorPath = CreateCollidingLineSourceReferenceFloorPlanFixture();
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var action = PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                    floorPath,
+                    sitePath,
+                    outputPath,
+                    new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []) { StretchActions = [action] },
+                    CancellationToken.None));
+
+            Assert.Contains("auxiliary source 'LINE:3' aliases a structural target", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("found 2", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_rejects_ambiguous_dimension_identity_before_writing_output()
+    {
+        var floorPath = CreateAmbiguousDimensionFloorPlanFixture();
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var action = WithAuxiliaryRoles(
+            PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
+            new AdjustmentRecipeEntityRoleDto("DIMENSION:ABC", null, null, "Fixed", []));
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                    floorPath,
+                    sitePath,
+                    outputPath,
+                    new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []) { StretchActions = [action] },
+                    CancellationToken.None));
+
+            Assert.Contains("DIMENSION:ABC", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("found 2", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_moves_each_coordinate_pair_of_unambiguous_handle_backed_dimension_once_and_preserves_payload()
+    {
+        const string dimensionHandle = "D1A";
+        var floorPath = CreateHandleBackedDimensionFloorPlanFixture(dimensionHandle);
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var action = WithAuxiliaryRoles(
+            PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
+            new AdjustmentRecipeEntityRoleDto($"DIMENSION:{dimensionHandle}", null, null, "RigidMove", []));
+
+        try
+        {
+            var sourceDimension = FindEntityRecord(floorPath, "DIMENSION", "5", dimensionHandle);
+
+            await new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                floorPath,
+                sitePath,
+                outputPath,
+                new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []) { StretchActions = [action] },
+                CancellationToken.None);
+
+            var movedDimension = FindEntityRecord(outputPath, "DIMENSION", "5", dimensionHandle);
+            var coordinateCodes = Enumerable.Range(10, 7)
+                .SelectMany(code => new[]
+                {
+                    code.ToString(CultureInfo.InvariantCulture),
+                    (code + 10).ToString(CultureInfo.InvariantCulture)
+                })
+                .ToHashSet(StringComparer.Ordinal);
+
+            Assert.Equal(14, sourceDimension.Count(pair => coordinateCodes.Contains(pair.Code)));
+            Assert.Equal(14, movedDimension.Count(pair => coordinateCodes.Contains(pair.Code)));
+            foreach (var xCode in Enumerable.Range(10, 7))
+            {
+                var xCodeText = xCode.ToString(CultureInfo.InvariantCulture);
+                var yCodeText = (xCode + 10).ToString(CultureInfo.InvariantCulture);
+                var sourceX = Assert.Single(sourceDimension, pair => pair.Code == xCodeText);
+                var movedX = Assert.Single(movedDimension, pair => pair.Code == xCodeText);
+                var sourceY = Assert.Single(sourceDimension, pair => pair.Code == yCodeText);
+                var movedY = Assert.Single(movedDimension, pair => pair.Code == yCodeText);
+
+                Assert.Equal(
+                    decimal.Parse(sourceX.Value, NumberStyles.Float, CultureInfo.InvariantCulture) - 2m,
+                    decimal.Parse(movedX.Value, NumberStyles.Float, CultureInfo.InvariantCulture));
+                Assert.Equal(sourceY.Value, movedY.Value);
+            }
+
+            Assert.Equal(
+                sourceDimension.Where(pair => !coordinateCodes.Contains(pair.Code)).ToArray(),
+                movedDimension.Where(pair => !coordinateCodes.Contains(pair.Code)).ToArray());
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_composes_independent_actions_when_raw_entities_change_role()
+    {
+        var floorPath = CreateSequentialPairedFloorPlanFixture();
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var firstFaceA = Guid.NewGuid();
+        var firstFaceB = Guid.NewGuid();
+        var secondFaceA = Guid.NewGuid();
+        var secondFaceB = Guid.NewGuid();
+        var firstAction = new AdjustmentRecipeStretchActionDto(
+            "first-wall",
+            "Width",
+            "Right",
+            5m,
+            2m,
+            4m,
+            0.001m,
+            new AdjustmentRecipeBoundsDto(0m, 0m, 20m, 12m),
+            [
+                new AdjustmentRecipeTargetSpanDto("LINE:1", firstFaceA, 0, 0m, 0m, 10m, 0m, 1),
+                new AdjustmentRecipeTargetSpanDto("LINE:2", firstFaceB, 0, 0m, 4m, 10m, 4m, 1)
+            ],
+            [
+                new AdjustmentRecipeEntityRoleDto("LINE:1", firstFaceA, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:2", firstFaceB, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:3", secondFaceA, null, "RigidMove", []),
+                new AdjustmentRecipeEntityRoleDto("LINE:4", secondFaceB, null, "RigidMove", [])
+            ]);
+        var secondAction = new AdjustmentRecipeStretchActionDto(
+            "second-wall",
+            "Width",
+            "Right",
+            16m,
+            1m,
+            3m,
+            0.001m,
+            new AdjustmentRecipeBoundsDto(0m, 0m, 20m, 12m),
+            [
+                new AdjustmentRecipeTargetSpanDto("LINE:3", secondFaceA, 0, 12m, 8m, 20m, 8m, 1),
+                new AdjustmentRecipeTargetSpanDto("LINE:4", secondFaceB, 0, 12m, 12m, 20m, 12m, 1)
+            ],
+            [
+                new AdjustmentRecipeEntityRoleDto("LINE:3", secondFaceA, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:4", secondFaceB, 0, "Stretch", [1])
+            ]);
+        var placement = new AdjustedSitePlanPlacementDto(1m, 0m, 0m, [])
+        {
+            StretchActions = [firstAction, secondAction]
+        };
+
+        try
+        {
+            await new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                floorPath,
+                sitePath,
+                outputPath,
+                placement,
+                CancellationToken.None);
+
+            var lines = ReadLines(outputPath);
+            AssertHasLine(lines, "WALLS", 0m, 0m, 8m, 0m);
+            AssertHasLine(lines, "WALLS", 0m, 4m, 8m, 4m);
+            AssertHasLine(lines, "WALLS", 10m, 8m, 17m, 8m);
+            AssertHasLine(lines, "WALLS", 10m, 12m, 17m, 12m);
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_rejects_unsupported_crossing_before_writing_output()
+    {
+        var floorPath = CreatePairedFloorPlanFixture(includeCrossingArc: true);
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var action = PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var placement = new AdjustedSitePlanPlacementDto(1m, 0m, 0m, [])
+        {
+            StretchActions = [action]
+        };
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                    floorPath,
+                    sitePath,
+                    outputPath,
+                    placement,
+                    CancellationToken.None));
+
+            Assert.Contains("ARC", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("cross", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_rejects_duplicate_action_ids_before_writing_output()
+    {
+        var floorPath = CreatePairedFloorPlanFixture(includeCrossingArc: false);
+        var sitePath = CreateSitePlanFixture();
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        var action = PairedStretchAction(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var placement = new AdjustedSitePlanPlacementDto(1m, 0m, 0m, [])
+        {
+            StretchActions = [action, action]
+        };
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new IxMiliaAdjustedSitePlanExporter().ExportAsync(
+                    floorPath,
+                    sitePath,
+                    outputPath,
+                    placement,
+                    CancellationToken.None));
+
+            Assert.Contains("duplicate or empty action id", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(floorPath);
+            File.Delete(sitePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
     public async Task ExportAsync_applies_inverse_scale_to_site_plan_lengths_and_text_heights()
     {
         var floorPath = CreateFloorPlanFixture();
@@ -284,6 +926,176 @@ public sealed class IxMiliaAdjustedSitePlanExporterTests
         dxf.Save(path, asText: true);
         return path;
     }
+
+    private static string CreatePairedFloorPlanFixture(bool includeCrossingArc)
+    {
+        var dxf = new DxfFile();
+        dxf.Header.Version = DxfAcadVersion.R2013;
+        dxf.Layers.Add(new DxfLayer("WALLS", DxfColor.FromIndex(7)));
+        dxf.Layers.Add(new DxfLayer("DOORS", DxfColor.FromIndex(3)));
+        dxf.Entities.Add(new DxfLine(new DxfPoint(0, 0, 0), new DxfPoint(10, 0, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(0, 4, 0), new DxfPoint(10, 4, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(12, 0, 0), new DxfPoint(12, 4, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(-4, 0, 0), new DxfPoint(-4, 4, 0)) { Layer = "WALLS" });
+        if (includeCrossingArc)
+        {
+            dxf.Entities.Add(new DxfArc(new DxfPoint(5, 8, 0), 2, 0, 180) { Layer = "DOORS" });
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        dxf.Save(path, asText: true);
+        return path;
+    }
+
+    private static string CreateAuxiliaryReplayFloorPlanFixture(
+        double insertX = 8d,
+        double insertY = 2d,
+        double wallHeight = 4d,
+        double textY = 6d)
+    {
+        var dxf = new DxfFile();
+        dxf.Header.Version = DxfAcadVersion.R2013;
+        dxf.Layers.Add(new DxfLayer("WALLS", DxfColor.FromIndex(7)));
+        dxf.Layers.Add(new DxfLayer("DOORS", DxfColor.FromIndex(3)));
+        dxf.Layers.Add(new DxfLayer("ROOM LBLS", DxfColor.FromIndex(2)));
+        dxf.Entities.Add(new DxfLine(new DxfPoint(0, 0, 0), new DxfPoint(10, 0, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(0, 4, 0), new DxfPoint(10, 4, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(12, 0, 0), new DxfPoint(12, wallHeight, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(-4, 0, 0), new DxfPoint(-4, wallHeight, 0)) { Layer = "WALLS" });
+
+        var sinkBlock = new DxfBlock
+        {
+            Name = "SINK-OPENING",
+            Layer = "0",
+            BasePoint = new DxfPoint(0, 0, 0)
+        };
+        sinkBlock.Entities.Add(new DxfLine(new DxfPoint(-0.5, -0.5, 0), new DxfPoint(0.5, 0.5, 0)));
+        dxf.Blocks.Add(sinkBlock);
+        dxf.Entities.Add(new DxfInsert
+        {
+            Name = sinkBlock.Name,
+            Layer = "DOORS",
+            Location = new DxfPoint(insertX, insertY, 0),
+            XScaleFactor = 2,
+            YScaleFactor = 3,
+            ZScaleFactor = 1,
+            Rotation = 30
+        });
+        dxf.Entities.Add(new DxfText(new DxfPoint(-3, textY, 0), 2, "KITCHEN")
+        {
+            Layer = "ROOM LBLS",
+            Rotation = 15
+        });
+
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        dxf.Save(path, asText: true);
+        return path;
+    }
+
+    private static string CreateCollidingLineSourceReferenceFloorPlanFixture()
+    {
+        var dxf = new DxfFile();
+        dxf.Header.Version = DxfAcadVersion.R2013;
+        dxf.Layers.Add(new DxfLayer("WALLS", DxfColor.FromIndex(7)));
+        dxf.Layers.Add(new DxfLayer("DOORS", DxfColor.FromIndex(3)));
+        dxf.Entities.Add(new DxfLine(new DxfPoint(0, 0, 0), new DxfPoint(10, 0, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(-8, 6, 0), new DxfPoint(-7, 6, 0)) { Layer = "DOORS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(0, 4, 0), new DxfPoint(10, 4, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(12, 0, 0), new DxfPoint(12, 4, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(-4, 0, 0), new DxfPoint(-4, 4, 0)) { Layer = "WALLS" });
+
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        dxf.Save(path, asText: true);
+        return path;
+    }
+
+    private static string CreateAmbiguousDimensionFloorPlanFixture()
+    {
+        var path = CreatePairedFloorPlanFixture(includeCrossingArc: false);
+        var lines = File.ReadAllLines(path, System.Text.Encoding.Latin1).ToList();
+        var entitiesEnd = FindEntitiesEndSectionIndex(lines);
+        var dimensions = new[]
+        {
+            "0", "DIMENSION", "5", "ABC", "8", "DIMS", "10", "-3", "20", "8", "11", "-2", "21", "8",
+            "0", "DIMENSION", "5", "ABC", "8", "DIMS", "10", "-6", "20", "8", "11", "-5", "21", "8"
+        };
+        lines.InsertRange(entitiesEnd, dimensions);
+        File.WriteAllLines(path, lines, System.Text.Encoding.Latin1);
+        return path;
+    }
+
+    private static string CreateHandleBackedDimensionFloorPlanFixture(string handle)
+    {
+        var path = CreatePairedFloorPlanFixture(includeCrossingArc: false);
+        var lines = File.ReadAllLines(path, System.Text.Encoding.Latin1).ToList();
+        var entitiesEnd = FindEntitiesEndSectionIndex(lines);
+        var dimension = new[]
+        {
+            "0", "DIMENSION",
+            "5", handle,
+            "8", "DIMS",
+            "100", "AcDbEntity",
+            "100", "AcDbDimension",
+            "2", "*D1",
+            "3", "STANDARD",
+            "1", "KEEP <> PAYLOAD",
+            "70", "32",
+            "10", "8.000", "20", "1.000",
+            "11", "9.000", "21", "2.000",
+            "12", "10.000", "22", "3.000",
+            "13", "11.000", "23", "4.000",
+            "14", "12.000", "24", "5.000",
+            "15", "13.000", "25", "6.000",
+            "16", "14.000", "26", "7.000",
+            "42", "123.4500",
+            "71", "5",
+            "1001", "FLOORPLANFIT",
+            "1000", "payload:001.2300"
+        };
+        lines.InsertRange(entitiesEnd, dimension);
+        File.WriteAllLines(path, lines, System.Text.Encoding.Latin1);
+        return path;
+    }
+
+    private static string CreateSequentialPairedFloorPlanFixture()
+    {
+        var dxf = new DxfFile();
+        dxf.Header.Version = DxfAcadVersion.R2013;
+        dxf.Layers.Add(new DxfLayer("WALLS", DxfColor.FromIndex(7)));
+        dxf.Entities.Add(new DxfLine(new DxfPoint(0, 0, 0), new DxfPoint(10, 0, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(0, 4, 0), new DxfPoint(10, 4, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(12, 8, 0), new DxfPoint(20, 8, 0)) { Layer = "WALLS" });
+        dxf.Entities.Add(new DxfLine(new DxfPoint(12, 12, 0), new DxfPoint(20, 12, 0)) { Layer = "WALLS" });
+
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.dxf");
+        dxf.Save(path, asText: true);
+        return path;
+    }
+
+    private static AdjustmentRecipeStretchActionDto PairedStretchAction(Guid faceA, Guid faceB, Guid rigid)
+        => new(
+            "paired-wall",
+            "Width",
+            "Right",
+            5m,
+            2m,
+            4m,
+            0.001m,
+            new AdjustmentRecipeBoundsDto(-4m, 0m, 12m, 8m),
+            [
+                new AdjustmentRecipeTargetSpanDto("LINE:1", faceA, 0, 0m, 0m, 10m, 0m, 1),
+                new AdjustmentRecipeTargetSpanDto("LINE:2", faceB, 0, 0m, 4m, 10m, 4m, 1)
+            ],
+            [
+                new AdjustmentRecipeEntityRoleDto("LINE:1", faceA, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:2", faceB, 0, "Stretch", [1]),
+                new AdjustmentRecipeEntityRoleDto("LINE:3", rigid, null, "RigidMove", [])
+            ]);
+
+    private static AdjustmentRecipeStretchActionDto WithAuxiliaryRoles(
+        AdjustmentRecipeStretchActionDto action,
+        params AdjustmentRecipeEntityRoleDto[] roles)
+        => action with { CanonicalEntityRoles = [.. action.CanonicalEntityRoles, .. roles] };
 
     private static DimensionDto CreateAdjustedDimensionPatch(
         DetectedDimension sourceDimension,
@@ -840,6 +1652,40 @@ public sealed class IxMiliaAdjustedSitePlanExporterTests
         }
 
         return entities;
+    }
+
+    private static IReadOnlyList<(string Code, string Value)> FindEntityRecord(
+        string dxfPath,
+        string entityKind,
+        string predicateCode,
+        string predicateValue)
+        => Assert.Single(
+            ReadEntityRecords(dxfPath),
+            record => record.Count > 0 &&
+                      record[0].Code == "0" &&
+                      record[0].Value.Equals(entityKind, StringComparison.OrdinalIgnoreCase) &&
+                      record.Any(pair => pair.Code == predicateCode && pair.Value == predicateValue));
+
+    private static int FindEntitiesEndSectionIndex(IReadOnlyList<string> lines)
+    {
+        var inEntities = false;
+        for (var index = 0; index + 1 < lines.Count; index += 2)
+        {
+            var code = lines[index].Trim();
+            var value = lines[index + 1].Trim();
+            if (code == "2" && value.Equals("ENTITIES", StringComparison.OrdinalIgnoreCase))
+            {
+                inEntities = true;
+                continue;
+            }
+
+            if (inEntities && code == "0" && value.Equals("ENDSEC", StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        throw new InvalidOperationException("Could not find the ENTITIES end marker.");
     }
 
     private static int ReadHandSeed(string dxfPath)

@@ -12,6 +12,7 @@ using FloorplanFit.Application.PlanSets.Export;
 using FloorplanFit.Application.PlanSets.Projection;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Contracts.PlanSets;
+using FloorplanFit.Desktop.Controls;
 
 namespace FloorplanFit.Desktop.ViewModels;
 
@@ -37,9 +38,11 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     private readonly ProjectRegisteredPlanSetSheetsHandler? registeredSheetProjector;
     private readonly ConfirmSheetAdjustmentProjectionHandler? confirmSheetProjectionHandler;
     private IReadOnlyList<AdjustedCompressionStepDto> appliedCompressionSteps = [];
+    private IReadOnlyList<AdjustmentRecipeStretchActionDto> appliedStretchActions = [];
     private IReadOnlyList<FloorPlanAdjustmentOperationImpactDto> appliedFloorPlanImpactAudit = [];
     private readonly IReadOnlyList<PinchMarkerDto> pinchMarkers;
     private readonly IReadOnlyList<PinchGroupDto> pinchGroups;
+    private readonly IReadOnlyList<WallCandidateDto> wallCandidates;
     private readonly IReadOnlyList<MeasurementCorridorDto> measurementCorridors;
     private readonly IReadOnlyList<MeasurementNodeDto> measurementNodes;
     private readonly IReadOnlyList<DimensionIntervalBindingDto> dimensionIntervalBindings;
@@ -48,6 +51,11 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     private IReadOnlyList<RoomLabelDto> autoFitBaselineRoomLabels = [];
     private IReadOnlyList<OpeningLabelDto> autoFitBaselineOpeningLabels = [];
     private IReadOnlyList<DimensionDto> autoFitBaselineDimensions = [];
+    private bool isCommissionedAutoFit;
+    private bool isCommissionedAutoFitReadyForExport;
+    private string? commissionedAutoFitCandidateSummary;
+    private IReadOnlyList<GeometryPathDto> commissionedComparisonElectricalRegisteredGeometry = [];
+    private bool isCommissionedComparisonAvailable;
 
     public SitePlanAdjustmentViewModel(
         string title,
@@ -83,7 +91,8 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         RecordCanonicalFloorPlanAdjustmentHandler? canonicalAdjustmentRecorder = null,
         ExportMultiSheetPlanSetPackageHandler? planSetPackageExporter = null,
         ProjectRegisteredPlanSetSheetsHandler? registeredSheetProjector = null,
-        ConfirmSheetAdjustmentProjectionHandler? confirmSheetProjectionHandler = null)
+        ConfirmSheetAdjustmentProjectionHandler? confirmSheetProjectionHandler = null,
+        IReadOnlyList<WallCandidateDto>? wallCandidates = null)
     {
         Title = title;
         Subtitle = subtitle;
@@ -108,6 +117,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         this.confirmSheetProjectionHandler = confirmSheetProjectionHandler;
         this.pinchMarkers = pinchMarkers ?? [];
         this.pinchGroups = pinchGroups ?? [];
+        this.wallCandidates = wallCandidates ?? [];
         this.measurementCorridors = measurementCorridors ?? [];
         this.measurementNodes = measurementNodes ?? [];
         this.dimensionIntervalBindings = dimensionIntervalBindings ?? [];
@@ -167,11 +177,31 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     public MultiSheetExportAuditDto? LastPlanSetExportAudit { get; private set; }
 
     public bool CanSuggestAutoFitPlan =>
-        autoFitSuggestionFacts?.NeedsAdjustment == true;
+        !isCommissionedAutoFit && autoFitSuggestionFacts?.NeedsAdjustment == true;
 
-    public string AutoFitCandidateSummary => autoFitSuggestionFacts is null
-        ? "Todavía no hay datos de encaje."
-        : FormatCandidateSummary(autoFitSuggestionFacts);
+    public string AutoFitCandidateSummary => commissionedAutoFitCandidateSummary ??
+        (autoFitSuggestionFacts is null
+            ? "Todavía no hay datos de encaje."
+            : FormatCandidateSummary(autoFitSuggestionFacts));
+
+    public bool IsCommissionedAutoFit => isCommissionedAutoFit;
+
+    internal bool IsCommissionedAutoFitReadyForExport => isCommissionedAutoFitReadyForExport;
+
+    internal string? CommissionedAutoFitRejectionReason { get; private set; }
+
+    public bool IsCommissionedComparisonAvailable => isCommissionedComparisonAvailable;
+
+    public IReadOnlyList<GeometryPathDto> CommissionedBeforeFloorGeometry { get; private set; } = [];
+
+    public IReadOnlyList<GeometryPathDto> CommissionedBeforeElectricalGeometry { get; private set; } = [];
+
+    public IReadOnlyList<GeometryPathDto> CommissionedAfterFloorGeometry { get; private set; } = [];
+
+    public IReadOnlyList<GeometryPathDto> CommissionedAfterElectricalGeometry { get; private set; } = [];
+
+    public string CommissionedComparisonStatus { get; private set; } =
+        "Comparación Floor/Electrical no disponible: todavía no se resolvió un registro Electrical confirmado y ligado a los DXF fuente.";
 
     [ObservableProperty]
     private bool arePreviewDimensionsVisible = true;
@@ -196,6 +226,253 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
 
     [ObservableProperty]
     private IReadOnlyList<Guid> changedNumberDimensionIds = [];
+
+    internal void ApplyCommissionedHouseFit(CommissionedHouseFitResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        isCommissionedAutoFit = true;
+        isCommissionedAutoFitReadyForExport = false;
+        CommissionedAutoFitRejectionReason = null;
+        AutoFitSuggestionOptions.Clear();
+
+        if (!result.Succeeded)
+        {
+            BlockCommissionedHouseFit(result.RejectionReason);
+            return;
+        }
+
+        if (result.IsRigidPlacement)
+        {
+            appliedCompressionSteps = [];
+            appliedStretchActions = [];
+            appliedFloorPlanImpactAudit = [];
+            isCommissionedAutoFitReadyForExport = true;
+            commissionedAutoFitCandidateSummary = "La casa entra sin reducir ancho ni profundidad.";
+            AutoFitSuggestionStatus = "Auto-fit listo: ubicación rígida segura.";
+            AutoFitSuggestionSummary = "No hace falta achicar la casa.";
+            AutoFitSuggestionPlanDetails = "Se conserva toda la geometría canónica sin deformación.";
+            RefreshCommissionedStructuralComparison();
+            NotifyCommissionedAutoFitChanged();
+            return;
+        }
+
+        var preview = CommissionedHouseFitPreviewProjector.Apply(
+            autoFitBaselineGeometryPaths,
+            autoFitBaselineRoomLabels,
+            autoFitBaselineOpeningLabels,
+            autoFitBaselineDimensions,
+            result.Actions,
+            projectionScale,
+            projectionOffsetX + ManualOffsetX,
+            projectionOffsetY + ManualOffsetY);
+        if (!preview.Succeeded)
+        {
+            BlockCommissionedHouseFit(preview.RejectionReason);
+            return;
+        }
+
+        var geometry = preview.GeometryPaths;
+        var roomLabels = preview.RoomLabels;
+        var openingLabels = preview.OpeningLabels;
+        var dimensions = preview.Dimensions;
+        var centerDelta = ResolveAutoFitCenteringDelta(geometry);
+        if (centerDelta.X != 0m || centerDelta.Y != 0m)
+        {
+            var centeredProjection = SitePlanAdjustmentPreviewProjector.Translate(
+                geometry,
+                roomLabels,
+                openingLabels,
+                dimensions,
+                centerDelta.X,
+                centerDelta.Y);
+            var centeredBaselineProjection = SitePlanAdjustmentPreviewProjector.Translate(
+                autoFitBaselineGeometryPaths,
+                autoFitBaselineRoomLabels,
+                autoFitBaselineOpeningLabels,
+                autoFitBaselineDimensions,
+                centerDelta.X,
+                centerDelta.Y);
+
+            geometry = centeredProjection.FloorPlanGeometryPaths;
+            roomLabels = centeredProjection.RoomLabels;
+            openingLabels = centeredProjection.OpeningLabels;
+            dimensions = centeredProjection.Dimensions;
+            autoFitBaselineGeometryPaths = centeredBaselineProjection.FloorPlanGeometryPaths.ToArray();
+            autoFitBaselineRoomLabels = centeredBaselineProjection.RoomLabels.ToArray();
+            autoFitBaselineOpeningLabels = centeredBaselineProjection.OpeningLabels.ToArray();
+            autoFitBaselineDimensions = centeredBaselineProjection.Dimensions.ToArray();
+            ManualOffsetX = Round(ManualOffsetX + centerDelta.X);
+            ManualOffsetY = Round(ManualOffsetY + centerDelta.Y);
+            RefreshAutoFitFactsAfterManualMove(centerDelta.X, centerDelta.Y);
+        }
+
+        ReplaceItems(FloorPlanGeometryPaths, geometry);
+        ReplaceItems(RoomLabels, roomLabels);
+        ReplaceItems(OpeningLabels, openingLabels);
+        ReplaceItems(Dimensions, dimensions);
+        appliedCompressionSteps = [];
+        appliedStretchActions = result.Actions.ToArray();
+        appliedFloorPlanImpactAudit = [];
+        isCommissionedAutoFitReadyForExport = true;
+        ChangedNumberDimensionIds = [];
+        commissionedAutoFitCandidateSummary =
+            $"Ajuste requerido: ancho {FormatInches(result.WidthReductionInches)}; profundidad {FormatInches(result.DepthReductionInches)}.";
+        AutoFitSuggestionStatus = "Auto-fit seguro aplicado a la vista previa.";
+        AutoFitSuggestionSummary =
+            $"Ancho -{FormatInches(result.WidthReductionInches)} · profundidad -{FormatInches(result.DepthReductionInches)}";
+        AutoFitSuggestionPlanDetails =
+            (result.Actions.Count == 1
+                ? "Se aplicó 1 variable commissioned."
+                : $"Se aplicaron {result.Actions.Count} variables commissioned.") +
+            " Aberturas y elementos protegidos mantienen su rol Fixed/RigidMove; no se deforma geometría fuera de las variables declaradas." +
+            " Revisá la superposición y confirmá para exportar.";
+        RefreshCommissionedStructuralComparison();
+        NotifyCommissionedAutoFitChanged();
+    }
+
+    internal void ApplyCommissionedStructuralComparison(
+        IReadOnlyList<GeometryPathDto> registeredElectricalGeometry,
+        string registrationEvidence)
+    {
+        ArgumentNullException.ThrowIfNull(registeredElectricalGeometry);
+
+        if (!isCommissionedAutoFit)
+        {
+            return;
+        }
+
+        if (autoFitBaselineGeometryPaths.Count == 0 ||
+            FloorPlanGeometryPaths.Count == 0 ||
+            registeredElectricalGeometry.Count == 0)
+        {
+            MarkCommissionedComparisonUnavailable(
+                "Comparación Floor/Electrical no disponible: los DXF resueltos no contienen trazas estructurales WALL seguras.");
+            return;
+        }
+
+        commissionedComparisonElectricalRegisteredGeometry = registeredElectricalGeometry.ToArray();
+        CommissionedComparisonStatus =
+            "Antes se muestran el FloorPlan canónico y las trazas WALL del Electrical registrado. " +
+            "Después se muestra el FloorPlan ajustado, reutilizado exactamente como ArchitecturalBase del Electrical exportado. " +
+            "El WALL original de Electrical no se presenta como arquitectura proyectada. " +
+            "No se muestran dispositivos ni cableado." +
+            (string.IsNullOrWhiteSpace(registrationEvidence) ? string.Empty : $" {registrationEvidence.Trim()}");
+        RefreshCommissionedStructuralComparison();
+    }
+
+    internal void MarkCommissionedComparisonUnavailable(string reason)
+    {
+        commissionedComparisonElectricalRegisteredGeometry = [];
+        CommissionedBeforeFloorGeometry = [];
+        CommissionedBeforeElectricalGeometry = [];
+        CommissionedAfterFloorGeometry = [];
+        CommissionedAfterElectricalGeometry = [];
+        isCommissionedComparisonAvailable = false;
+        CommissionedComparisonStatus = string.IsNullOrWhiteSpace(reason)
+            ? "Comparación Floor/Electrical no disponible: no se pudo resolver evidencia estructural segura."
+            : reason.Trim();
+        NotifyCommissionedComparisonChanged();
+    }
+
+    private void RefreshCommissionedStructuralComparison()
+    {
+        if (commissionedComparisonElectricalRegisteredGeometry.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var placement = BuildAdjustedSitePlanPlacement();
+            CommissionedBeforeFloorGeometry = autoFitBaselineGeometryPaths.ToArray();
+            CommissionedBeforeElectricalGeometry = TransformRegisteredElectricalAffine(
+                commissionedComparisonElectricalRegisteredGeometry,
+                placement.FloorToSiteScale,
+                placement.SiteOffsetX,
+                placement.SiteOffsetY);
+            CommissionedAfterFloorGeometry = FloorPlanGeometryPaths.ToArray();
+            CommissionedAfterElectricalGeometry = CommissionedAfterFloorGeometry;
+            isCommissionedComparisonAvailable =
+                CommissionedBeforeFloorGeometry.Count > 0 &&
+                CommissionedBeforeElectricalGeometry.Count > 0 &&
+                CommissionedAfterFloorGeometry.Count > 0 &&
+                CommissionedAfterElectricalGeometry.Count > 0;
+            if (!isCommissionedComparisonAvailable)
+            {
+                MarkCommissionedComparisonUnavailable(
+                    "Comparación Floor/Electrical no disponible: la proyección no produjo trazas estructurales WALL visibles.");
+                return;
+            }
+
+            NotifyCommissionedComparisonChanged();
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or OverflowException)
+        {
+            MarkCommissionedComparisonUnavailable(
+                $"Comparación Floor/Electrical no disponible: la proyección estructural no fue segura ({exception.Message}).");
+        }
+    }
+
+    private static IReadOnlyList<GeometryPathDto> TransformRegisteredElectricalAffine(
+        IReadOnlyList<GeometryPathDto> source,
+        decimal scale,
+        decimal offsetX,
+        decimal offsetY)
+        => source
+            .Where(path => path.Segments.Count > 0)
+            .Select(path => new GeometryPathDto(
+                path.Id,
+                path.IsClosed,
+                path.Segments.Select(segment => new GeometrySegmentDto(
+                    path.Id,
+                    segment.SortOrder,
+                    (segment.StartX * scale) + offsetX,
+                    (segment.StartY * scale) + offsetY,
+                    (segment.EndX * scale) + offsetX,
+                    (segment.EndY * scale) + offsetY)).ToArray()))
+            .ToArray();
+
+    private void NotifyCommissionedComparisonChanged()
+    {
+        OnPropertyChanged(nameof(IsCommissionedComparisonAvailable));
+        OnPropertyChanged(nameof(CommissionedBeforeFloorGeometry));
+        OnPropertyChanged(nameof(CommissionedBeforeElectricalGeometry));
+        OnPropertyChanged(nameof(CommissionedAfterFloorGeometry));
+        OnPropertyChanged(nameof(CommissionedAfterElectricalGeometry));
+        OnPropertyChanged(nameof(CommissionedComparisonStatus));
+        OnPropertyChanged(nameof(CanExportAdjustedSitePlan));
+    }
+
+    internal void BlockCommissionedHouseFit(string reason)
+    {
+        isCommissionedAutoFit = true;
+        isCommissionedAutoFitReadyForExport = false;
+        CommissionedAutoFitRejectionReason = string.IsNullOrWhiteSpace(reason)
+            ? "El ajuste commissioned fue rechazado sin un motivo utilizable."
+            : reason;
+        appliedCompressionSteps = [];
+        appliedStretchActions = [];
+        appliedFloorPlanImpactAudit = [];
+        ReplaceItems(FloorPlanGeometryPaths, autoFitBaselineGeometryPaths);
+        ReplaceItems(RoomLabels, autoFitBaselineRoomLabels);
+        ReplaceItems(OpeningLabels, autoFitBaselineOpeningLabels);
+        ReplaceItems(Dimensions, autoFitBaselineDimensions);
+        commissionedAutoFitCandidateSummary = "La casa no está lista para un ajuste automático seguro.";
+        AutoFitSuggestionStatus = $"Auto-fit bloqueado: {CommissionedAutoFitRejectionReason}";
+        AutoFitSuggestionSummary = "No se aplicó ningún cambio.";
+        AutoFitSuggestionPlanDetails = "Corregí el commissioning indicado antes de exportar.";
+        NotifyCommissionedAutoFitChanged();
+    }
+
+    private void NotifyCommissionedAutoFitChanged()
+    {
+        OnPropertyChanged(nameof(IsCommissionedAutoFit));
+        OnPropertyChanged(nameof(CanSuggestAutoFitPlan));
+        OnPropertyChanged(nameof(AutoFitCandidateSummary));
+        OnPropertyChanged(nameof(CanExportAdjustedSitePlan));
+        SuggestAutoFitPlanCommand.NotifyCanExecuteChanged();
+    }
 
     [RelayCommand]
     private void ToggleFloorPlanMoveTool()
@@ -270,6 +547,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         var openingLabels = autoFitBaselineOpeningLabels.ToArray();
         var dimensions = autoFitBaselineDimensions.ToArray();
         var recordedSteps = new List<AdjustedCompressionStepDto>();
+        var recordedStretchActions = new List<AdjustmentRecipeStretchActionDto>();
         var recordedFloorPlanImpactAudit = new List<FloorPlanAdjustmentOperationImpactDto>();
 
         foreach (var step in option.Plan.Steps)
@@ -285,15 +563,48 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
             // the real wall coordinate, independent of compressions applied before it.
             var baselineTransform = BuildCompressionTransform(step, autoFitBaselineGeometryPaths) ?? transform;
             recordedSteps.Add(ToSourceCompressionStep(baselineTransform));
-            recordedFloorPlanImpactAudit.AddRange(BuildFloorPlanImpactAudits(
-                baselineTransform,
-                autoFitBaselineGeometryPaths,
-                recordedFloorPlanImpactAudit.Count));
 
             var sourceGeometryBeforeStep = geometry;
-            geometry = geometry.Select(path => TransformPath(path, transform)).ToArray();
-            roomLabels = roomLabels.Select(label => TransformRoomLabel(label, transform)).ToArray();
-            openingLabels = openingLabels.Select(label => TransformOpeningLabel(label, transform)).ToArray();
+            if (wallCandidates.Count > 0)
+            {
+                var compilation = CadStretchRecipeCompiler.Compile(new CadStretchRecipeCompilationRequest(
+                    transform.PinchGroupId,
+                    transform.AxisTag,
+                    transform.Edge.ToString(),
+                    ResolveRequestedTrimSourceUnits(step),
+                    sitePlanToMillimetersFactor,
+                    ResolveStretchTolerance(),
+                    pinchMarkers,
+                    wallCandidates,
+                    autoFitBaselineGeometryPaths));
+                if (!compilation.Succeeded || compilation.Action is null)
+                {
+                    AutoFitSuggestionStatus = $"No se pudo aplicar la opcion {option.OptionNumber}: {compilation.RejectionReason}";
+                    return;
+                }
+
+                geometry = FloorPlanPreviewGeometry.CreatePreviewGeometry(geometry, [compilation.Action]).ToArray();
+                roomLabels = roomLabels.Select(label => TransformRoomLabel(label, transform)).ToArray();
+                openingLabels = openingLabels.Select(label => TransformOpeningLabel(label, transform)).ToArray();
+                var sourceAction = ToFloorSourceStretchAction(compilation.Action);
+                recordedStretchActions.Add(sourceAction);
+                recordedFloorPlanImpactAudit.Add(BuildCadStretchFloorPlanImpactAudit(
+                    sourceAction,
+                    sourceGeometryBeforeStep,
+                    geometry,
+                    recordedFloorPlanImpactAudit.Count,
+                    projectionScale));
+            }
+            else
+            {
+                recordedFloorPlanImpactAudit.AddRange(BuildFloorPlanImpactAudits(
+                    baselineTransform,
+                    autoFitBaselineGeometryPaths,
+                    recordedFloorPlanImpactAudit.Count));
+                geometry = geometry.Select(path => TransformPath(path, transform)).ToArray();
+                roomLabels = roomLabels.Select(label => TransformRoomLabel(label, transform)).ToArray();
+                openingLabels = openingLabels.Select(label => TransformOpeningLabel(label, transform)).ToArray();
+            }
             dimensions = BuildReactiveDimensionsForAppliedStep(
                 dimensions,
                 geometry,
@@ -338,6 +649,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         ReplaceItems(Dimensions, dimensions);
         ChangedNumberDimensionIds = ResolveAffectedDimensionIds(option.Plan, autoFitBaselineDimensions, dimensions);
         appliedCompressionSteps = recordedSteps;
+        appliedStretchActions = recordedStretchActions;
         appliedFloorPlanImpactAudit = recordedFloorPlanImpactAudit;
 
         foreach (var autoFitOption in AutoFitSuggestionOptions)
@@ -431,6 +743,7 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
         ManualOffsetX = Round(ManualOffsetX + deltaX);
         ManualOffsetY = Round(ManualOffsetY + deltaY);
         RefreshAutoFitFactsAfterManualMove(deltaX, deltaY);
+        RefreshCommissionedStructuralComparison();
     }
 
     private void RefreshAutoFitFactsAfterManualMove(decimal deltaX, decimal deltaY)
@@ -475,7 +788,9 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
     public bool CanExportAdjustedSitePlan =>
         adjustedSitePlanExporter is not null &&
         !string.IsNullOrWhiteSpace(floorPlanSourcePath) &&
-        !string.IsNullOrWhiteSpace(sitePlanSourcePath);
+        !string.IsNullOrWhiteSpace(sitePlanSourcePath) &&
+        (!isCommissionedAutoFit ||
+         (isCommissionedAutoFitReadyForExport && isCommissionedComparisonAvailable));
 
     public bool CanConfirmManualPlanSetProjections =>
         confirmSheetProjectionHandler is not null &&
@@ -579,7 +894,8 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
                     [])
                 {
                     CanonicalPlacement = audit.CanonicalPlacement,
-                    CanonicalRecipe = audit.CanonicalRecipe
+                    CanonicalRecipe = audit.CanonicalRecipe,
+                    RequireReadyElectricalPlan = isCommissionedAutoFit
                 },
                 cancellationToken);
             LastPlanSetExportAudit = refreshedAudit;
@@ -669,7 +985,8 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
                 {
                     CanonicalPlacement = placement,
                     CanonicalRecipe = canonicalAdjustment.AdjustmentRecipe,
-                    DeleteCanonicalSourceAfterSuccess = true
+                    DeleteCanonicalSourceAfterSuccess = true,
+                    RequireReadyElectricalPlan = isCommissionedAutoFit
                 },
                 cancellationToken);
             LastPlanSetExportAudit = audit;
@@ -1014,7 +1331,8 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
             BuildAdjustedDimensionPatches(siteOffsetX, siteOffsetY))
         {
             InputAudit = BuildAdjustmentInputAudit(),
-            FloorPlanImpactAudit = appliedFloorPlanImpactAudit
+            FloorPlanImpactAudit = appliedFloorPlanImpactAudit,
+            StretchActions = appliedStretchActions
         };
     }
 
@@ -1175,6 +1493,164 @@ public sealed partial class SitePlanAdjustmentViewModel : ObservableObject
                     Round(marker.TrimSourceUnits / projectionScale)))
                 .ToArray());
     }
+
+    private AdjustmentRecipeStretchActionDto ToFloorSourceStretchAction(AdjustmentRecipeStretchActionDto action)
+    {
+        var offsetX = projectionOffsetX + ManualOffsetX;
+        var offsetY = projectionOffsetY + ManualOffsetY;
+        decimal SourceX(decimal value) => Round((value - offsetX) / projectionScale);
+        decimal SourceY(decimal value) => Round((value - offsetY) / projectionScale);
+        decimal SourceLength(decimal value) => Round(value / projectionScale);
+
+        return action with
+        {
+            CutCoordinate = IsHeight(action.AxisTag)
+                ? SourceY(action.CutCoordinate)
+                : SourceX(action.CutCoordinate),
+            DeltaSourceUnits = SourceLength(action.DeltaSourceUnits),
+            MaxDeltaSourceUnits = SourceLength(action.MaxDeltaSourceUnits),
+            CoordinateTolerance = SourceLength(action.CoordinateTolerance),
+            CanonicalSourceBounds = new AdjustmentRecipeBoundsDto(
+                SourceX(action.CanonicalSourceBounds.MinX),
+                SourceY(action.CanonicalSourceBounds.MinY),
+                SourceX(action.CanonicalSourceBounds.MaxX),
+                SourceY(action.CanonicalSourceBounds.MaxY)),
+            TargetSpans = action.TargetSpans.Select(span => span with
+            {
+                StartX = SourceX(span.StartX),
+                StartY = SourceY(span.StartY),
+                EndX = SourceX(span.EndX),
+                EndY = SourceY(span.EndY)
+            }).ToArray()
+        };
+    }
+
+    private decimal ResolveRequestedTrimSourceUnits(AutoFitSuggestionStep step)
+        => (step.ReductionInches * MillimetersPerInch) / sitePlanToMillimetersFactor;
+
+    private decimal ResolveStretchTolerance()
+        => decimal.Max(0.000001m, 0.01m / sitePlanToMillimetersFactor);
+
+    private static FloorPlanAdjustmentOperationImpactDto BuildCadStretchFloorPlanImpactAudit(
+        AdjustmentRecipeStretchActionDto action,
+        IReadOnlyList<GeometryPathDto> before,
+        IReadOnlyList<GeometryPathDto> after,
+        int operationIndex,
+        decimal previewScale)
+    {
+        if (previewScale <= 0m)
+        {
+            throw new InvalidOperationException("CAD stretch impact audit requires a positive preview scale.");
+        }
+
+        const decimal comparisonTolerance = 0.000001m;
+        var beforeById = before
+            .GroupBy(path => path.Id)
+            .ToDictionary(group => group.Key, group => group.Single());
+        var afterById = after
+            .GroupBy(path => path.Id)
+            .ToDictionary(group => group.Key, group => group.Single());
+        var affectedEntities = 0;
+        var affectedVertices = 0;
+
+        foreach (var beforePath in before)
+        {
+            if (!afterById.TryGetValue(beforePath.Id, out var afterPath))
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch preview lost geometry path '{beforePath.Id}' before audit.");
+            }
+
+            var afterSegments = afterPath.Segments
+                .GroupBy(segment => segment.SortOrder)
+                .ToDictionary(group => group.Key, group => group.Single());
+            var pathAffectedVertices = 0;
+            foreach (var beforeSegment in beforePath.Segments)
+            {
+                if (!afterSegments.TryGetValue(beforeSegment.SortOrder, out var afterSegment))
+                {
+                    throw new InvalidOperationException(
+                        $"CAD stretch preview lost segment {beforeSegment.SortOrder} from path '{beforePath.Id}' before audit.");
+                }
+
+                pathAffectedVertices += CoordinatesDiffer(
+                    beforeSegment.StartX,
+                    beforeSegment.StartY,
+                    afterSegment.StartX,
+                    afterSegment.StartY,
+                    comparisonTolerance) ? 1 : 0;
+                pathAffectedVertices += CoordinatesDiffer(
+                    beforeSegment.EndX,
+                    beforeSegment.EndY,
+                    afterSegment.EndX,
+                    afterSegment.EndY,
+                    comparisonTolerance) ? 1 : 0;
+            }
+
+            if (pathAffectedVertices > 0)
+            {
+                affectedEntities++;
+                affectedVertices += pathAffectedVertices;
+            }
+        }
+
+        var measuredTargetDeltas = action.TargetSpans.Select(span =>
+        {
+            if (!beforeById.TryGetValue(span.GeometryPathId, out var beforePath) ||
+                !afterById.TryGetValue(span.GeometryPathId, out var afterPath))
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch impact audit cannot resolve target path '{span.GeometryPathId}'.");
+            }
+
+            var beforeSegment = beforePath.Segments.SingleOrDefault(segment =>
+                segment.SortOrder == span.SegmentSortOrder);
+            var afterSegment = afterPath.Segments.SingleOrDefault(segment =>
+                segment.SortOrder == span.SegmentSortOrder);
+            if (beforeSegment is null || afterSegment is null)
+            {
+                throw new InvalidOperationException(
+                    $"CAD stretch impact audit cannot resolve target segment {span.SegmentSortOrder} from path '{span.GeometryPathId}'.");
+            }
+
+            var beforeLength = IsHeight(action.AxisTag)
+                ? Math.Abs(beforeSegment.EndY - beforeSegment.StartY)
+                : Math.Abs(beforeSegment.EndX - beforeSegment.StartX);
+            var afterLength = IsHeight(action.AxisTag)
+                ? Math.Abs(afterSegment.EndY - afterSegment.StartY)
+                : Math.Abs(afterSegment.EndX - afterSegment.StartX);
+            return Round((beforeLength - afterLength) / previewScale);
+        }).ToArray();
+        var measuredMin = measuredTargetDeltas.Length == 0 ? 0m : measuredTargetDeltas.Min();
+        var measuredMax = measuredTargetDeltas.Length == 0 ? 0m : measuredTargetDeltas.Max();
+        var invariantPassed = measuredTargetDeltas.Length == 2 && measuredTargetDeltas.All(delta =>
+            Math.Abs(delta - action.DeltaSourceUnits) <= action.CoordinateTolerance);
+        var applied = affectedVertices > 0 && invariantPassed;
+        return new FloorPlanAdjustmentOperationImpactDto(
+            action.ActionId,
+            operationIndex,
+            "CadStretch",
+            action.AxisTag,
+            action.Edge,
+            action.CutCoordinate,
+            action.DeltaSourceUnits,
+            affectedEntities,
+            affectedVertices,
+            measuredMin,
+            measuredMax,
+            applied ? "Applied" : "InvariantFailed",
+            applied
+                ? null
+                : $"CAD stretch FloorPlan audit expected two target spans shortened by {action.DeltaSourceUnits}, measured [{string.Join(", ", measuredTargetDeltas)}].");
+    }
+
+    private static bool CoordinatesDiffer(
+        decimal beforeX,
+        decimal beforeY,
+        decimal afterX,
+        decimal afterY,
+        decimal tolerance)
+        => Math.Abs(beforeX - afterX) > tolerance || Math.Abs(beforeY - afterY) > tolerance;
 
     private IReadOnlyList<FloorPlanAdjustmentOperationImpactDto> BuildFloorPlanImpactAudits(
         AutoFitCompressionTransform transform,
@@ -1962,8 +2438,185 @@ internal enum AutoFitCompressionEdge
     Bottom
 }
 
+internal sealed record SitePlanAdjustmentBuildResult(
+    bool Succeeded,
+    SitePlanAdjustmentViewModel? ViewModel,
+    string RejectionReason);
+
 internal static class SitePlanAdjustmentPreviewProjector
 {
+    public static SitePlanAdjustmentBuildResult BuildCommissioned(
+        FloorPlanLibraryItemDto libraryItem,
+        FloorPlanLibraryVersionDto version,
+        FloorPlanReviewViewModel reviewViewModel,
+        SitePlanPreviewDto sitePlan,
+        CommissionedHouseAdaptationProfile commissionedProfile,
+        string? floorPlanSourcePath = null,
+        string? sitePlanSourcePath = null,
+        IAdjustedSitePlanExporter? adjustedSitePlanExporter = null,
+        RecordCanonicalFloorPlanAdjustmentHandler? canonicalAdjustmentRecorder = null,
+        ExportMultiSheetPlanSetPackageHandler? planSetPackageExporter = null,
+        Guid? planSetVersionId = null,
+        ProjectRegisteredPlanSetSheetsHandler? registeredSheetProjector = null,
+        ConfirmSheetAdjustmentProjectionHandler? confirmSheetProjectionHandler = null)
+    {
+        ArgumentNullException.ThrowIfNull(libraryItem);
+        ArgumentNullException.ThrowIfNull(version);
+        ArgumentNullException.ThrowIfNull(reviewViewModel);
+        ArgumentNullException.ThrowIfNull(sitePlan);
+        ArgumentNullException.ThrowIfNull(commissionedProfile);
+
+        if (!version.ActivePublishedCurationId.HasValue ||
+            version.ActivePublishedCurationId.Value == Guid.Empty)
+        {
+            return RejectCommissionedBuild(
+                "La versión no tiene una curación publicada activa para validar el perfil commissioned.");
+        }
+
+        var publishedCurationId = version.ActivePublishedCurationId.Value;
+
+        if (commissionedProfile.FloorPlanVersionId != version.VersionId ||
+            commissionedProfile.PublishedCurationId != publishedCurationId)
+        {
+            return RejectCommissionedBuild(
+                "El perfil commissioned no corresponde a la versión y curación publicada activas.");
+        }
+
+        var readiness = CommissionedHouseAdaptationProfileReadiness.Evaluate(commissionedProfile);
+        if (!readiness.IsReady)
+        {
+            return RejectCommissionedBuild(
+                $"El perfil commissioned no está Auto-fit ready: {string.Join("; ", readiness.Reasons)}");
+        }
+
+        var measurementContext = reviewViewModel.MeasurementContext;
+        if (measurementContext is null || measurementContext.ToMillimetersFactor <= 0m)
+        {
+            return RejectCommissionedBuild(
+                "Falta un contexto de medición positivo para proyectar el FloorPlan sin asumir escala 1.");
+        }
+
+        if (sitePlan.ToMillimetersFactor <= 0m)
+        {
+            return RejectCommissionedBuild(
+                "El Site Plan no tiene un factor de medición positivo.");
+        }
+
+        if (commissionedProfile.SourceToMillimetersFactor != measurementContext.ToMillimetersFactor)
+        {
+            return RejectCommissionedBuild(
+                "El factor de unidades del perfil commissioned no coincide con la curación publicada.");
+        }
+
+        var floorPlanPlacementGeometryPathIds = reviewViewModel.WallCandidates
+            .Where(candidate => string.Equals(candidate.Status, "Accepted", StringComparison.OrdinalIgnoreCase))
+            .Select(candidate => candidate.GeometryPathId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToHashSet();
+        if (floorPlanPlacementGeometryPathIds.Count == 0)
+        {
+            return RejectCommissionedBuild(
+                "No hay geometría estructural aceptada para medir la huella canónica.");
+        }
+
+        var availableGeometryPathIds = reviewViewModel.GeometryPaths
+            .Select(path => path.Id)
+            .ToHashSet();
+        if (!floorPlanPlacementGeometryPathIds.IsSubsetOf(availableGeometryPathIds))
+        {
+            return RejectCommissionedBuild(
+                "La geometría estructural aceptada contiene referencias que ya no existen en la curación activa.");
+        }
+
+        try
+        {
+            var projection = Project(
+                reviewViewModel.GeometryPaths,
+                reviewViewModel.RoomLabels,
+                reviewViewModel.OpeningLabels,
+                reviewViewModel.Dimensions,
+                measurementContext,
+                sitePlan,
+                floorPlanPlacementGeometryPathIds);
+            if (projection.FloorPlanGeometryPaths.Count == 0 || projection.Scale <= 0m)
+            {
+                return RejectCommissionedBuild(
+                    "No se pudo proyectar una huella estructural positiva del FloorPlan.");
+            }
+
+            var requestBuild = CommissionedHouseFitRequestFactory.Create(
+                projection.FloorPlanGeometryPaths,
+                sitePlan.BuildableArea,
+                sitePlan.ToMillimetersFactor,
+                floorPlanPlacementGeometryPathIds);
+            if (!requestBuild.Succeeded || requestBuild.Request is null)
+            {
+                return RejectCommissionedBuild(requestBuild.RejectionReason);
+            }
+
+            var fitContext = new SitePlanAdjustmentFitContext(
+                sitePlan.BuildableArea,
+                sitePlan.ToMillimetersFactor,
+                [],
+                [],
+                [],
+                [],
+                floorPlanPlacementGeometryPathIds);
+            var autoFitFacts = SitePlanAdjustmentFitAnalyzer.BuildFacts(
+                projection.FloorPlanGeometryPaths,
+                fitContext);
+            var filteredSitePlan = FilterSitePlanForAdjustment(sitePlan);
+            var canonicalFloorPlanVersionId = version.VersionId == Guid.Empty
+                ? (Guid?)null
+                : version.VersionId;
+            var viewModel = new SitePlanAdjustmentViewModel(
+                "Ajustar a site plan",
+                $"{libraryItem.Code} v{version.VersionNumber} sobre {sitePlan.FileName}",
+                $"Centrado en área edificable: {Format(sitePlan.BuildableArea.MinX)}, {Format(sitePlan.BuildableArea.MinY)} -> {Format(sitePlan.BuildableArea.MaxX)}, {Format(sitePlan.BuildableArea.MaxY)}",
+                "Auto-fit commissioned: revisá la superposición canónica y confirmá para exportar.",
+                filteredSitePlan.GeometryPaths,
+                filteredSitePlan.RenderPaths,
+                filteredSitePlan.Texts,
+                projection.FloorPlanGeometryPaths,
+                projection.RoomLabels,
+                projection.OpeningLabels,
+                projection.Dimensions,
+                autoFitSuggestionFacts: autoFitFacts,
+                autoFitPlanSuggester: null,
+                sitePlanToMillimetersFactor: sitePlan.ToMillimetersFactor,
+                projectionScale: projection.Scale,
+                projectionOffsetX: projection.OffsetX,
+                projectionOffsetY: projection.OffsetY,
+                floorPlanSourcePath: floorPlanSourcePath,
+                sitePlanSourcePath: sitePlanSourcePath,
+                adjustedSitePlanExporter: adjustedSitePlanExporter,
+                autoFitBuildableArea: sitePlan.BuildableArea,
+                autoFitGeometryPathIds: floorPlanPlacementGeometryPathIds,
+                planSetVersionId: planSetVersionId ?? canonicalFloorPlanVersionId,
+                canonicalFloorPlanVersionId: canonicalFloorPlanVersionId,
+                canonicalAdjustmentRecorder: canonicalAdjustmentRecorder,
+                planSetPackageExporter: planSetPackageExporter,
+                registeredSheetProjector: registeredSheetProjector,
+                confirmSheetProjectionHandler: confirmSheetProjectionHandler,
+                wallCandidates: reviewViewModel.WallCandidates);
+
+            var plan = new CommissionedHouseFitPlanner(commissionedProfile).Plan(requestBuild.Request);
+            viewModel.ApplyCommissionedHouseFit(plan);
+            return viewModel.IsCommissionedAutoFitReadyForExport
+                ? new SitePlanAdjustmentBuildResult(true, viewModel, string.Empty)
+                : new SitePlanAdjustmentBuildResult(
+                    false,
+                    viewModel,
+                    viewModel.CommissionedAutoFitRejectionReason ?? plan.RejectionReason);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or ArgumentException or OverflowException)
+        {
+            return RejectCommissionedBuild(exception.Message);
+        }
+    }
+
     public static SitePlanAdjustmentViewModel Build(
         FloorPlanLibraryItemDto libraryItem,
         FloorPlanLibraryVersionDto version,
@@ -2043,8 +2696,17 @@ internal static class SitePlanAdjustmentPreviewProjector
             canonicalAdjustmentRecorder,
             planSetPackageExporter,
             registeredSheetProjector,
-            confirmSheetProjectionHandler);
+            confirmSheetProjectionHandler,
+            reviewViewModel.WallCandidates);
     }
+
+    private static SitePlanAdjustmentBuildResult RejectCommissionedBuild(string reason)
+        => new(
+            false,
+            null,
+            string.IsNullOrWhiteSpace(reason)
+                ? "El Auto-fit commissioned fue rechazado sin un motivo utilizable."
+                : reason);
 
     internal static SitePlanAdjustmentSitePlanDisplay FilterSitePlanForAdjustment(SitePlanPreviewDto sitePlan)
     {
@@ -2117,6 +2779,15 @@ internal static class SitePlanAdjustmentPreviewProjector
             deltaX,
             deltaY);
     }
+
+    internal static RoomLabelDto Translate(RoomLabelDto label, decimal deltaX, decimal deltaY)
+        => TransformRoomLabel(label, new CoordinateTransform(1m, deltaX, deltaY));
+
+    internal static OpeningLabelDto Translate(OpeningLabelDto label, decimal deltaX, decimal deltaY)
+        => TransformOpeningLabel(label, new CoordinateTransform(1m, deltaX, deltaY));
+
+    internal static DimensionDto Translate(DimensionDto dimension, decimal deltaX, decimal deltaY)
+        => TransformDimension(dimension, new CoordinateTransform(1m, deltaX, deltaY));
 
     private static IReadOnlyList<GeometryPathDto> ResolvePlacementGeometryPaths(
         IReadOnlyList<GeometryPathDto> floorPlanGeometryPaths,
@@ -2294,7 +2965,7 @@ internal static class SitePlanAdjustmentPreviewProjector
         => value.HasValue ? TransformLength(value.Value, scale) : null;
 
     private static decimal TransformLength(decimal value, decimal scale)
-        => Round(value * scale);
+        => scale == 1m ? value : Round(value * scale);
 
     private static string Format(decimal value)
         => value.ToString("0.###");
@@ -2304,9 +2975,13 @@ internal static class SitePlanAdjustmentPreviewProjector
 
     private readonly record struct CoordinateTransform(decimal Scale, decimal OffsetX, decimal OffsetY)
     {
-        public decimal X(decimal value) => Round((value * Scale) + OffsetX);
+        public decimal X(decimal value) => Scale == 1m
+            ? checked(value + OffsetX)
+            : Round((value * Scale) + OffsetX);
 
-        public decimal Y(decimal value) => Round((value * Scale) + OffsetY);
+        public decimal Y(decimal value) => Scale == 1m
+            ? checked(value + OffsetY)
+            : Round((value * Scale) + OffsetY);
     }
 
     private readonly record struct GeometryBounds(decimal MinX, decimal MinY, decimal MaxX, decimal MaxY);

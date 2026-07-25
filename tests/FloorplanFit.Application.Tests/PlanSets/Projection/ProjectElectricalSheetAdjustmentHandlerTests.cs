@@ -164,6 +164,50 @@ public sealed class ProjectElectricalSheetAdjustmentHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_counts_v2_stretch_actions_so_export_receives_the_canonical_recipe()
+    {
+        var clock = new FakeClock(new DateTime(2026, 7, 19, 12, 0, 0, DateTimeKind.Utc));
+        var registration = CreateRegistration(SheetRegistrationStatus.Confirmed, 0.92m, clock.UtcNow);
+        var handler = new ProjectElectricalSheetAdjustmentHandler(
+            new FakeSheetRegistrationRepository(registration),
+            new CapturingSheetAdjustmentProjectionRepository(),
+            new CapturingUnitOfWork(),
+            clock);
+        var action = new AdjustmentRecipeStretchActionDto(
+            "paired-wall",
+            "Width",
+            "Right",
+            5m,
+            2m,
+            4m,
+            0.05m,
+            new AdjustmentRecipeBoundsDto(0m, 0m, 12m, 4m),
+            [
+                new AdjustmentRecipeTargetSpanDto("FLOOR:1", Guid.NewGuid(), 0, 0m, 0m, 10m, 0m, 1),
+                new AdjustmentRecipeTargetSpanDto("FLOOR:2", Guid.NewGuid(), 0, 0m, 4m, 10m, 4m, 1)
+            ],
+            []);
+        var explicitRecipe = new AdjustmentRecipeSummaryDto("v2", 2m, 100m, 200m, [])
+        {
+            StretchActions = [action]
+        };
+
+        var response = await handler.HandleAsync(
+            new ProjectElectricalSheetAdjustmentRequest(
+                registration.Id,
+                Guid.NewGuid(),
+                new AdjustedSitePlanPlacementDto(1m, 0m, 0m, []),
+                explicitRecipe),
+            CancellationToken.None);
+
+        Assert.Equal("ReadyForExport", response.Status);
+        Assert.Equal(1, response.CanonicalCompressionStepCount);
+        Assert.Contains("CAD stretch", response.RecipeHandlingSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("will apply", response.RecipeHandlingSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("review", response.RecipeHandlingSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task HandleAsync_rejects_non_electrical_registration_method()
     {
         var registration = CreateRegistration(

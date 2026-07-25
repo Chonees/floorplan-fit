@@ -25,7 +25,8 @@ internal static class PreviewRenderComposer
                 axisTag,
                 scene.IsPinchPlacementArmed,
                 scene.PinchMarkers,
-                scene.PreviewPinchGroupId);
+                scene.PreviewPinchGroupId,
+                scene.ActiveDragEdge);
         }
 
         if (scene.Viewport is not { } viewport)
@@ -135,7 +136,9 @@ internal static class PreviewRenderComposer
             viewport,
             scene.PreviewGeometry,
             scene.PinchMarkers,
-            scene.SelectedPinchMarkerId);
+            scene.SelectedPinchMarkerId,
+            scene.PreviewPinchGroupId,
+            scene.ActiveDragEdge);
         if (ShouldRenderDimensions(scene))
         {
             DimensionPreviewLayerRenderer.RenderHandles(

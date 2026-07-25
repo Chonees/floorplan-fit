@@ -1,6 +1,7 @@
 using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.FloorPlans.Curation;
 using FloorplanFit.Application.FloorPlans.Review;
+using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.ViewModels;
 using FloorplanFit.Domain.FloorPlans;
@@ -1424,6 +1425,110 @@ public sealed class FloorPlanReviewViewModelTests
     }
 
     [Fact]
+    public async Task PublishAsync_commissions_and_persists_the_exact_published_curation_identity()
+    {
+        using var fixture = CreateCommissioningPublishFixture(includeDepth: true);
+        await fixture.ViewModel.LoadAsync(CancellationToken.None);
+        var publishedCurationId = fixture.ViewModel.DraftCurationId;
+        fixture.SeedPersistedMarkers(publishedCurationId);
+
+        await fixture.ViewModel.PublishAsync(CancellationToken.None);
+
+        var profile = Assert.Single(fixture.ProfileRepository.Items);
+        Assert.Equal(fixture.FloorPlanVersionId, profile.FloorPlanVersionId);
+        Assert.Equal(publishedCurationId, profile.PublishedCurationId);
+        Assert.Contains(profile.Variables, variable => variable.Axis == HouseAdaptationAxis.Width);
+        Assert.Contains(profile.Variables, variable => variable.Axis == HouseAdaptationAxis.Depth);
+        Assert.Contains(profile.AuxiliaryEntityBindings, binding => binding.SourceEntityRef == "LABEL:COVERAGE");
+        var openingBinding = Assert.Single(
+            profile.AuxiliaryEntityBindings,
+            binding => binding.SourceEntityRef == "OPENING:COVERAGE");
+        Assert.Equal(fixture.OpeningGeometryPathId, openingBinding.GeometryPathId);
+        Assert.Equal(fixture.OpeningHostWallPathId, openingBinding.HostGeometryPathId);
+        Assert.Equal(0, openingBinding.HostSegmentSortOrder);
+        Assert.NotEqual(openingBinding.GeometryPathId, openingBinding.HostGeometryPathId);
+        var openingRoles = profile.Variables
+            .SelectMany(variable => variable.ActionTemplates)
+            .SelectMany(action => action.CanonicalEntityRoles)
+            .Where(role => role.EntityRef == "OPENING:COVERAGE")
+            .ToArray();
+        Assert.NotEmpty(openingRoles);
+        Assert.All(openingRoles, role =>
+        {
+            Assert.NotEqual("Stretch", role.Role);
+            Assert.Equal(fixture.OpeningGeometryPathId, role.GeometryPathId);
+            Assert.Equal(fixture.OpeningHostWallPathId, role.HostGeometryPathId);
+            Assert.Equal(0, role.HostSegmentSortOrder);
+            Assert.Empty(role.VertexIndices);
+        });
+        var dimensionBinding = Assert.Single(
+            profile.AuxiliaryEntityBindings,
+            binding => binding.SourceEntityRef == "DIMENSION:COVERAGE");
+        Assert.Equal(CommissionExistingCurationAuxiliaryEntityKind.Label, dimensionBinding.Kind);
+        Assert.Null(dimensionBinding.GeometryPathId);
+        Assert.Null(dimensionBinding.SegmentSortOrder);
+        Assert.Equal(new AdjustmentRecipeBoundsDto(1m, 1m, 2m, 2.125m), dimensionBinding.SourceBounds);
+        Assert.Contains(
+            profile.AuxiliaryEntityBindings,
+            binding => binding.SourceEntityRef == "PROTECTED:COVERAGE" && binding.GeometryPathId.HasValue);
+        Assert.Contains("Auto-fit ready", fixture.ViewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PublishAsync_exposes_one_actionable_reason_when_commissioning_cannot_close()
+    {
+        using var fixture = CreateCommissioningPublishFixture(includeDepth: false);
+        await fixture.ViewModel.LoadAsync(CancellationToken.None);
+        fixture.SeedPersistedMarkers(fixture.ViewModel.DraftCurationId);
+
+        await fixture.ViewModel.PublishAsync(CancellationToken.None);
+
+        Assert.Empty(fixture.ProfileRepository.Items);
+        Assert.Contains("Publicado, pero no qued\u00F3 Auto-fit ready", fixture.ViewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("Height", fixture.ViewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PublishAsync_leaves_setup_required_for_an_unsupported_dimension_identity()
+    {
+        using var fixture = CreateCommissioningPublishFixture(
+            includeDepth: true,
+            dimensionSourceKind: "ARC");
+        await fixture.ViewModel.LoadAsync(CancellationToken.None);
+        fixture.SeedPersistedMarkers(fixture.ViewModel.DraftCurationId);
+
+        await fixture.ViewModel.PublishAsync(CancellationToken.None);
+
+        Assert.Empty(fixture.ProfileRepository.Items);
+        Assert.Contains("Publicado, pero no qued\u00F3 Auto-fit ready", fixture.ViewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("DIMENSION:COVERAGE", fixture.ViewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("no soportado", fixture.ViewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(CommissioningOpeningHostScenario.Missing, "0 candidatos")]
+    [InlineData(CommissioningOpeningHostScenario.Multiple, "2 candidatos")]
+    [InlineData(CommissioningOpeningHostScenario.Crossing, "cruza")]
+    [InlineData(CommissioningOpeningHostScenario.SupportedAndCrossing, "además cruza")]
+    public async Task PublishAsync_leaves_setup_required_when_opening_host_evidence_is_not_unique_support(
+        CommissioningOpeningHostScenario openingHostScenario,
+        string expectedReason)
+    {
+        using var fixture = CreateCommissioningPublishFixture(
+            includeDepth: true,
+            openingHostScenario: openingHostScenario);
+        await fixture.ViewModel.LoadAsync(CancellationToken.None);
+        fixture.SeedPersistedMarkers(fixture.ViewModel.DraftCurationId);
+
+        await fixture.ViewModel.PublishAsync(CancellationToken.None);
+
+        Assert.Empty(fixture.ProfileRepository.Items);
+        Assert.Contains("Publicado, pero no qued\u00F3 Auto-fit ready", fixture.ViewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("OPENING:COVERAGE", fixture.ViewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains(expectedReason, fixture.ViewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task RemoveSelectedPinchGroupAsync_removes_selected_group_and_all_its_markers()
     {
         var templateId = Guid.NewGuid();
@@ -2131,6 +2236,355 @@ public sealed class FloorPlanReviewViewModelTests
         viewModel.SelectedPinchMarker = viewModel.PinchMarkers.OrderBy(marker => marker.SortOrder).First();
 
         return new SelectedPinchEditFixture(provider, viewModel, markerRepository, pinchMarkerIds);
+    }
+
+    private static CommissioningPublishFixture CreateCommissioningPublishFixture(
+        bool includeDepth,
+        string dimensionSourceKind = "DIMENSION",
+        CommissioningOpeningHostScenario openingHostScenario = CommissioningOpeningHostScenario.Valid)
+    {
+        var templateId = Guid.NewGuid();
+        var floorPlanVersionId = Guid.NewGuid();
+        var widthGroupId = Guid.NewGuid();
+        var depthGroupId = Guid.NewGuid();
+        var widthAPathId = Guid.NewGuid();
+        var widthBPathId = Guid.NewGuid();
+        var widthClosingPathId = Guid.NewGuid();
+        var depthAPathId = Guid.NewGuid();
+        var depthBPathId = Guid.NewGuid();
+        var depthClosingPathId = Guid.NewGuid();
+        var openingPathId = Guid.NewGuid();
+        var duplicateOpeningHostPathId = Guid.NewGuid();
+        var crossingOpeningHostPathId = Guid.NewGuid();
+        var protectedPathId = Guid.NewGuid();
+        var widthACandidateId = Guid.NewGuid();
+        var widthBCandidateId = Guid.NewGuid();
+        var widthClosingCandidateId = Guid.NewGuid();
+        var depthACandidateId = Guid.NewGuid();
+        var depthBCandidateId = Guid.NewGuid();
+        var depthClosingCandidateId = Guid.NewGuid();
+        var duplicateOpeningHostCandidateId = Guid.NewGuid();
+        var crossingOpeningHostCandidateId = Guid.NewGuid();
+        var template = new FloorPlanTemplate(templateId, "commissioned-house", "COMMISSIONED HOUSE", isActive: true);
+        template.SetCurrentVersion(floorPlanVersionId);
+        var version = new FloorPlanVersion(
+            floorPlanVersionId,
+            templateId,
+            Guid.NewGuid(),
+            "commissioned-geometry",
+            1,
+            new DateTime(2026, 7, 21, 14, 0, 0, DateTimeKind.Utc));
+
+        var openingGeometry = openingHostScenario switch
+        {
+            CommissioningOpeningHostScenario.Missing => (StartX: 12m, StartY: 1m, EndX: 12m, EndY: 2m),
+            CommissioningOpeningHostScenario.Crossing => (StartX: 9m, StartY: 2m, EndX: 11m, EndY: 2m),
+            _ => (StartX: 10m, StartY: 1m, EndX: 10m, EndY: 2m)
+        };
+        var paths = new List<GeometryPathDto>
+        {
+            Path(widthAPathId, 0m, 0m, 10m, 0m),
+            Path(widthBPathId, 0m, 4m, 10m, 4m),
+            Path(widthClosingPathId, 10m, 0m, 10m, 4m),
+            Path(depthAPathId, 20m, 0m, 20m, 10m),
+            Path(depthBPathId, 24m, 0m, 24m, 10m),
+            Path(depthClosingPathId, 20m, 10m, 24m, 10m),
+            Path(
+                openingPathId,
+                openingGeometry.StartX,
+                openingGeometry.StartY,
+                openingGeometry.EndX,
+                openingGeometry.EndY),
+            Path(protectedPathId, 1m, 2m, 2m, 2m)
+        };
+        if (openingHostScenario == CommissioningOpeningHostScenario.Multiple)
+        {
+            paths.Add(Path(duplicateOpeningHostPathId, 10m, 0m, 10m, 4m));
+        }
+        else if (openingHostScenario == CommissioningOpeningHostScenario.SupportedAndCrossing)
+        {
+            paths.Add(Path(crossingOpeningHostPathId, 9m, 1.5m, 11m, 1.5m));
+        }
+
+        var candidates = new List<WallCandidateDto>
+        {
+            Candidate(widthACandidateId, "WIDTH:A", widthAPathId, 1),
+            Candidate(widthBCandidateId, "WIDTH:B", widthBPathId, 2),
+            Candidate(widthClosingCandidateId, "WIDTH:CLOSING", widthClosingPathId, 3),
+            Candidate(depthACandidateId, "DEPTH:A", depthAPathId, 4),
+            Candidate(depthBCandidateId, "DEPTH:B", depthBPathId, 5),
+            Candidate(depthClosingCandidateId, "DEPTH:CLOSING", depthClosingPathId, 6)
+        };
+        if (openingHostScenario == CommissioningOpeningHostScenario.Multiple)
+        {
+            candidates.Add(Candidate(
+                duplicateOpeningHostCandidateId,
+                "WIDTH:CLOSING:DUPLICATE",
+                duplicateOpeningHostPathId,
+                7));
+        }
+        else if (openingHostScenario == CommissioningOpeningHostScenario.SupportedAndCrossing)
+        {
+            candidates.Add(Candidate(
+                crossingOpeningHostCandidateId,
+                "OPENING:CROSSING",
+                crossingOpeningHostPathId,
+                7));
+        }
+        PinchGroupDto[] groups = includeDepth
+            ?
+            [
+                new(widthGroupId, "Width room", nameof(PinchAxisTag.Width), 1),
+                new(depthGroupId, "Depth room", nameof(PinchAxisTag.Height), 2)
+            ]
+            : [new(widthGroupId, "Width room", nameof(PinchAxisTag.Width), 1)];
+        var markers = new List<PinchMarkerDto>
+        {
+            new(Guid.NewGuid(), widthGroupId, "Width room", widthACandidateId, widthAPathId, nameof(PinchAxisTag.Width), 0.5m, 101.6m, 1),
+            new(Guid.NewGuid(), widthGroupId, "Width room", widthBCandidateId, widthBPathId, nameof(PinchAxisTag.Width), 0.5m, 152.4m, 2)
+        };
+        if (includeDepth)
+        {
+            markers.Add(new(Guid.NewGuid(), depthGroupId, "Depth room", depthACandidateId, depthAPathId, nameof(PinchAxisTag.Height), 0.5m, 76.2m, 1));
+            markers.Add(new(Guid.NewGuid(), depthGroupId, "Depth room", depthBCandidateId, depthBPathId, nameof(PinchAxisTag.Height), 0.5m, 127m, 2));
+        }
+
+        var session = new FloorPlanReviewSessionDto(
+            templateId,
+            template.Code,
+            template.Name,
+            "Curated Draft",
+            1,
+            null,
+            paths,
+            [
+                new RoomLabelDto(
+                    Guid.NewGuid(),
+                    "LABEL:COVERAGE",
+                    "ROOM LABELS",
+                    "ROOM",
+                    1m,
+                    1m,
+                    1m,
+                    null,
+                    1,
+                    SourceEntityKind: "TEXT",
+                    TextHeight: 0.5m)
+            ],
+            [
+                new OpeningCandidateDto(
+                    Guid.NewGuid(),
+                    "OPENING:COVERAGE",
+                    "OPENINGS",
+                    "Door",
+                    "LINE",
+                    openingPathId,
+                    1m,
+                    null,
+                    1)
+            ],
+            [],
+            [],
+            [
+                new ProtectedDetailAssemblyDto(
+                    Guid.NewGuid(),
+                    "PROTECTED:COVERAGE",
+                    "PROTECTED",
+                    "Core",
+                    "LINE",
+                    [protectedPathId],
+                    1m,
+                    null,
+                    1)
+            ],
+            candidates,
+            groups,
+            markers)
+        {
+            MeasurementContext = new MeasurementContextDto("inch", 25.4m, 0.01m, 0.1m),
+            Dimensions = [CommissioningDimension(dimensionSourceKind)]
+        };
+        var markerRepository = new InMemoryPinchMarkerRepository([]);
+        var profileRepository = new InMemoryCommissionedHouseAdaptationProfileRepository();
+        var services = new ServiceCollection();
+        services.AddSingleton<IFloorPlanTemplateRepository>(new InMemoryFloorPlanTemplateRepository(template));
+        services.AddSingleton<IFloorPlanVersionRepository>(new InMemoryFloorPlanVersionRepository(version));
+        services.AddSingleton<IFloorPlanCurationRepository>(new InMemoryFloorPlanCurationRepository());
+        services.AddSingleton<IPinchMarkerRepository>(markerRepository);
+        services.AddSingleton<ICommissionedHouseAdaptationProfileRepository>(profileRepository);
+        services.AddSingleton<IUnitOfWork, FakeUnitOfWork>();
+        services.AddSingleton<IClock>(new FakeClock(new DateTime(2026, 7, 21, 15, 0, 0, DateTimeKind.Utc)));
+        services.AddSingleton<IFloorPlanReviewSessionReader>(new FakeFloorPlanReviewSessionReader(session));
+        services.AddTransient<StartOrResumeCurationHandler>();
+        services.AddTransient<OpenFloorPlanReviewSessionHandler>();
+        services.AddTransient<GetFloorPlanReviewSessionHandler>();
+        services.AddTransient<PublishFloorPlanCurationHandler>();
+        services.AddTransient<SaveCommissionedHouseAdaptationProfileHandler>();
+
+        var provider = services.BuildServiceProvider();
+        return new CommissioningPublishFixture(
+            provider,
+            new FloorPlanReviewViewModel(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                templateId,
+                floorPlanVersionId),
+            floorPlanVersionId,
+            markerRepository,
+            profileRepository,
+            markers,
+            openingPathId,
+            widthClosingPathId);
+    }
+
+    private static GeometryPathDto Path(Guid id, decimal x1, decimal y1, decimal x2, decimal y2)
+        => new(id, false, [new GeometrySegmentDto(id, 0, x1, y1, x2, y2)]);
+
+    private static WallCandidateDto Candidate(Guid id, string sourceRef, Guid pathId, int sortOrder)
+        => new(id, sourceRef, "WALL", "Accepted", 1m, 101.6m, null, pathId, sortOrder);
+
+    private static DimensionDto CommissioningDimension(string sourceEntityKind)
+        => new(
+            Guid.NewGuid(),
+            "DIMENSION:COVERAGE",
+            "DIMS",
+            sourceEntityKind,
+            "*D1",
+            "1'-0\"",
+            "GeometryBlock",
+            string.Empty,
+            1m,
+            25.4m,
+            "Inch",
+            0,
+            0m,
+            0m,
+            1m,
+            1m,
+            0m,
+            2m,
+            1m,
+            0m,
+            1m,
+            2m,
+            0m,
+            1m,
+            null,
+            1)
+        {
+            SourceHandle = "D1",
+            RenderTextX = 1.5m,
+            RenderTextY = 2m,
+            RenderTextHeight = 0.25m,
+            LinePrimitives = [new DimensionLinePrimitiveDto("LINE:1", 1, 1m, 2m, 2m, 2m)],
+            TextPrimitives = [new DimensionTextPrimitiveDto("TEXT:1", 1, "1'-0\"", 1.5m, 2m, 0.25m, 0m)]
+        };
+
+    private sealed class CommissioningPublishFixture(
+        ServiceProvider provider,
+        FloorPlanReviewViewModel viewModel,
+        Guid floorPlanVersionId,
+        InMemoryPinchMarkerRepository markerRepository,
+        InMemoryCommissionedHouseAdaptationProfileRepository profileRepository,
+        IReadOnlyList<PinchMarkerDto> markers,
+        Guid openingGeometryPathId,
+        Guid openingHostWallPathId) : IDisposable
+    {
+        public FloorPlanReviewViewModel ViewModel => viewModel;
+
+        public Guid FloorPlanVersionId => floorPlanVersionId;
+
+        public InMemoryCommissionedHouseAdaptationProfileRepository ProfileRepository => profileRepository;
+
+        public Guid OpeningGeometryPathId => openingGeometryPathId;
+
+        public Guid OpeningHostWallPathId => openingHostWallPathId;
+
+        public void SeedPersistedMarkers(Guid curationId)
+        {
+            markerRepository.Items.AddRange(markers.Select(marker => new PinchMarker(
+                marker.PinchMarkerId,
+                curationId,
+                marker.PinchGroupId,
+                marker.SourceCandidateId,
+                marker.GeometryPathId,
+                marker.PositionRatio,
+                marker.MaxTrimMm,
+                marker.SortOrder)));
+        }
+
+        public void Dispose() => provider.Dispose();
+    }
+
+    private enum CommissioningOpeningHostScenario
+    {
+        Valid,
+        Missing,
+        Multiple,
+        Crossing,
+        SupportedAndCrossing
+    }
+
+    private sealed class InMemoryCommissionedHouseAdaptationProfileRepository
+        : ICommissionedHouseAdaptationProfileRepository
+    {
+        public List<CommissionedHouseAdaptationProfile> Items { get; } = [];
+
+        public Task UpsertAsync(
+            CommissionedHouseAdaptationProfile profile,
+            CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.FloorPlanVersionId == profile.FloorPlanVersionId);
+            Items.Add(profile);
+            return Task.CompletedTask;
+        }
+
+        public Task<CommissionedHouseAdaptationProfile?> GetByFloorPlanVersionIdAsync(
+            Guid floorPlanVersionId,
+            Guid expectedPublishedCurationId,
+            CancellationToken cancellationToken)
+            => Task.FromResult(Items.SingleOrDefault(item =>
+                item.FloorPlanVersionId == floorPlanVersionId &&
+                item.PublishedCurationId == expectedPublishedCurationId));
+
+        public Task RemoveByFloorPlanVersionIdAsync(
+            Guid floorPlanVersionId,
+            CancellationToken cancellationToken)
+        {
+            Items.RemoveAll(item => item.FloorPlanVersionId == floorPlanVersionId);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryFloorPlanVersionRepository : IFloorPlanVersionRepository
+    {
+        private readonly List<FloorPlanVersion> items;
+
+        public InMemoryFloorPlanVersionRepository(params FloorPlanVersion[] items)
+        {
+            this.items = items.ToList();
+        }
+
+        public Task<FloorPlanVersion?> GetByIdAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+            => Task.FromResult(items.SingleOrDefault(item => item.Id == floorPlanVersionId));
+
+        public Task<int> GetNextVersionNumberAsync(Guid floorPlanTemplateId, CancellationToken cancellationToken)
+            => Task.FromResult(
+                items.Where(item => item.FloorPlanTemplateId == floorPlanTemplateId)
+                    .Select(item => item.VersionNumber)
+                    .DefaultIfEmpty(0)
+                    .Max() + 1);
+
+        public Task AddAsync(FloorPlanVersion version, CancellationToken cancellationToken)
+        {
+            items.Add(version);
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(Guid floorPlanVersionId, CancellationToken cancellationToken)
+        {
+            items.RemoveAll(item => item.Id == floorPlanVersionId);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class SelectedPinchEditFixture(

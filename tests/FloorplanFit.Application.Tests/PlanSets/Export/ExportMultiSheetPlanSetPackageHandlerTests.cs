@@ -1,7 +1,9 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.PlanSets.Export;
 using FloorplanFit.Application.PlanSets.ExportAudit;
+using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Domain.PlanSets;
 
@@ -27,6 +29,7 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
         {
             OnBuildVerification = audit => verificationInput = audit
         };
+        var electricalSourcePath = CreateElectricalSourceFile();
         var handler = new ExportMultiSheetPlanSetPackageHandler(
             projectionRepository,
             new FakePlanSheetSourceReader(new PlanSheetSourceDto(
@@ -34,8 +37,8 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
                 "ElectricalPlan",
                 "Electrical",
                 Guid.NewGuid(),
-                "library/raw-dxf/electrical.dxf")),
-            new ExportProjectedPlanSheetHandler(projectionRepository, new CapturingProjectedPlanSheetExporter()),
+                electricalSourcePath)),
+            CreateProjectedSheetHandler(projectionRepository, new CapturingProjectedPlanSheetExporter(), [(projection, electricalSourcePath)]),
             new CreateMultiSheetExportAuditHandler(
                 projectionRepository,
                 new FakePlanSheetReader(),
@@ -59,9 +62,35 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
             CancellationToken.None);
 
         Assert.Equal(
-            ["My-unsafe-plan-electrical.dxf", "My-unsafe-plan-floorplan.dxf"],
-            Directory.GetFiles(packageDirectory, "*.dxf").Select(Path.GetFileName).Order().ToArray());
+            [
+                "manifest.json",
+                "My-unsafe-plan-audit.txt",
+                "My-unsafe-plan-comparison.json",
+                "My-unsafe-plan-electrical.dxf",
+                "My-unsafe-plan-floorplan.dxf"
+            ],
+            Directory.GetFiles(packageDirectory).Select(Path.GetFileName).Order().ToArray());
         Assert.All(Directory.GetFiles(packageDirectory, "*.dxf"), path => Assert.True(new FileInfo(path).Length > 0));
+        Assert.False(File.Exists(Path.Combine(packageDirectory, "My-unsafe-plan-comparison.dxf")));
+        using (var comparison = JsonDocument.Parse(await File.ReadAllTextAsync(
+                   Path.Combine(packageDirectory, "My-unsafe-plan-comparison.json"))))
+        {
+            Assert.Equal("final-output-congruence", comparison.RootElement.GetProperty("stage").GetString());
+            var congruence = comparison.RootElement.GetProperty("sheets")[0].GetProperty("finalOutputCongruence");
+            Assert.Equal(
+                Path.Combine(packageDirectory, "My-unsafe-plan-floorplan.dxf"),
+                congruence.GetProperty("FloorOutputPath").GetString());
+            Assert.Equal(
+                Path.Combine(packageDirectory, "My-unsafe-plan-electrical.dxf"),
+                congruence.GetProperty("ElectricalOutputPath").GetString());
+        }
+        Assert.DoesNotContain(
+            ".staging-",
+            await File.ReadAllTextAsync(Path.Combine(packageDirectory, "My-unsafe-plan-comparison.json")),
+            StringComparison.Ordinal);
+
+        Assert.False(string.IsNullOrWhiteSpace(await File.ReadAllTextAsync(
+            Path.Combine(packageDirectory, "My-unsafe-plan-audit.txt"))));
         Assert.False(File.Exists(canonicalPath));
         Assert.NotNull(verificationInput);
         var canonicalSheet = Assert.Single(verificationInput.Sheets, sheet => sheet.SheetKind == "CanonicalFloorPlan");
@@ -69,10 +98,25 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
         Assert.Contains(".staging-", canonicalSheet.VerificationPath, StringComparison.Ordinal);
         Assert.EndsWith("My-unsafe-plan-floorplan.dxf", canonicalSheet.VerificationPath, StringComparison.Ordinal);
         Assert.Equal(
-            ["ElectricalPlan", "FloorPlan"],
+            ["Audit", "Comparison", "ElectricalPlan", "FloorPlan", "Manifest"],
             response.Artifacts.Select(artifact => artifact.Role).Order().ToArray());
         Assert.DoesNotContain(response.Artifacts, artifact => artifact.Role == "ComparisonReview");
         Assert.All(response.Artifacts, artifact => Assert.StartsWith(packageDirectory, artifact.Path, StringComparison.Ordinal));
+        using (var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+                   Path.Combine(packageDirectory, "manifest.json"))))
+        {
+            Assert.Equal(
+                Path.Combine(packageDirectory, "manifest.json"),
+                manifest.RootElement.GetProperty("PackageManifestPath").GetString());
+            var artifacts = manifest.RootElement.GetProperty("Artifacts").EnumerateArray().ToArray();
+            Assert.Equal(5, artifacts.Length);
+            Assert.All(artifacts, artifact =>
+                Assert.StartsWith(packageDirectory, artifact.GetProperty("Path").GetString(), StringComparison.Ordinal));
+        }
+        Assert.DoesNotContain(
+            ".staging-",
+            await File.ReadAllTextAsync(Path.Combine(packageDirectory, "manifest.json")),
+            StringComparison.Ordinal);
         Assert.Equal(
             Path.Combine(packageDirectory, "My-unsafe-plan-floorplan.dxf"),
             Assert.Single(response.Sheets, sheet => sheet.SheetKind == "CanonicalFloorPlan").StoragePath);
@@ -90,12 +134,17 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
         var second = CreateProjection(planSetVersionId, adjustmentId, SheetAdjustmentProjectionStatus.ReadyForExport, Guid.NewGuid());
         var projections = new FakeSheetAdjustmentProjectionRepository(first, second);
         var packageDirectory = Path.Combine(tempRoot, "X-plan-set");
+        var firstSourcePath = CreateElectricalSourceFile();
+        var secondSourcePath = CreateElectricalSourceFile();
         var handler = new ExportMultiSheetPlanSetPackageHandler(
             projections,
             new FakePlanSheetSourceReader(
-                new PlanSheetSourceDto(first.DependentSheetId, "ElectricalPlan", "Electrical A", Guid.NewGuid(), "a.dxf"),
-                new PlanSheetSourceDto(second.DependentSheetId, "ElectricalPlan", "Electrical B", Guid.NewGuid(), "b.dxf")),
-            new ExportProjectedPlanSheetHandler(projections, new CapturingProjectedPlanSheetExporter()),
+                new PlanSheetSourceDto(first.DependentSheetId, "ElectricalPlan", "Electrical A", Guid.NewGuid(), firstSourcePath),
+                new PlanSheetSourceDto(second.DependentSheetId, "ElectricalPlan", "Electrical B", Guid.NewGuid(), secondSourcePath)),
+            CreateProjectedSheetHandler(
+                projections,
+                new CapturingProjectedPlanSheetExporter(),
+                [(first, firstSourcePath), (second, secondSourcePath)]),
             new CreateMultiSheetExportAuditHandler(
                 projections,
                 new FakePlanSheetReader(),
@@ -131,6 +180,7 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
         var projectedSheetExporter = new CapturingProjectedPlanSheetExporter();
         var auditRepository = new CapturingPlanSetExportRepository();
         var packageDirectory = CreatePackageDirectory();
+        var electricalSourcePath = CreateElectricalSourceFile();
         var expectedOutputPath = Path.Combine(packageDirectory, "floor-plan-adjusted-electrical.dxf");
         var packageHandler = new ExportMultiSheetPlanSetPackageHandler(
             projectionRepository,
@@ -140,8 +190,8 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
                     "ElectricalPlan",
                     "Electrical",
                     Guid.NewGuid(),
-                    "library/raw-dxf/electrical.dxf")),
-            new ExportProjectedPlanSheetHandler(projectionRepository, projectedSheetExporter),
+                    electricalSourcePath)),
+            CreateProjectedSheetHandler(projectionRepository, projectedSheetExporter, [(projection, electricalSourcePath)]),
             new CreateMultiSheetExportAuditHandler(
                 projectionRepository,
                 new FakePlanSheetReader(),
@@ -162,7 +212,7 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
             CancellationToken.None);
 
         var exportCall = Assert.Single(projectedSheetExporter.Calls);
-        Assert.Equal("library/raw-dxf/electrical.dxf", exportCall.SourceFilePath);
+        Assert.Equal(electricalSourcePath, exportCall.SourceFilePath);
         Assert.NotEqual(expectedOutputPath, exportCall.OutputFilePath);
         Assert.Contains(".staging-", exportCall.OutputFilePath, StringComparison.Ordinal);
         Assert.True(File.Exists(expectedOutputPath));
@@ -210,6 +260,14 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
                 var serialized = JsonSerializer.Serialize(audit);
                 Assert.False(serialized.Contains(".staging-", StringComparison.Ordinal));
                 Assert.False(serialized.Contains("VerificationPath", StringComparison.Ordinal));
+            },
+            OnPackageWrite = (audit, stagingDirectory) =>
+            {
+                order.Add("package-artifacts");
+                Assert.False(Directory.Exists(packageDirectory));
+                Assert.Contains(".staging-", stagingDirectory, StringComparison.Ordinal);
+                Assert.All(audit.Artifacts, artifact =>
+                    Assert.StartsWith(packageDirectory, artifact.Path, StringComparison.Ordinal));
             }
         };
         var exportRepository = new CapturingPlanSetExportRepository
@@ -223,6 +281,7 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
                     sheet => Assert.False((sheet.StoragePath ?? string.Empty).Contains(".staging-", StringComparison.Ordinal)));
             }
         };
+        var electricalSourcePath = CreateElectricalSourceFile();
         var packageHandler = new ExportMultiSheetPlanSetPackageHandler(
             projectionRepository,
             new FakePlanSheetSourceReader(
@@ -231,8 +290,8 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
                     "ElectricalPlan",
                     "Electrical",
                     Guid.NewGuid(),
-                    "library/raw-dxf/electrical.dxf")),
-            new ExportProjectedPlanSheetHandler(projectionRepository, new CapturingProjectedPlanSheetExporter()),
+                    electricalSourcePath)),
+            CreateProjectedSheetHandler(projectionRepository, new CapturingProjectedPlanSheetExporter(), [(projection, electricalSourcePath)]),
             new CreateMultiSheetExportAuditHandler(
                 projectionRepository,
                 new FakePlanSheetReader(),
@@ -252,7 +311,7 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
                 [projection.Id]),
             CancellationToken.None);
 
-        Assert.Equal(new[] { "verify", "manifest", "persist" }, order);
+        Assert.Equal(new[] { "verify", "manifest", "package-artifacts", "persist" }, order);
         Assert.True(File.Exists(expectedOutputPath));
         Assert.False(JsonSerializer.Serialize(response).Contains(".staging-", StringComparison.Ordinal));
     }
@@ -279,12 +338,13 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
         var projectionRepository = new FakeSheetAdjustmentProjectionRepository(readyProjection, manualProjection);
         var projectedSheetExporter = new CapturingProjectedPlanSheetExporter();
         var packageDirectory = CreatePackageDirectory();
+        var electricalSourcePath = CreateElectricalSourceFile();
         var expectedOutputPath = Path.Combine(packageDirectory, "floor-plan-adjusted-electrical.dxf");
         var packageHandler = new ExportMultiSheetPlanSetPackageHandler(
             projectionRepository,
             new FakePlanSheetSourceReader(
-                new PlanSheetSourceDto(electricalSheetId, "ElectricalPlan", "Electrical", Guid.NewGuid(), "library/electrical.dxf")),
-            new ExportProjectedPlanSheetHandler(projectionRepository, projectedSheetExporter),
+                new PlanSheetSourceDto(electricalSheetId, "ElectricalPlan", "Electrical", Guid.NewGuid(), electricalSourcePath)),
+            CreateProjectedSheetHandler(projectionRepository, projectedSheetExporter, [(readyProjection, electricalSourcePath)]),
             new CreateMultiSheetExportAuditHandler(
                 projectionRepository,
                 new FakePlanSheetReader(
@@ -311,7 +371,7 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
             CancellationToken.None);
 
         var exportCall = Assert.Single(projectedSheetExporter.Calls);
-        Assert.Equal("library/electrical.dxf", exportCall.SourceFilePath);
+        Assert.Equal(electricalSourcePath, exportCall.SourceFilePath);
         Assert.Contains(".staging-", exportCall.OutputFilePath, StringComparison.Ordinal);
         Assert.True(File.Exists(expectedOutputPath));
 
@@ -332,7 +392,7 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
     }
 
     [Fact]
-    public async Task HandleAsync_without_explicit_projection_ids_uses_latest_projection_per_sheet()
+    public async Task HandleAsync_without_required_electrical_flag_keeps_latest_manual_projection_in_audit()
     {
         var planSetVersionId = Guid.NewGuid();
         var canonicalFloorPlanVersionId = Guid.NewGuid();
@@ -384,6 +444,171 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAsync_requiring_ready_electrical_fails_closed_when_latest_electrical_is_not_ready()
+    {
+        var planSetVersionId = Guid.NewGuid();
+        var canonicalFloorPlanVersionId = Guid.NewGuid();
+        var canonicalAdjustmentId = Guid.NewGuid();
+        var electricalSheetId = Guid.NewGuid();
+        var oldReadyProjection = CreateProjection(
+            planSetVersionId,
+            canonicalAdjustmentId,
+            SheetAdjustmentProjectionStatus.ReadyForExport,
+            electricalSheetId,
+            new DateTime(2026, 6, 30, 23, 50, 0, DateTimeKind.Utc));
+        var latestManualProjection = CreateProjection(
+            planSetVersionId,
+            canonicalAdjustmentId,
+            SheetAdjustmentProjectionStatus.RequiresManualConfirmation,
+            electricalSheetId,
+            new DateTime(2026, 6, 30, 23, 55, 0, DateTimeKind.Utc));
+        var projectionRepository = new FakeSheetAdjustmentProjectionRepository(oldReadyProjection, latestManualProjection);
+        var projectedSheetExporter = new CapturingProjectedPlanSheetExporter();
+        var exportRepository = new CapturingPlanSetExportRepository();
+        var packageDirectory = CreatePackageDirectory();
+        var canonicalPath = CreateCanonicalPath();
+        var packageHandler = new ExportMultiSheetPlanSetPackageHandler(
+            projectionRepository,
+            new FakePlanSheetSourceReader(
+                new PlanSheetSourceDto(electricalSheetId, "ElectricalPlan", "Electrical", Guid.NewGuid(), "library/electrical.dxf")),
+            new ExportProjectedPlanSheetHandler(projectionRepository, projectedSheetExporter),
+            new CreateMultiSheetExportAuditHandler(
+                projectionRepository,
+                new FakePlanSheetReader(planSetVersionId, [CreateSheet(electricalSheetId, "ElectricalPlan")]),
+                exportRepository,
+                new CapturingPlanSetAuditEventRepository(),
+                new CapturingPlanSetExportManifestWriter("exports/plan-sets/package/manifest.json"),
+                new CapturingUnitOfWork(),
+                new FakeClock(new DateTime(2026, 6, 30, 23, 59, 0, DateTimeKind.Utc))));
+
+        var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+            packageHandler.HandleAsync(
+                new ExportMultiSheetPlanSetPackageRequest(
+                    planSetVersionId,
+                    canonicalFloorPlanVersionId,
+                    canonicalAdjustmentId,
+                    canonicalPath,
+                    packageDirectory,
+                    [])
+                {
+                    RequireReadyElectricalPlan = true
+                },
+                CancellationToken.None));
+
+        Assert.Contains("ElectricalPlan", error.Message, StringComparison.Ordinal);
+        Assert.Contains("RequiresManualConfirmation", error.Message, StringComparison.Ordinal);
+        Assert.Contains("Needs review", error.Message, StringComparison.Ordinal);
+        Assert.Empty(projectedSheetExporter.Calls);
+        Assert.False(Directory.Exists(packageDirectory));
+        Assert.True(File.Exists(canonicalPath));
+        Assert.Empty(FindSiblingStagingDirectories(packageDirectory));
+        var failure = AssertFailure(exportRepository, PlanSetExportFailureStage.DependentSheetGeneration);
+        Assert.Contains("Needs review", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HandleAsync_requiring_ready_electrical_fails_closed_when_no_electrical_projection_exists()
+    {
+        var planSetVersionId = Guid.NewGuid();
+        var canonicalAdjustmentId = Guid.NewGuid();
+        var roofSheetId = Guid.NewGuid();
+        var roofProjection = CreateProjection(
+            planSetVersionId,
+            canonicalAdjustmentId,
+            SheetAdjustmentProjectionStatus.ReadyForExport,
+            roofSheetId);
+        var projectionRepository = new FakeSheetAdjustmentProjectionRepository(roofProjection);
+        var projectedSheetExporter = new CapturingProjectedPlanSheetExporter();
+        var exportRepository = new CapturingPlanSetExportRepository();
+        var packageDirectory = CreatePackageDirectory();
+        var canonicalPath = CreateCanonicalPath();
+        var packageHandler = new ExportMultiSheetPlanSetPackageHandler(
+            projectionRepository,
+            new FakePlanSheetSourceReader(
+                new PlanSheetSourceDto(roofSheetId, "RoofPlan", "Roof", Guid.NewGuid(), "library/roof.dxf")),
+            new ExportProjectedPlanSheetHandler(projectionRepository, projectedSheetExporter),
+            new CreateMultiSheetExportAuditHandler(
+                projectionRepository,
+                new FakePlanSheetReader(planSetVersionId, [CreateSheet(roofSheetId, "RoofPlan")]),
+                exportRepository,
+                new CapturingPlanSetAuditEventRepository(),
+                new CapturingPlanSetExportManifestWriter("exports/plan-sets/package/manifest.json"),
+                new CapturingUnitOfWork(),
+                new FakeClock(new DateTime(2026, 6, 30, 23, 59, 0, DateTimeKind.Utc))));
+
+        var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+            packageHandler.HandleAsync(
+                new ExportMultiSheetPlanSetPackageRequest(
+                    planSetVersionId,
+                    Guid.NewGuid(),
+                    canonicalAdjustmentId,
+                    canonicalPath,
+                    packageDirectory,
+                    [])
+                {
+                    RequireReadyElectricalPlan = true
+                },
+                CancellationToken.None));
+
+        Assert.Contains("ElectricalPlan", error.Message, StringComparison.Ordinal);
+        Assert.Empty(projectedSheetExporter.Calls);
+        Assert.False(Directory.Exists(packageDirectory));
+        Assert.True(File.Exists(canonicalPath));
+        Assert.Empty(FindSiblingStagingDirectories(packageDirectory));
+        AssertFailure(exportRepository, PlanSetExportFailureStage.DependentSheetGeneration);
+    }
+
+    [Fact]
+    public async Task HandleAsync_requiring_ready_electrical_publishes_when_latest_electrical_is_ready()
+    {
+        var planSetVersionId = Guid.NewGuid();
+        var canonicalAdjustmentId = Guid.NewGuid();
+        var electricalSheetId = Guid.NewGuid();
+        var readyProjection = CreateProjection(
+            planSetVersionId,
+            canonicalAdjustmentId,
+            SheetAdjustmentProjectionStatus.ReadyForExport,
+            electricalSheetId);
+        var projectionRepository = new FakeSheetAdjustmentProjectionRepository(readyProjection);
+        var projectedSheetExporter = new CapturingProjectedPlanSheetExporter();
+        var packageDirectory = CreatePackageDirectory();
+        var electricalSourcePath = CreateElectricalSourceFile();
+        var expectedOutputPath = Path.Combine(packageDirectory, "floor-plan-adjusted-electrical.dxf");
+        var packageHandler = new ExportMultiSheetPlanSetPackageHandler(
+            projectionRepository,
+            new FakePlanSheetSourceReader(
+                new PlanSheetSourceDto(electricalSheetId, "ElectricalPlan", "Electrical", Guid.NewGuid(), electricalSourcePath)),
+            CreateProjectedSheetHandler(projectionRepository, projectedSheetExporter, [(readyProjection, electricalSourcePath)]),
+            new CreateMultiSheetExportAuditHandler(
+                projectionRepository,
+                new FakePlanSheetReader(planSetVersionId, [CreateSheet(electricalSheetId, "ElectricalPlan")]),
+                new CapturingPlanSetExportRepository(),
+                new CapturingPlanSetAuditEventRepository(),
+                new CapturingPlanSetExportManifestWriter("exports/plan-sets/package/manifest.json"),
+                new CapturingUnitOfWork(),
+                new FakeClock(new DateTime(2026, 6, 30, 23, 59, 0, DateTimeKind.Utc))));
+
+        var response = await packageHandler.HandleAsync(
+            new ExportMultiSheetPlanSetPackageRequest(
+                planSetVersionId,
+                Guid.NewGuid(),
+                canonicalAdjustmentId,
+                CreateCanonicalPath(),
+                packageDirectory,
+                [])
+            {
+                RequireReadyElectricalPlan = true
+            },
+            CancellationToken.None);
+
+        var exportCall = Assert.Single(projectedSheetExporter.Calls);
+        Assert.Equal(electricalSourcePath, exportCall.SourceFilePath);
+        Assert.True(File.Exists(expectedOutputPath));
+        var electrical = Assert.Single(response.Sheets, sheet => sheet.SheetId == electricalSheetId);
+        Assert.Equal("ProjectedAutomatically", electrical.Status);
+    }
+
+    [Fact]
     public async Task HandleAsync_auto_discovery_breaks_equal_timestamps_by_projection_id_before_assigning_suffixes()
     {
         var planSetVersionId = Guid.NewGuid();
@@ -417,12 +642,17 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
         var projections = new FakeSheetAdjustmentProjectionRepository(second, selectedFirst, supersededFirst);
         var exporter = new CapturingProjectedPlanSheetExporter();
         var packageDirectory = CreatePackageDirectory();
+        var firstSourcePath = CreateElectricalSourceFile();
+        var secondSourcePath = CreateElectricalSourceFile();
         var handler = new ExportMultiSheetPlanSetPackageHandler(
             projections,
             new FakePlanSheetSourceReader(
-                new PlanSheetSourceDto(firstSheetId, "ElectricalPlan", "Electrical A", Guid.NewGuid(), "a.dxf"),
-                new PlanSheetSourceDto(secondSheetId, "ElectricalPlan", "Electrical B", Guid.NewGuid(), "b.dxf")),
-            new ExportProjectedPlanSheetHandler(projections, exporter),
+                new PlanSheetSourceDto(firstSheetId, "ElectricalPlan", "Electrical A", Guid.NewGuid(), firstSourcePath),
+                new PlanSheetSourceDto(secondSheetId, "ElectricalPlan", "Electrical B", Guid.NewGuid(), secondSourcePath)),
+            CreateProjectedSheetHandler(
+                projections,
+                exporter,
+                [(selectedFirst, firstSourcePath), (second, secondSourcePath)]),
             new CreateMultiSheetExportAuditHandler(
                 projections,
                 new FakePlanSheetReader(planSetVersionId,
@@ -448,14 +678,46 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
             exporter.Calls,
             call =>
             {
-                Assert.Equal("a.dxf", call.SourceFilePath);
+                Assert.Equal(firstSourcePath, call.SourceFilePath);
                 Assert.Equal("floor-plan-adjusted-electrical.dxf", Path.GetFileName(call.OutputFilePath));
             },
             call =>
             {
-                Assert.Equal("b.dxf", call.SourceFilePath);
+                Assert.Equal(secondSourcePath, call.SourceFilePath);
                 Assert.Equal("floor-plan-adjusted-electrical-2.dxf", Path.GetFileName(call.OutputFilePath));
             });
+    }
+
+    [Fact]
+    public async Task HandleAsync_automatic_discovery_does_not_publish_when_electrical_export_requires_manual_review()
+    {
+        var projection = CreateProjection(Guid.NewGuid(), Guid.NewGuid());
+        var packageDirectory = CreatePackageDirectory();
+        var exportRepository = new CapturingPlanSetExportRepository();
+        var exporter = new CapturingProjectedPlanSheetExporter
+        {
+            ManualReviewError = new ProjectedPlanSheetManualReviewRequiredException(
+                "Electrical overlay contains unsupported geometry and requires manual review.")
+        };
+        var handler = CreatePackageHandler(
+            projection,
+            exporter,
+            exportRepository,
+            new CapturingPlanSetExportManifestWriter("unused/manifest.json"));
+        var request = CreateRequest(projection, packageDirectory) with
+        {
+            DependentProjectionIds = []
+        };
+
+        var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+            handler.HandleAsync(request, CancellationToken.None));
+
+        Assert.Contains("unsupported geometry", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Directory.Exists(packageDirectory));
+        Assert.True(File.Exists(request.CanonicalFloorPlanExportPath));
+        Assert.Empty(FindSiblingStagingDirectories(packageDirectory));
+        var failure = AssertFailure(exportRepository, PlanSetExportFailureStage.DependentSheetGeneration);
+        Assert.Contains("unsupported geometry", failure.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -471,6 +733,7 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
             ManualReviewError = new ProjectedPlanSheetManualReviewRequiredException(
                 "CIRCLE crosses a canonical recipe pinch line.")
         };
+        var electricalSourcePath = CreateElectricalSourceFile();
         var packageHandler = new ExportMultiSheetPlanSetPackageHandler(
             projectionRepository,
             new FakePlanSheetSourceReader(
@@ -479,10 +742,11 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
                     "ElectricalPlan",
                     "Electrical",
                     Guid.NewGuid(),
-                    "library/raw-dxf/electrical.dxf")),
-            new ExportProjectedPlanSheetHandler(
+                    electricalSourcePath)),
+            CreateProjectedSheetHandler(
                 projectionRepository,
                 projectedSheetExporter,
+                [(projection, electricalSourcePath)],
                 unitOfWork: new CapturingUnitOfWork()),
             new CreateMultiSheetExportAuditHandler(
                 projectionRepository,
@@ -702,6 +966,37 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleAsync_package_artifact_failure_rolls_back_staging_and_preserves_owned_scratch()
+    {
+        var projection = CreateProjection(Guid.NewGuid(), Guid.NewGuid());
+        var packageDirectory = CreatePackageDirectory();
+        var exportRepository = new CapturingPlanSetExportRepository();
+        var writer = new CapturingPlanSetExportManifestWriter("exports/plan-sets/package/manifest.json")
+        {
+            PackageWriteError = new IOException("Synthetic package artifact failure.")
+        };
+        var handler = CreatePackageHandler(
+            projection,
+            new CapturingProjectedPlanSheetExporter(),
+            exportRepository,
+            writer);
+
+        var request = CreateRequest(projection, packageDirectory) with
+        {
+            DeleteCanonicalSourceAfterSuccess = true
+        };
+        var error = await Assert.ThrowsAsync<IOException>(() => handler.HandleAsync(
+            request,
+            CancellationToken.None));
+
+        Assert.Contains("artifact failure", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Directory.Exists(packageDirectory));
+        Assert.True(File.Exists(request.CanonicalFloorPlanExportPath));
+        Assert.Empty(FindSiblingStagingDirectories(packageDirectory));
+        AssertFailure(exportRepository, PlanSetExportFailureStage.UserPackagePublication);
+    }
+
+    [Fact]
     public async Task HandleAsync_commit_failure_rolls_back_final_package_and_preserves_owned_scratch()
     {
         var projection = CreateProjection(Guid.NewGuid(), Guid.NewGuid());
@@ -786,7 +1081,7 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
         AssertFailure(exportRepository, PlanSetExportFailureStage.UserPackagePublication);
     }
 
-    private static ExportMultiSheetPlanSetPackageHandler CreatePackageHandler(
+    private ExportMultiSheetPlanSetPackageHandler CreatePackageHandler(
         SheetAdjustmentProjection projection,
         IProjectedPlanSheetExporter exporter,
         CapturingPlanSetExportRepository exportRepository,
@@ -795,6 +1090,7 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
         IUnitOfWork? unitOfWork = null)
     {
         var projectionRepository = new FakeSheetAdjustmentProjectionRepository(projection);
+        var electricalSourcePath = CreateElectricalSourceFile();
         return new ExportMultiSheetPlanSetPackageHandler(
             projectionRepository,
             new FakePlanSheetSourceReader(
@@ -803,8 +1099,8 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
                     "ElectricalPlan",
                     "Electrical",
                     Guid.NewGuid(),
-                    "library/raw-dxf/electrical.dxf")),
-            new ExportProjectedPlanSheetHandler(projectionRepository, exporter),
+                    electricalSourcePath)),
+            CreateProjectedSheetHandler(projectionRepository, exporter, [(projection, electricalSourcePath)]),
             new CreateMultiSheetExportAuditHandler(
                 projectionRepository,
                 new FakePlanSheetReader(),
@@ -853,6 +1149,114 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
     {
         Directory.CreateDirectory(tempRoot);
         return Path.Combine(tempRoot, $"package-{Guid.NewGuid():N}");
+    }
+
+    private string CreateElectricalSourceFile()
+    {
+        Directory.CreateDirectory(tempRoot);
+        var path = Path.Combine(tempRoot, $"electrical-source-{Guid.NewGuid():N}.dxf");
+        File.WriteAllText(path, "electrical-source");
+        return path;
+    }
+
+    private static string ComputeSha256(string path)
+        => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant();
+
+    private static SheetRegistration CreateConfirmedRegistration(
+        SheetAdjustmentProjection projection,
+        string sourceFilePath)
+    {
+        var canonicalFloorPlanVersionId = projection.PlanSetVersionId;
+        return new(
+            projection.SheetRegistrationId,
+            projection.PlanSetVersionId,
+            projection.DependentSheetId,
+            canonicalFloorPlanVersionId,
+            SheetRegistrationMethod.WholeSheetSimilarity,
+            new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+            0.9m,
+            SheetRegistrationStatus.Confirmed,
+            new DateTime(2026, 7, 4, 1, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 7, 4, 1, 5, 0, DateTimeKind.Utc),
+            warning: null,
+            wholePlanRegistrationProof: new WholePlanRegistrationProof(
+                WholePlanRegistrationProof.CurrentVersion,
+                Passed: true,
+                canonicalFloorPlanVersionId,
+                projection.DependentSheetId,
+                new string('a', 64),
+                ComputeSha256(sourceFilePath),
+                HorizontalCoverage: 0.94m,
+                VerticalCoverage: 0.91m,
+                RootMeanSquareResidual: 0.01m,
+                MaximumResidual: 0.02m));
+    }
+
+    private static CanonicalFloorPlanAdjustment CreateExportCanonicalAdjustment(
+        SheetAdjustmentProjection projection)
+        => new(
+            projection.CanonicalAdjustmentId,
+            projection.PlanSetVersionId,
+            projection.PlanSetVersionId,
+            "site.dxf",
+            "floor.dxf",
+            "{}",
+            JsonSerializer.Serialize(new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, [])),
+            new DateTime(2026, 7, 4, 2, 0, 0, DateTimeKind.Utc));
+
+    private static ExportProjectedPlanSheetHandler CreateProjectedSheetHandler(
+        FakeSheetAdjustmentProjectionRepository projectionRepository,
+        IProjectedPlanSheetExporter exporter,
+        IReadOnlyList<(SheetAdjustmentProjection Projection, string SourceFilePath)> evidence,
+        IUnitOfWork? unitOfWork = null)
+        => new(
+            projectionRepository,
+            exporter,
+            new FakeSheetRegistrationRepository(evidence
+                .Select(item => CreateConfirmedRegistration(item.Projection, item.SourceFilePath))
+                .ToArray()),
+            new FakeExportCanonicalAdjustmentRepository(evidence
+                .Select(item => CreateExportCanonicalAdjustment(item.Projection))
+                .DistinctBy(adjustment => adjustment.Id)
+                .ToArray()),
+            unitOfWork);
+
+    private sealed class FakeSheetRegistrationRepository : ISheetRegistrationRepository
+    {
+        private readonly Dictionary<Guid, SheetRegistration> registrations;
+
+        public FakeSheetRegistrationRepository(params SheetRegistration[] registrations)
+        {
+            this.registrations = registrations.ToDictionary(item => item.Id);
+        }
+
+        public Task AddAsync(SheetRegistration registration, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<SheetRegistration?> GetByIdAsync(Guid registrationId, CancellationToken cancellationToken)
+        {
+            registrations.TryGetValue(registrationId, out var registration);
+            return Task.FromResult(registration);
+        }
+    }
+
+    private sealed class FakeExportCanonicalAdjustmentRepository : ICanonicalFloorPlanAdjustmentRepository
+    {
+        private readonly Dictionary<Guid, CanonicalFloorPlanAdjustment> adjustments;
+
+        public FakeExportCanonicalAdjustmentRepository(params CanonicalFloorPlanAdjustment[] adjustments)
+        {
+            this.adjustments = adjustments.ToDictionary(item => item.Id);
+        }
+
+        public Task AddAsync(CanonicalFloorPlanAdjustment adjustment, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<CanonicalFloorPlanAdjustment?> GetByIdAsync(Guid adjustmentId, CancellationToken cancellationToken)
+        {
+            adjustments.TryGetValue(adjustmentId, out var adjustment);
+            return Task.FromResult(adjustment);
+        }
     }
 
     private static IReadOnlyList<string> FindSiblingStagingDirectories(string packageDirectory)
@@ -1113,9 +1517,13 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
 
         public Exception? WriteError { get; init; }
 
+        public Exception? PackageWriteError { get; init; }
+
         public Action<MultiSheetExportAuditDto>? OnBuildVerification { get; init; }
 
         public Action<MultiSheetExportAuditDto>? OnWrite { get; init; }
+
+        public Action<MultiSheetExportAuditDto, string>? OnPackageWrite { get; init; }
 
         public PlanSetVerificationReportDto BuildVerificationReport(MultiSheetExportAuditDto audit)
         {
@@ -1132,6 +1540,50 @@ public sealed class ExportMultiSheetPlanSetPackageHandlerTests : IDisposable
             }
 
             return Task.FromResult(manifestPath);
+        }
+
+        public async Task WritePackageArtifactsAsync(
+            MultiSheetExportAuditDto audit,
+            string stagingDirectory,
+            CancellationToken cancellationToken)
+        {
+            if (PackageWriteError is not null)
+            {
+                throw PackageWriteError;
+            }
+
+            OnPackageWrite?.Invoke(audit, stagingDirectory);
+
+            var comparison = Assert.Single(audit.Artifacts, artifact => artifact.Role == "Comparison");
+            var humanAudit = Assert.Single(audit.Artifacts, artifact => artifact.Role == "Audit");
+            var manifest = Assert.Single(audit.Artifacts, artifact => artifact.Role == "Manifest");
+            await File.WriteAllTextAsync(
+                Path.Combine(stagingDirectory, Path.GetFileName(comparison.Path)),
+                JsonSerializer.Serialize(new
+                {
+                    stage = "final-output-congruence",
+                    sheets = audit.Sheets
+                        .Where(sheet => sheet.SheetKind.Contains("Electrical", StringComparison.OrdinalIgnoreCase))
+                        .Select(sheet => new
+                        {
+                            finalOutputCongruence = new
+                            {
+                                FloorOutputPath = audit.Sheets
+                                    .Single(item => item.SheetKind == "CanonicalFloorPlan")
+                                    .StoragePath,
+                                ElectricalOutputPath = sheet.StoragePath
+                            }
+                        })
+                }),
+                cancellationToken);
+            await File.WriteAllTextAsync(
+                Path.Combine(stagingDirectory, Path.GetFileName(humanAudit.Path)),
+                string.Join(Environment.NewLine, audit.HumanSummary),
+                cancellationToken);
+            await File.WriteAllTextAsync(
+                Path.Combine(stagingDirectory, Path.GetFileName(manifest.Path)),
+                JsonSerializer.Serialize(audit with { PackageManifestPath = manifest.Path }),
+                cancellationToken);
         }
     }
 

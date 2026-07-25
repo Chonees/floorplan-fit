@@ -73,6 +73,28 @@ public sealed class PreviewInteractionCoordinatorTests
     }
 
     [Fact]
+    public void HandleLeftButtonPressed_invalidates_when_edge_drag_starts()
+    {
+        var outcome = PreviewInteractionCoordinator.HandleLeftButtonPressed(
+            new PreviewInteractionCoordinator.LeftButtonPressRequest(
+                PointerPosition: new Point(320d, 160d),
+                AxisTag: PinchAxisTag.Width,
+                IsPinchPlacementArmed: false,
+                ResolveEdgeDrag: (_, _) => FloorPlanPreviewGeometry.PreviewCompressionEdge.Right,
+                ResolveDimensionHandleHit: _ => null,
+                ResolveDimensionHit: _ => null,
+                ResolveRoomLabelHit: _ => null,
+                ResolveOpeningLabelHit: _ => null,
+                ResolveGeometryHit: _ => null,
+                ResolveMovableArtifact: _ => null));
+
+        Assert.True(outcome.Handled);
+        Assert.True(outcome.CapturePointer);
+        Assert.True(outcome.InvalidateVisual);
+        Assert.Equal(FloorPlanPreviewGeometry.PreviewCompressionEdge.Right, outcome.StartedEdgeDrag);
+    }
+
+    [Fact]
     public void HandleLeftButtonPressed_prefers_dimension_handle_before_dimension_body()
     {
         var handleDimension = CreateDimension("DIM-HANDLE");

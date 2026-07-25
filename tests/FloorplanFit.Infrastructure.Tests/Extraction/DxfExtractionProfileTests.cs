@@ -5,12 +5,12 @@ namespace FloorplanFit.Infrastructure.Tests.Extraction;
 public sealed class DxfExtractionProfileTests
 {
     [Fact]
-    public void PointeHomes_profile_names_current_seed_convention_explicitly()
+    public void PointeHomes_profile_is_house_agnostic_and_exposes_no_seed_floor_plan_catalog()
     {
         var profile = DxfExtractionProfile.PointeHomes;
 
         Assert.Equal("Pointe Homes CAD", profile.Name);
-        Assert.Contains("SEMINOLE2000", profile.SeedFloorPlans);
+        Assert.Null(typeof(DxfExtractionProfile).GetProperty("SeedFloorPlans"));
     }
 
     [Fact]

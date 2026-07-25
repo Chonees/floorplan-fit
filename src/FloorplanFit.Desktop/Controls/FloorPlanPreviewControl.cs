@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using FloorplanFit.Application.FloorPlans.Review;
+using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.Controls.Preview;
 using FloorplanFit.Domain.FloorPlans;
@@ -1086,6 +1087,23 @@ public sealed class FloorPlanPreviewControl : Control
                 anchorScreenPoint.Y - projectedWithoutPan.Y));
     }
 
+    internal static FloorPlanPreviewGeometry.PreviewViewport? ResolveCapturedViewportForActiveEdgeDrag(
+        FloorPlanPreviewGeometry.PreviewCompressionEdge? activeDragEdge,
+        PinchAxisTag? axisTag,
+        FloorPlanPreviewGeometry.PreviewViewport? capturedBaseViewport,
+        PinchAxisTag? capturedAxisTag,
+        PreviewZoomState zoomState)
+    {
+        if (activeDragEdge is null ||
+            capturedBaseViewport is not { } viewport ||
+            !Nullable.Equals(capturedAxisTag, axisTag))
+        {
+            return null;
+        }
+
+        return viewport.WithUserTransform(zoomState.ZoomFactor, zoomState.PanOffset);
+    }
+
     internal static double CalculateChangePreviewGhostOpacity(TimeSpan elapsed, TimeSpan duration)
     {
         if (duration <= TimeSpan.Zero)
@@ -1107,6 +1125,83 @@ public sealed class FloorPlanPreviewControl : Control
         => Math.Abs(oldBounds.Width - newBounds.Width) > 0.001d ||
            Math.Abs(oldBounds.Height - newBounds.Height) > 0.001d;
 
+    internal static IReadOnlyList<GeometryPathDto> BuildInteractiveCompressionPreviewGeometry(
+        IReadOnlyList<GeometryPathDto>? geometryPaths,
+        IReadOnlyList<PinchMarkerDto>? pinchMarkers,
+        IReadOnlyList<WallCandidateDto>? wallCandidates,
+        Guid? previewPinchGroupId,
+        MeasurementContextDto? measurementContext,
+        PinchAxisTag? axisTag,
+        decimal requestedTrimSourceUnits,
+        FloorPlanPreviewGeometry.PreviewCompressionEdge? edge)
+    {
+        var sourceToMillimetersFactor = measurementContext?.ToMillimetersFactor;
+        if (geometryPaths is not { Count: > 0 } ||
+            pinchMarkers is not { Count: > 0 } ||
+            wallCandidates is not { Count: > 0 } ||
+            previewPinchGroupId is null ||
+            axisTag is null ||
+            edge is null ||
+            requestedTrimSourceUnits <= 0m ||
+            sourceToMillimetersFactor is not > 0m)
+        {
+            return geometryPaths ?? [];
+        }
+
+        var activeMarkers = pinchMarkers
+            .Where(marker => marker.PinchGroupId == previewPinchGroupId.Value)
+            .Where(marker => string.Equals(marker.AxisTag, axisTag.Value.ToString(), StringComparison.OrdinalIgnoreCase))
+            .OrderBy(marker => marker.SortOrder)
+            .ThenBy(marker => marker.PinchMarkerId)
+            .ToArray();
+        if (activeMarkers.Length < 2 || activeMarkers.Length % 2 != 0)
+        {
+            return geometryPaths;
+        }
+
+        CadStretchRecipeGroupCompilationResult compilation;
+        try
+        {
+            var groupCapacitySourceUnits = 0m;
+            for (var markerIndex = 0; markerIndex < activeMarkers.Length; markerIndex += 2)
+            {
+                groupCapacitySourceUnits += Math.Min(
+                        activeMarkers[markerIndex].MaxTrimMm,
+                        activeMarkers[markerIndex + 1].MaxTrimMm) /
+                    sourceToMillimetersFactor.Value;
+            }
+
+            compilation = CadStretchRecipeCompiler.CompileGroup(new CadStretchRecipeCompilationRequest(
+                previewPinchGroupId.Value,
+                axisTag.Value.ToString(),
+                edge.Value.ToString(),
+                Math.Min(requestedTrimSourceUnits, groupCapacitySourceUnits),
+                sourceToMillimetersFactor.Value,
+                decimal.Max(0.000001m, 0.01m / sourceToMillimetersFactor.Value),
+                pinchMarkers,
+                wallCandidates,
+                geometryPaths));
+        }
+        catch (OverflowException)
+        {
+            return geometryPaths;
+        }
+
+        if (!compilation.Succeeded || compilation.Actions.Count == 0)
+        {
+            return geometryPaths;
+        }
+
+        try
+        {
+            return FloorPlanPreviewGeometry.CreatePreviewGeometry(geometryPaths, compilation.Actions);
+        }
+        catch (InvalidOperationException)
+        {
+            return geometryPaths;
+        }
+    }
+
     private IReadOnlyList<GeometryPathDto> BuildPreviewGeometry(PinchAxisTag? axisTag)
     {
         return BuildPreviewGeometry(axisTag, GeometryPaths);
@@ -1116,18 +1211,15 @@ public sealed class FloorPlanPreviewControl : Control
         PinchAxisTag? axisTag,
         IReadOnlyList<GeometryPathDto>? geometryPaths)
     {
-        if (axisTag is null || activeDragEdge is null)
-        {
-            return geometryPaths ?? [];
-        }
-
-        return FloorPlanPreviewGeometry.CreatePreviewGeometry(
+        return BuildInteractiveCompressionPreviewGeometry(
             geometryPaths,
-            axisTag.Value,
-            PinchMarkerPreviewLayerRenderer.FilterForPreviewGroup(PinchMarkers, PreviewPinchGroupId),
+            PinchMarkers,
+            WallCandidates,
+            PreviewPinchGroupId,
+            MeasurementContext,
+            axisTag,
             activePreviewTrimSourceUnits,
-            activeDragEdge.Value,
-            MeasurementContext?.ToMillimetersFactor ?? 1m);
+            activeDragEdge);
     }
 
     private IReadOnlyList<GeometryPathDto> BuildViewportGeometry(
@@ -1362,7 +1454,8 @@ public sealed class FloorPlanPreviewControl : Control
             ManualWallLineDraft: ManualWallLineDraft,
             ChangePreviewGhostGeometry: changePreviewGhostGeometry,
             ChangePreviewGhostOpacity: ghostOpacity,
-            SelectedPinchMarkerId: SelectedPinchMarkerId);
+            SelectedPinchMarkerId: SelectedPinchMarkerId,
+            ActiveDragEdge: activeDragEdge);
     }
 
     private DimensionDto? BuildEditedDimensionPreview(PreviewDimensionEditState edit, DimensionDto baseDimension)
@@ -1537,6 +1630,17 @@ public sealed class FloorPlanPreviewControl : Control
 
     private FloorPlanPreviewGeometry.PreviewViewport? GetPreviewViewport(PinchAxisTag? axisTag)
     {
+        var capturedDragViewport = ResolveCapturedViewportForActiveEdgeDrag(
+            activeDragEdge,
+            axisTag,
+            lastBaseViewport,
+            lastBaseViewportAxisTag,
+            previewZoomState);
+        if (capturedDragViewport is not null)
+        {
+            return capturedDragViewport;
+        }
+
         var baseViewport = FloorPlanPreviewGeometry.CalculateViewport(BuildViewportGeometry(axisTag), GetGeometryViewportBounds(axisTag), PreviewPadding);
         if (baseViewport is null)
         {

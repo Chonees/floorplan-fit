@@ -180,6 +180,84 @@ public sealed class PlanSetExportManifestWriter : IPlanSetExportManifestWriter
         return manifestPath;
     }
 
+    public async Task WritePackageArtifactsAsync(
+        MultiSheetExportAuditDto audit,
+        string stagingDirectory,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(audit);
+        if (string.IsNullOrWhiteSpace(stagingDirectory))
+        {
+            throw new ArgumentException("Package staging directory is required.", nameof(stagingDirectory));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var comparison = GetRequiredPackageArtifact(audit, "Comparison", ".json");
+        var manifest = GetRequiredPackageArtifact(audit, "Manifest", ".json");
+        var humanAudit = GetRequiredPackageArtifact(audit, "Audit", ".txt");
+        if (audit.HumanSummary.Count == 0)
+        {
+            throw new InvalidOperationException("A human-readable audit summary is required for the user package.");
+        }
+
+        var stagedComparisonPath = ResolveStagedArtifactPath(stagingDirectory, comparison);
+        var stagedManifestPath = ResolveStagedArtifactPath(stagingDirectory, manifest);
+        var stagedAuditPath = ResolveStagedArtifactPath(stagingDirectory, humanAudit);
+        if (new[] { stagedComparisonPath, stagedManifestPath, stagedAuditPath }
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count() != 3)
+        {
+            throw new InvalidOperationException("Package comparison, manifest, and audit names must be distinct.");
+        }
+
+        var packageAudit = audit with { PackageManifestPath = manifest.Path };
+        await WriteJsonAsync(
+            stagedComparisonPath,
+            PlanSetOutlineSegmentCongruenceAuditBuilder.BuildFinalOutput(
+                audit,
+                reportStoragePaths: true),
+            cancellationToken);
+        await File.WriteAllTextAsync(
+            stagedAuditPath,
+            string.Join(Environment.NewLine, audit.HumanSummary) + Environment.NewLine,
+            cancellationToken);
+        await WriteJsonAsync(stagedManifestPath, packageAudit, cancellationToken);
+    }
+
+    private static PlanSetPackageArtifactDto GetRequiredPackageArtifact(
+        MultiSheetExportAuditDto audit,
+        string role,
+        string requiredExtension)
+    {
+        var artifact = audit.Artifacts.SingleOrDefault(item =>
+            string.Equals(item.Role, role, StringComparison.Ordinal));
+        if (artifact is null)
+        {
+            throw new InvalidOperationException($"Package artifact role '{role}' is required.");
+        }
+
+        if (!string.Equals(Path.GetExtension(artifact.Path), requiredExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Package artifact role '{role}' must use the '{requiredExtension}' extension.");
+        }
+
+        return artifact;
+    }
+
+    private static string ResolveStagedArtifactPath(
+        string stagingDirectory,
+        PlanSetPackageArtifactDto artifact)
+    {
+        var fileName = Path.GetFileName(artifact.Path);
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            throw new InvalidOperationException($"Package artifact role '{artifact.Role}' has no file name.");
+        }
+
+        return Path.Combine(stagingDirectory, fileName);
+    }
+
     private static PlanSetVerificationOperationDto BuildFloorPlanOperationVerification(
         MultiSheetExportAuditDto audit,
         ICollection<PlanSetVerificationReasonDto> reasons)
@@ -195,7 +273,7 @@ public sealed class PlanSetExportManifestWriter : IPlanSetExportManifestWriter
             return new PlanSetVerificationOperationDto(0, 0, 0, 1);
         }
 
-        var expected = audit.CanonicalRecipe.Operations.Count;
+        var expected = CanonicalOperationCount(audit.CanonicalRecipe);
         var actual = audit.CanonicalPlacement.FloorPlanImpactAudit;
         var applied = actual.Count(operation => string.Equals(operation.Status, "Applied", StringComparison.Ordinal));
         var failed = actual.Count - applied + Math.Max(0, actual.Count - expected);
@@ -229,7 +307,7 @@ public sealed class PlanSetExportManifestWriter : IPlanSetExportManifestWriter
             return new PlanSetVerificationOperationDto(0, 0, 0, 1);
         }
 
-        var expectedPerSheet = audit.CanonicalRecipe.Operations.Count;
+        var expectedPerSheet = CanonicalOperationCount(audit.CanonicalRecipe);
         var expected = expectedPerSheet * electricalSheets.Count;
         var applied = 0;
         var failed = 0;
@@ -285,7 +363,7 @@ public sealed class PlanSetExportManifestWriter : IPlanSetExportManifestWriter
 
         if (SheetAdjustmentProjectionCapabilities.TryGetUnsupportedReason(
                 method,
-                audit.CanonicalRecipe.Operations.Count,
+                CanonicalOperationCount(audit.CanonicalRecipe),
                 out var unsupportedReason))
         {
             AddReason(
@@ -469,6 +547,7 @@ public sealed class PlanSetExportManifestWriter : IPlanSetExportManifestWriter
                     audit.CanonicalPlacement.SiteOffsetX,
                     audit.CanonicalPlacement.SiteOffsetY,
                     CompressionStepCount = audit.CanonicalPlacement.CompressionSteps.Count,
+                    StretchActionCount = audit.CanonicalPlacement.StretchActions.Count,
                     AdjustedDimensionCount = audit.CanonicalPlacement.AdjustedDimensions.Count
                 }
         };
@@ -481,7 +560,9 @@ public sealed class PlanSetExportManifestWriter : IPlanSetExportManifestWriter
             audit.ExportId,
             audit.CanonicalAdjustmentId,
             recipe = audit.CanonicalRecipe,
-            operationCount = audit.CanonicalRecipe?.Operations.Count ?? 0
+            operationCount = audit.CanonicalRecipe is null ? 0 : CanonicalOperationCount(audit.CanonicalRecipe),
+            legacyOperationCount = audit.CanonicalRecipe?.Operations.Count ?? 0,
+            stretchActionCount = audit.CanonicalRecipe?.StretchActions.Count ?? 0
         };
 
     private static object BuildFloorPlanImpactAudit(MultiSheetExportAuditDto audit)
@@ -647,6 +728,26 @@ public sealed class PlanSetExportManifestWriter : IPlanSetExportManifestWriter
             return [];
         }
 
+        if (recipe.StretchActions.Count > 0)
+        {
+            return recipe.StretchActions
+                .Select((action, index) => new ProjectedPlanSheetOperationAuditDto(
+                    action.ActionId,
+                    index,
+                    "CadStretch",
+                    action.AxisTag,
+                    action.Edge,
+                    action.CutCoordinate,
+                    action.DeltaSourceUnits,
+                    AffectedEntities: 0,
+                    AffectedVertices: 0,
+                    MeasuredMinDeltaSourceUnits: 0,
+                    MeasuredMaxDeltaSourceUnits: 0,
+                    statusWhenNoExportAudit,
+                    reasonWhenNoExportAudit))
+                .ToArray();
+        }
+
         return recipe.Operations
             .Select((operation, index) => new ProjectedPlanSheetOperationAuditDto(
                 $"operation-{index}",
@@ -674,7 +775,18 @@ public sealed class PlanSetExportManifestWriter : IPlanSetExportManifestWriter
             : "Failed";
 
     private static decimal SumDelta(AdjustmentRecipeSummaryDto? recipe, string axisTag)
-        => recipe?.Operations
-            .Where(operation => string.Equals(operation.AxisTag, axisTag, StringComparison.OrdinalIgnoreCase))
-            .Sum(operation => operation.DeltaSourceUnits) ?? 0m;
+        => recipe is null
+            ? 0m
+            : recipe.StretchActions.Count > 0
+                ? recipe.StretchActions
+                    .Where(action => string.Equals(action.AxisTag, axisTag, StringComparison.OrdinalIgnoreCase))
+                    .Sum(action => action.DeltaSourceUnits)
+                : recipe.Operations
+                    .Where(operation => string.Equals(operation.AxisTag, axisTag, StringComparison.OrdinalIgnoreCase))
+                    .Sum(operation => operation.DeltaSourceUnits);
+
+    private static int CanonicalOperationCount(AdjustmentRecipeSummaryDto recipe)
+        => recipe.StretchActions.Count > 0
+            ? recipe.StretchActions.Count
+            : recipe.Operations.Count;
 }

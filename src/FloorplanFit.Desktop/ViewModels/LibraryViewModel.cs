@@ -4,6 +4,7 @@ using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Application.FloorPlans.Extraction;
 using FloorplanFit.Application.FloorPlans.Import;
 using FloorplanFit.Application.FloorPlans.Library;
+using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Application.PlanSets.Adjustment;
 using FloorplanFit.Application.PlanSets.Classification;
 using FloorplanFit.Application.PlanSets.Confirmation;
@@ -624,7 +625,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         SelectVersion(item, version);
         if (!version.CanAdjustToSitePlan)
         {
-            StatusMessage = "Publish this floor plan before adjusting it to a site plan.";
+            StatusMessage = "Complete Auto-fit setup before adjusting this floor plan to a site plan.";
             return null;
         }
 
@@ -641,7 +642,31 @@ public sealed partial class LibraryViewModel : ObservableObject
                 return null;
             }
 
-            var autoFitPlanSuggester = scope.ServiceProvider.GetRequiredService<IAutoFitPlanSuggester>();
+            if (!version.ActivePublishedCurationId.HasValue ||
+                version.ActivePublishedCurationId.Value == Guid.Empty)
+            {
+                StatusMessage =
+                    $"Auto-fit no está listo para {item.Code} v{version.VersionNumber}: " +
+                    "falta una curación publicada activa.";
+                return null;
+            }
+
+            var publishedCurationId = version.ActivePublishedCurationId.Value;
+
+            var profileQuery = scope.ServiceProvider
+                .GetRequiredService<GetCommissionedHouseAdaptationProfileHandler>();
+            var commissioned = await profileQuery.HandleAsync(
+                version.VersionId,
+                publishedCurationId,
+                cancellationToken);
+            if (!commissioned.Readiness.IsReady || commissioned.Profile is null)
+            {
+                StatusMessage =
+                    $"Auto-fit no está listo para {item.Code} v{version.VersionNumber}: " +
+                    string.Join("; ", commissioned.Readiness.Reasons);
+                return null;
+            }
+
             var adjustedSitePlanExporter = scope.ServiceProvider.GetRequiredService<IAdjustedSitePlanExporter>();
             var canonicalAdjustmentRecorder = scope.ServiceProvider.GetService<RecordCanonicalFloorPlanAdjustmentHandler>();
             var planSetPackageExporter = scope.ServiceProvider.GetService<ExportMultiSheetPlanSetPackageHandler>();
@@ -662,21 +687,43 @@ public sealed partial class LibraryViewModel : ObservableObject
                 housePlanSetId ?? item.TemplateId,
                 version.VersionId,
                 cancellationToken);
-            StatusMessage = $"Previewing {item.Code} v{version.VersionNumber} over {sitePlan.FileName}";
-            var adjustmentViewModel = SitePlanAdjustmentPreviewProjector.Build(
+            var build = SitePlanAdjustmentPreviewProjector.BuildCommissioned(
                 item,
                 version,
                 reviewViewModel,
                 sitePlan,
-                autoFitPlanSuggester,
-                extractionSource?.ManagedFilePath,
-                sitePlanFilePath,
-                adjustedSitePlanExporter,
-                canonicalAdjustmentRecorder,
-                planSetPackageExporter,
-                planSetVersionId,
-                registeredSheetProjector,
-                confirmSheetProjectionHandler);
+                commissioned.Profile,
+                floorPlanSourcePath: extractionSource?.ManagedFilePath,
+                sitePlanSourcePath: sitePlanFilePath,
+                adjustedSitePlanExporter: adjustedSitePlanExporter,
+                canonicalAdjustmentRecorder: canonicalAdjustmentRecorder,
+                planSetPackageExporter: planSetPackageExporter,
+                planSetVersionId: planSetVersionId,
+                registeredSheetProjector: registeredSheetProjector,
+                confirmSheetProjectionHandler: confirmSheetProjectionHandler);
+            if (!build.Succeeded)
+            {
+                StatusMessage =
+                    $"Auto-fit bloqueado para {item.Code} v{version.VersionNumber}: {build.RejectionReason}";
+                if (build.ViewModel is null)
+                {
+                    return null;
+                }
+            }
+
+            var adjustmentViewModel = build.ViewModel;
+            if (adjustmentViewModel is null)
+            {
+                StatusMessage =
+                    $"Auto-fit bloqueado para {item.Code} v{version.VersionNumber}: no se creó una vista previa segura.";
+                return null;
+            }
+
+            if (build.Succeeded)
+            {
+                StatusMessage = $"Previewing {item.Code} v{version.VersionNumber} over {sitePlan.FileName}";
+            }
+
             activeSitePlanAdjustmentScope = scope;
             return adjustmentViewModel;
         }
@@ -898,12 +945,44 @@ public sealed partial class LibraryViewModel : ObservableObject
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<GetFloorPlanLibraryHandler>();
         var items = await handler.HandleAsync(cancellationToken);
+        var readinessHandler = scope.ServiceProvider
+            .GetService<GetCommissionedHouseAdaptationReadinessHandler>();
 
         Items.Clear();
 
         foreach (var item in items)
         {
-            Items.Add(item);
+            var versions = new List<FloorPlanLibraryVersionDto>(item.Versions.Count);
+            foreach (var version in item.Versions)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var isAutoFitReady = false;
+                if (readinessHandler is not null &&
+                    version.ActivePublishedCurationId is { } publishedCurationId &&
+                    publishedCurationId != Guid.Empty)
+                {
+                    try
+                    {
+                        var readiness = await readinessHandler.HandleAsync(
+                            version.VersionId,
+                            publishedCurationId,
+                            cancellationToken);
+                        isAutoFitReady = readiness.IsReady;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception)
+                    {
+                        isAutoFitReady = false;
+                    }
+                }
+
+                versions.Add(version with { IsAutoFitReady = isAutoFitReady });
+            }
+
+            Items.Add(item with { Versions = versions });
         }
 
         SelectedItem = selectedTemplateId is null

@@ -11,28 +11,44 @@ namespace FloorplanFit.Application.Tests.PlanSets.Export;
 public sealed class ExportProjectedPlanSheetHandlerTests
 {
     [Fact]
-    public async Task HandleAsync_exports_ready_projection_with_approved_transform()
+    public async Task HandleAsync_builds_electrical_composition_recipe_without_compression()
     {
+        using var source = new TemporarySource();
         var projection = CreateProjection(SheetAdjustmentProjectionStatus.ReadyForExport);
+        var registration = CreateRegistration(projection, source.Sha256);
+        var canonicalExportPath = @"C:\exports\plan-set\floor-adjusted.dxf";
+        var canonicalAdjustment = new CanonicalFloorPlanAdjustment(
+            projection.CanonicalAdjustmentId,
+            projection.PlanSetVersionId,
+            registration.CanonicalFloorPlanVersionId,
+            "site.dxf",
+            canonicalExportPath,
+            "{}",
+            JsonSerializer.Serialize(new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, [])),
+            new DateTime(2026, 7, 20, 1, 0, 0, DateTimeKind.Utc));
         var exporter = new CapturingProjectedPlanSheetExporter();
         var handler = new ExportProjectedPlanSheetHandler(
             new FakeSheetAdjustmentProjectionRepository(projection),
-            exporter);
+            exporter,
+            new FakeSheetRegistrationRepository(registration),
+            new FakeCanonicalFloorPlanAdjustmentRepository(canonicalAdjustment));
 
         var response = await handler.HandleAsync(
             new ExportProjectedPlanSheetRequest(
                 projection.Id,
-                @"C:\library\raw-dxf\electrical.dxf",
+                source.Path,
                 @"C:\exports\plan-set\electrical-adjusted.dxf"),
             CancellationToken.None);
 
         Assert.Equal(projection.Id, response.ProjectionId);
         Assert.Equal(@"C:\exports\plan-set\electrical-adjusted.dxf", response.OutputFilePath);
         var call = Assert.Single(exporter.Calls);
-        Assert.Equal(@"C:\library\raw-dxf\electrical.dxf", call.SourceFilePath);
+        Assert.Equal(source.Path, call.SourceFilePath);
         Assert.Equal(@"C:\exports\plan-set\electrical-adjusted.dxf", call.OutputFilePath);
         Assert.Same(projection.Transform, call.Transform);
-        Assert.Null(call.Recipe);
+        Assert.NotNull(call.Recipe);
+        Assert.Empty(call.Recipe.CanonicalRecipe.Operations);
+        Assert.Equal(canonicalExportPath, call.Recipe.CanonicalFloorPlanExportPath);
     }
 
     [Fact]
@@ -105,6 +121,53 @@ public sealed class ExportProjectedPlanSheetHandlerTests
         Assert.Same(registration.WholePlanRegistrationProof, call.Recipe.WholePlanRegistrationProof);
         Assert.Equal(3m, call.Recipe.CanonicalRecipe.FloorToSiteScale);
         Assert.Single(call.Recipe.CanonicalRecipe.Operations);
+        Assert.Equal("floor.dxf", call.Recipe.CanonicalFloorPlanExportPath);
+    }
+
+    [Fact]
+    public async Task HandleAsync_passes_v2_stretch_recipe_and_marks_it_applied_after_export()
+    {
+        using var source = new TemporarySource();
+        var projection = CreateProjection(
+            SheetAdjustmentProjectionStatus.ReadyForExport,
+            canonicalCompressionStepCount: 1,
+            recipeHandlingSummary: "ElectricalPlan: affine placement applied; recipe-aware DXF export will apply CAD stretch actions: paired-wall.");
+        var registration = CreateRegistration(projection, source.Sha256);
+        var recipe = CreateV2Recipe();
+        var canonicalAdjustment = new CanonicalFloorPlanAdjustment(
+            projection.CanonicalAdjustmentId,
+            projection.PlanSetVersionId,
+            registration.CanonicalFloorPlanVersionId,
+            "site.dxf",
+            "floor.dxf",
+            "{}",
+            JsonSerializer.Serialize(recipe),
+            new DateTime(2026, 7, 19, 2, 0, 0, DateTimeKind.Utc));
+        var repository = new FakeSheetAdjustmentProjectionRepository(projection);
+        var unitOfWork = new CapturingUnitOfWork();
+        var exporter = new CapturingProjectedPlanSheetExporter();
+        var handler = new ExportProjectedPlanSheetHandler(
+            repository,
+            exporter,
+            new FakeSheetRegistrationRepository(registration),
+            new FakeCanonicalFloorPlanAdjustmentRepository(canonicalAdjustment),
+            unitOfWork);
+
+        await handler.HandleAsync(
+            new ExportProjectedPlanSheetRequest(
+                projection.Id,
+                source.Path,
+                @"C:\exports\plan-set\electrical-adjusted.dxf"),
+            CancellationToken.None);
+
+        var call = Assert.Single(exporter.Calls);
+        Assert.NotNull(call.Recipe);
+        Assert.Empty(call.Recipe.CanonicalRecipe.Operations);
+        Assert.Single(call.Recipe.CanonicalRecipe.StretchActions);
+        Assert.True(unitOfWork.Saved);
+        Assert.NotNull(repository.Updated);
+        Assert.Contains("applied CAD stretch actions", repository.Updated!.RecipeHandlingSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("will apply CAD stretch actions", repository.Updated.RecipeHandlingSummary, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -363,6 +426,28 @@ public sealed class ExportProjectedPlanSheetHandlerTests
             JsonSerializer.Serialize(recipe),
             new DateTime(2026, 7, 4, 2, 0, 0, DateTimeKind.Utc));
     }
+
+    private static AdjustmentRecipeSummaryDto CreateV2Recipe()
+        => new("v2", 1m, 0m, 0m, [])
+        {
+            StretchActions =
+            [
+                new AdjustmentRecipeStretchActionDto(
+                    "paired-wall",
+                    "Width",
+                    "Right",
+                    5m,
+                    2m,
+                    4m,
+                    0.05m,
+                    new AdjustmentRecipeBoundsDto(0m, 0m, 12m, 4m),
+                    [
+                        new AdjustmentRecipeTargetSpanDto("FLOOR:1", Guid.NewGuid(), 0, 0m, 0m, 10m, 0m, 1),
+                        new AdjustmentRecipeTargetSpanDto("FLOOR:2", Guid.NewGuid(), 0, 0m, 4m, 10m, 4m, 1)
+                    ],
+                    [])
+            ]
+        };
 
     private sealed class FakeSheetAdjustmentProjectionRepository : ISheetAdjustmentProjectionRepository
     {

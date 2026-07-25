@@ -59,7 +59,9 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
         }
 
         var canonicalRecipe = request.CanonicalRecipe ?? AdjustmentRecipeSummaryDto.FromPlacement(request.CanonicalPlacement);
-        var compressionStepCount = canonicalRecipe.Operations.Count;
+        var compressionStepCount = canonicalRecipe.StretchActions.Count > 0
+            ? canonicalRecipe.StretchActions.Count
+            : canonicalRecipe.Operations.Count;
         var status = ResolveStatus(registration);
         var warning = ResolveWarning(registration, status);
         var projection = new SheetAdjustmentProjection(
@@ -171,6 +173,9 @@ public sealed class ProjectElectricalSheetAdjustmentHandler
         => canonicalRecipe.ToSheetReviewSummary(sheetKind).Replace(
             "local recipe requires review before DXF deformation",
             "recipe-aware DXF export will apply canonical operations",
+            StringComparison.Ordinal).Replace(
+            "CAD stretch recipe requires entity-aware projection",
+            "recipe-aware DXF export will apply CAD stretch actions",
             StringComparison.Ordinal);
 
     private static SheetAdjustmentProjectionDto ToDto(SheetAdjustmentProjection projection)

@@ -12,6 +12,490 @@ namespace FloorplanFit.Infrastructure.Tests.Dxf;
 public sealed class ProjectedPlanSheetDxfExporterTests
 {
     [Fact]
+    public async Task ExportAsync_composes_adjusted_canonical_architecture_with_only_projected_electrical_overlay()
+    {
+        var canonicalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-canonical.dxf");
+        var electricalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-electrical.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-composed.dxf");
+        var canonicalDxf = string.Join(
+            Environment.NewLine,
+            [
+                "0", "SECTION", "2", "TABLES",
+                "0", "TABLE", "2", "LAYER", "70", "3",
+                "0", "LAYER", "2", "0", "70", "0", "62", "7", "6", "CONTINUOUS",
+                "0", "LAYER", "2", "ARCHITECTURAL", "70", "0", "62", "7", "6", "CONTINUOUS",
+                "0", "LAYER", "2", "TITLE", "70", "0", "62", "7", "6", "CONTINUOUS",
+                "0", "ENDTAB", "0", "ENDSEC",
+                "0", "SECTION", "2", "BLOCKS", "0", "ENDSEC",
+                "0", "SECTION", "2", "ENTITIES",
+                "0", "LINE", "8", "ARCHITECTURAL", "10", "8", "20", "0", "11", "8", "21", "10",
+                "0", "TEXT", "8", "TITLE", "10", "1", "20", "1", "40", "1", "1", "CANONICAL TITLE",
+                "0", "ENDSEC", "0", "EOF"
+            ]);
+        var electricalDxf = string.Join(
+            Environment.NewLine,
+            [
+                "0", "SECTION", "2", "TABLES",
+                "0", "TABLE", "2", "LAYER", "70", "4",
+                "0", "LAYER", "2", "0", "70", "0", "62", "7", "6", "CONTINUOUS",
+                "0", "LAYER", "2", "ELECTRICAL", "70", "0", "62", "2", "6", "CONTINUOUS",
+                "0", "LAYER", "2", "ELECTRICAL WALLS", "70", "0", "62", "8", "6", "CONTINUOUS",
+                "0", "LAYER", "2", "TITLE", "70", "0", "62", "7", "6", "CONTINUOUS",
+                "0", "ENDTAB", "0", "ENDSEC",
+                "0", "SECTION", "2", "BLOCKS",
+                "0", "BLOCK", "8", "0", "2", "SOCKET", "70", "0", "10", "0", "20", "0",
+                "0", "CIRCLE", "8", "0", "10", "0", "20", "0", "40", "0.25",
+                "0", "ENDBLK",
+                "0", "ENDSEC",
+                "0", "SECTION", "2", "ENTITIES",
+                "0", "LINE", "8", "ELECTRICAL WALLS", "10", "10", "20", "0", "11", "10", "21", "10",
+                "0", "INSERT", "8", "ELECTRICAL", "2", "SOCKET", "10", "10", "20", "5",
+                "0", "TEXT", "8", "TITLE", "10", "2", "20", "2", "40", "1", "1", "DEPENDENT TITLE",
+                "0", "ENDSEC", "0", "EOF"
+            ]);
+        await File.WriteAllTextAsync(canonicalPath, canonicalDxf, CancellationToken.None);
+        await File.WriteAllTextAsync(electricalPath, electricalDxf, CancellationToken.None);
+
+        try
+        {
+            var exporter = new ProjectedPlanSheetDxfExporter();
+            var recipe = new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, []);
+
+            await exporter.ExportAsync(
+                electricalPath,
+                outputPath,
+                new SheetAdjustmentProjectionTransform(1m, 0m, -2m, 0m),
+                CreateProvenExportRecipe(
+                    new SheetRegistrationTransform(1m, 0m, -2m, 0m),
+                    recipe,
+                    CanonicalFloorPlanExportPath: canonicalPath),
+                CancellationToken.None);
+
+            var output = await File.ReadAllLinesAsync(outputPath, CancellationToken.None);
+            AssertEntityHasPair(output, "LINE", "ARCHITECTURAL", "10", "8");
+            AssertEntityHasPair(output, "TEXT", "TITLE", "1", "CANONICAL TITLE");
+            AssertEntityMissing(output, "LINE", "ELECTRICAL WALLS");
+            AssertEntityMissing(output, "TEXT", "TITLE", "1", "DEPENDENT TITLE");
+            AssertEntityHasPair(output, "INSERT", "ELECTRICAL", "10", "8");
+            AssertEntityHasPair(output, "BLOCK", "0", "2", "SOCKET");
+            AssertRecordHasPair(output, "LAYER", "2", "ELECTRICAL");
+            Assert.Equal(canonicalDxf, await File.ReadAllTextAsync(canonicalPath, CancellationToken.None));
+        }
+        finally
+        {
+            File.Delete(canonicalPath);
+            File.Delete(electricalPath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_remaps_imported_electrical_handles_and_owners_into_canonical_modelspace()
+    {
+        var canonicalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-canonical-handles.dxf");
+        var electricalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-electrical-handles.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-composed-handles.dxf");
+        await File.WriteAllTextAsync(
+            canonicalPath,
+            string.Join(
+                Environment.NewLine,
+                [
+                    "0", "SECTION", "2", "HEADER", "9", "$HANDSEED", "5", "100", "0", "ENDSEC",
+                    "0", "SECTION", "2", "TABLES",
+                    "0", "TABLE", "5", "10", "2", "LAYER", "70", "2",
+                    "0", "LAYER", "5", "11", "330", "10", "2", "0", "70", "0", "62", "7", "6", "CONTINUOUS",
+                    "0", "LAYER", "5", "12", "330", "10", "2", "ARCHITECTURAL", "70", "0", "62", "7", "6", "CONTINUOUS",
+                    "0", "ENDTAB",
+                    "0", "TABLE", "5", "20", "2", "BLOCK_RECORD", "70", "1",
+                    "0", "BLOCK_RECORD", "5", "21", "330", "20", "2", "*Model_Space", "70", "0",
+                    "0", "ENDTAB", "0", "ENDSEC",
+                    "0", "SECTION", "2", "BLOCKS",
+                    "0", "BLOCK", "5", "22", "330", "21", "8", "0", "2", "*Model_Space", "70", "0", "10", "0", "20", "0", "3", "*Model_Space",
+                    "0", "ENDBLK", "5", "23", "330", "21", "8", "0",
+                    "0", "ENDSEC",
+                    "0", "SECTION", "2", "ENTITIES",
+                    "0", "LINE", "5", "24", "330", "21", "8", "ARCHITECTURAL", "10", "8", "20", "0", "11", "8", "21", "10",
+                    "0", "ENDSEC", "0", "EOF"
+                ]),
+            CancellationToken.None);
+        await File.WriteAllTextAsync(
+            electricalPath,
+            string.Join(
+                Environment.NewLine,
+                [
+                    "0", "SECTION", "2", "HEADER", "9", "$HANDSEED", "5", "200", "0", "ENDSEC",
+                    "0", "SECTION", "2", "TABLES",
+                    "0", "TABLE", "5", "110", "2", "LAYER", "70", "2",
+                    "0", "LAYER", "5", "111", "330", "110", "2", "0", "70", "0", "62", "7", "6", "CONTINUOUS",
+                    "0", "LAYER", "5", "112", "330", "110", "2", "ELECTRICAL", "70", "0", "62", "2", "6", "CONTINUOUS",
+                    "0", "ENDTAB",
+                    "0", "TABLE", "5", "120", "2", "BLOCK_RECORD", "70", "2",
+                    "0", "BLOCK_RECORD", "5", "121", "330", "120", "2", "*Model_Space", "70", "0",
+                    "0", "BLOCK_RECORD", "5", "122", "330", "120", "2", "SOCKET", "70", "0",
+                    "0", "ENDTAB", "0", "ENDSEC",
+                    "0", "SECTION", "2", "BLOCKS",
+                    "0", "BLOCK", "5", "123", "330", "121", "8", "0", "2", "*Model_Space", "70", "0", "10", "0", "20", "0", "3", "*Model_Space",
+                    "0", "ENDBLK", "5", "124", "330", "121", "8", "0",
+                    "0", "BLOCK", "5", "125", "330", "122", "8", "0", "2", "SOCKET", "70", "0", "10", "0", "20", "0", "3", "SOCKET",
+                    "0", "CIRCLE", "5", "126", "330", "122", "8", "0", "10", "0", "20", "0", "40", "0.25",
+                    "0", "ENDBLK", "5", "127", "330", "122", "8", "0",
+                    "0", "ENDSEC",
+                    "0", "SECTION", "2", "ENTITIES",
+                    "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "SOCKET", "10", "10", "20", "5",
+                    "0", "ENDSEC", "0", "EOF"
+                ]),
+            CancellationToken.None);
+
+        try
+        {
+            var exporter = new ProjectedPlanSheetDxfExporter();
+            await exporter.ExportAsync(
+                electricalPath,
+                outputPath,
+                new SheetAdjustmentProjectionTransform(1m, 0m, -2m, 0m),
+                CreateProvenExportRecipe(
+                    new SheetRegistrationTransform(1m, 0m, -2m, 0m),
+                    new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, []),
+                    CanonicalFloorPlanExportPath: canonicalPath),
+                CancellationToken.None);
+
+            var output = await File.ReadAllLinesAsync(outputPath, CancellationToken.None);
+            AssertEntityHasPair(output, "INSERT", "ELECTRICAL", "10", "8");
+            AssertEntityHasPair(output, "INSERT", "ELECTRICAL", "330", "21");
+            AssertRecordHasPair(output, "BLOCK_RECORD", "2", "SOCKET");
+
+            var handles = Enumerable.Range(0, output.Length / 2)
+                .Select(index => index * 2)
+                .Where(index => output[index] == "5")
+                .Select(index => output[index + 1])
+                .ToArray();
+            Assert.Equal(handles.Length, handles.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        }
+        finally
+        {
+            File.Delete(canonicalPath);
+            File.Delete(electricalPath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_keeps_attrib_and_seqend_owned_by_the_remapped_insert()
+    {
+        var canonicalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-canonical-sequence.dxf");
+        var electricalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-electrical-sequence.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-composed-sequence.dxf");
+        await File.WriteAllTextAsync(canonicalPath, CreateModernCanonicalCompositionDxf(), CancellationToken.None);
+        await File.WriteAllTextAsync(
+            electricalPath,
+            CreateModernElectricalCompositionDxf(
+                [
+                    "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "66", "1", "10", "10", "20", "5",
+                    "0", "ATTRIB", "5", "131", "330", "130", "8", "ELECTRICAL", "10", "10", "20", "5", "40", "1", "1", "A", "2", "TAG",
+                    "0", "SEQEND", "5", "132", "330", "130", "8", "ELECTRICAL"
+                ],
+                includeDeviceBlock: true),
+            CancellationToken.None);
+
+        try
+        {
+            await new ProjectedPlanSheetDxfExporter().ExportAsync(
+                electricalPath,
+                outputPath,
+                new SheetAdjustmentProjectionTransform(1m, 0m, 0m, 0m),
+                CreateProvenExportRecipe(
+                    new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+                    new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, []),
+                    CanonicalFloorPlanExportPath: canonicalPath),
+                CancellationToken.None);
+
+            var output = await File.ReadAllLinesAsync(outputPath, CancellationToken.None);
+            var insert = FindDxfRecord(output, "INSERT", ("8", "ELECTRICAL"));
+            var insertHandle = ReadPairValue(insert, "5");
+            Assert.False(string.IsNullOrWhiteSpace(insertHandle));
+            Assert.Equal(insertHandle, ReadPairValue(FindDxfRecord(output, "ATTRIB", ("2", "TAG")), "330"));
+            Assert.Equal(insertHandle, ReadPairValue(FindDxfRecord(output, "SEQEND", ("8", "ELECTRICAL")), "330"));
+        }
+        finally
+        {
+            File.Delete(canonicalPath);
+            File.Delete(electricalPath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_deassociates_imported_hatch_without_dangling_boundary_counts()
+    {
+        var canonicalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-canonical-hatch.dxf");
+        var electricalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-electrical-hatch.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-composed-hatch.dxf");
+        await File.WriteAllTextAsync(canonicalPath, CreateModernCanonicalCompositionDxf(), CancellationToken.None);
+        await File.WriteAllTextAsync(
+            electricalPath,
+            CreateModernElectricalCompositionDxf(
+                [
+                    "0", "HATCH", "5", "130", "330", "121", "8", "ELECTRICAL",
+                    "10", "0", "20", "0", "30", "0", "2", "SOLID", "70", "1", "71", "1",
+                    "91", "1", "92", "1", "93", "0", "97", "1", "330", "FEED", "75", "0", "76", "1", "98", "0"
+                ]),
+            CancellationToken.None);
+
+        try
+        {
+            await new ProjectedPlanSheetDxfExporter().ExportAsync(
+                electricalPath,
+                outputPath,
+                new SheetAdjustmentProjectionTransform(1m, 0m, 0m, 0m),
+                CreateProvenExportRecipe(
+                    new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+                    new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, []),
+                    CanonicalFloorPlanExportPath: canonicalPath),
+                CancellationToken.None);
+
+            var hatch = FindDxfRecord(
+                await File.ReadAllLinesAsync(outputPath, CancellationToken.None),
+                "HATCH",
+                ("8", "ELECTRICAL"));
+            Assert.Equal("0", ReadPairValue(hatch, "71"));
+            Assert.Equal("0", ReadPairValue(hatch, "97"));
+            Assert.DoesNotContain("FEED", hatch);
+        }
+        finally
+        {
+            File.Delete(canonicalPath);
+            File.Delete(electricalPath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_detaches_source_database_reactors_from_imported_overlay()
+    {
+        var canonicalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-canonical-reactor.dxf");
+        var electricalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-electrical-reactor.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-composed-reactor.dxf");
+        await File.WriteAllTextAsync(canonicalPath, CreateModernCanonicalCompositionDxf(), CancellationToken.None);
+        await File.WriteAllTextAsync(
+            electricalPath,
+            CreateModernElectricalCompositionDxf(
+                [
+                    "0", "CIRCLE", "5", "130",
+                    "102", "{ACAD_REACTORS", "330", "DEAD", "102", "}",
+                    "330", "121", "8", "ELECTRICAL", "10", "10", "20", "5", "40", "0.25"
+                ]),
+            CancellationToken.None);
+
+        try
+        {
+            await new ProjectedPlanSheetDxfExporter().ExportAsync(
+                electricalPath,
+                outputPath,
+                new SheetAdjustmentProjectionTransform(1m, 0m, 0m, 0m),
+                CreateProvenExportRecipe(
+                    new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+                    new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, []),
+                    CanonicalFloorPlanExportPath: canonicalPath),
+                CancellationToken.None);
+
+            var circle = FindDxfRecord(
+                await File.ReadAllLinesAsync(outputPath, CancellationToken.None),
+                "CIRCLE",
+                ("8", "ELECTRICAL"));
+            Assert.DoesNotContain("{ACAD_REACTORS", circle);
+            Assert.DoesNotContain("DEAD", circle);
+        }
+        finally
+        {
+            File.Delete(canonicalPath);
+            File.Delete(electricalPath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_detaches_standard_dimension_association_dictionary_from_imported_overlay()
+    {
+        var canonicalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-canonical-dimassoc.dxf");
+        var electricalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-electrical-dimassoc.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-composed-dimassoc.dxf");
+        await File.WriteAllTextAsync(canonicalPath, CreateModernCanonicalCompositionDxf(), CancellationToken.None);
+        await File.WriteAllTextAsync(
+            electricalPath,
+            CreateModernElectricalCompositionDxf(
+                [
+                    "0", "DIMENSION", "5", "130",
+                    "102", "{ACAD_XDICTIONARY", "360", "140", "102", "}",
+                    "102", "{ACAD_REACTORS", "330", "141", "102", "}",
+                    "330", "121", "8", "ELECTRICAL WIRING", "2", "DEVICE",
+                    "10", "10", "20", "5", "11", "12", "21", "5", "70", "0"
+                ],
+                includeDeviceBlock: true,
+                objectPairs:
+                [
+                    "0", "DICTIONARY", "5", "140", "330", "130", "100", "AcDbDictionary", "280", "1", "281", "1", "3", "ACAD_DIMASSOC", "360", "141",
+                    "0", "DIMASSOC", "5", "141", "330", "140", "100", "AcDbDimAssoc", "330", "130", "90", "0"
+                ]),
+            CancellationToken.None);
+
+        try
+        {
+            await new ProjectedPlanSheetDxfExporter().ExportAsync(
+                electricalPath,
+                outputPath,
+                new SheetAdjustmentProjectionTransform(1m, 0m, 0m, 0m),
+                CreateProvenExportRecipe(
+                    new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+                    new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, []),
+                    CanonicalFloorPlanExportPath: canonicalPath),
+                CancellationToken.None);
+
+            var dimension = FindDxfRecord(
+                await File.ReadAllLinesAsync(outputPath, CancellationToken.None),
+                "DIMENSION",
+                ("8", "ELECTRICAL WIRING"));
+            Assert.DoesNotContain("{ACAD_XDICTIONARY", dimension);
+            Assert.DoesNotContain("{ACAD_REACTORS", dimension);
+            Assert.DoesNotContain("140", dimension);
+            Assert.DoesNotContain("141", dimension);
+        }
+        finally
+        {
+            File.Delete(canonicalPath);
+            File.Delete(electricalPath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_normalizes_imported_layer_object_references_to_canonical_layer_zero()
+    {
+        var canonicalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-canonical-layer.dxf");
+        var electricalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-electrical-layer.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-composed-layer.dxf");
+        await File.WriteAllTextAsync(
+            canonicalPath,
+            CreateModernCanonicalCompositionDxf(["347", "90", "390", "91"]),
+            CancellationToken.None);
+        await File.WriteAllTextAsync(
+            electricalPath,
+            CreateModernElectricalCompositionDxf(
+                ["0", "CIRCLE", "5", "130", "330", "121", "8", "ELECTRICAL", "10", "10", "20", "5", "40", "0.25"],
+                electricalLayerExtraPairs: ["347", "B0", "390", "B1"]),
+            CancellationToken.None);
+
+        try
+        {
+            await new ProjectedPlanSheetDxfExporter().ExportAsync(
+                electricalPath,
+                outputPath,
+                new SheetAdjustmentProjectionTransform(1m, 0m, 0m, 0m),
+                CreateProvenExportRecipe(
+                    new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+                    new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, []),
+                    CanonicalFloorPlanExportPath: canonicalPath),
+                CancellationToken.None);
+
+            var electricalLayer = FindDxfRecord(
+                await File.ReadAllLinesAsync(outputPath, CancellationToken.None),
+                "LAYER",
+                ("2", "ELECTRICAL"));
+            Assert.Equal("90", ReadPairValue(electricalLayer, "347"));
+            Assert.Equal("91", ReadPairValue(electricalLayer, "390"));
+        }
+        finally
+        {
+            File.Delete(canonicalPath);
+            File.Delete(electricalPath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_imports_a_text_style_used_only_by_the_electrical_overlay()
+    {
+        var canonicalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-canonical-style.dxf");
+        var electricalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-electrical-style.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-composed-style.dxf");
+        await File.WriteAllTextAsync(
+            canonicalPath,
+            CreateModernCanonicalCompositionDxf(includeStandardStyleTable: true),
+            CancellationToken.None);
+        await File.WriteAllTextAsync(
+            electricalPath,
+            CreateModernElectricalCompositionDxf(
+                [
+                    "0", "TEXT", "5", "130", "330", "121", "8", "ELECTRICAL",
+                    "7", "ROMANS", "10", "10", "20", "5", "40", "1", "1", "GFI"
+                ],
+                includeRomansStyle: true),
+            CancellationToken.None);
+
+        try
+        {
+            await new ProjectedPlanSheetDxfExporter().ExportAsync(
+                electricalPath,
+                outputPath,
+                new SheetAdjustmentProjectionTransform(1m, 0m, 0m, 0m),
+                CreateProvenExportRecipe(
+                    new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+                    new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, []),
+                    CanonicalFloorPlanExportPath: canonicalPath),
+                CancellationToken.None);
+
+            var output = await File.ReadAllLinesAsync(outputPath, CancellationToken.None);
+            AssertRecordHasPair(output, "STYLE", "2", "ROMANS");
+            AssertEntityHasPair(output, "TEXT", "ELECTRICAL", "7", "ROMANS");
+        }
+        finally
+        {
+            File.Delete(canonicalPath);
+            File.Delete(electricalPath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_fails_closed_when_overlay_metadata_references_an_unresolved_object()
+    {
+        var canonicalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-canonical-metadata.dxf");
+        var electricalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-electrical-metadata.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-composed-metadata.dxf");
+        await File.WriteAllTextAsync(canonicalPath, CreateModernCanonicalCompositionDxf(), CancellationToken.None);
+        await File.WriteAllTextAsync(
+            electricalPath,
+            CreateModernElectricalCompositionDxf(
+                [
+                    "0", "CIRCLE", "5", "130", "330", "121", "8", "ELECTRICAL", "10", "10", "20", "5", "40", "0.25",
+                    "102", "{CUSTOM_METADATA", "330", "DEAD", "102", "}"
+                ]),
+            CancellationToken.None);
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                new ProjectedPlanSheetDxfExporter().ExportAsync(
+                    electricalPath,
+                    outputPath,
+                    new SheetAdjustmentProjectionTransform(1m, 0m, 0m, 0m),
+                    CreateProvenExportRecipe(
+                        new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+                        new AdjustmentRecipeSummaryDto("v1", 1m, 0m, 0m, []),
+                        CanonicalFloorPlanExportPath: canonicalPath),
+                    CancellationToken.None));
+
+            Assert.Contains("unresolved DXF handle", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(canonicalPath);
+            File.Delete(electricalPath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
     public async Task ExportAsync_applies_electrical_recipe_projection_to_entity_points()
     {
         var sourcePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-source.dxf");
@@ -1940,6 +2424,140 @@ public sealed class ProjectedPlanSheetDxfExporterTests
         }
     }
 
+    [Fact]
+    public async Task ExportWithAuditAsync_v2_resolves_electrical_targets_by_registered_geometry_and_uses_one_delta()
+    {
+        var sourcePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-source.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-projected.dxf");
+        await WriteCadStretchElectricalFixtureAsync(sourcePath, includeCrossingArc: false);
+
+        try
+        {
+            var exporter = new ProjectedPlanSheetDxfExporter();
+            var registration = new SheetRegistrationTransform(1m, 0m, 100m, 50m);
+            var action = CreateElectricalCadStretchAction();
+            var recipe = new AdjustmentRecipeSummaryDto(
+                "v2",
+                FloorToSiteScale: 1m,
+                SiteOffsetX: 0m,
+                SiteOffsetY: 0m,
+                Operations: [])
+            {
+                StretchActions = [action]
+            };
+
+            var audit = await exporter.ExportWithAuditAsync(
+                sourcePath,
+                outputPath,
+                new SheetAdjustmentProjectionTransform(1m, 0m, 100m, 50m),
+                CreateProvenExportRecipe(registration, recipe),
+                CancellationToken.None);
+
+            var lines = await File.ReadAllLinesAsync(outputPath, CancellationToken.None);
+            var segments = ReadLineSegments(lines);
+            Assert.Contains((100m, 50m, 108m, 50m), segments);
+            Assert.Contains((100m, 54m, 108m, 54m), segments);
+            Assert.Contains((110m, 50m, 110m, 54m), segments);
+            Assert.Contains((96m, 50m, 96m, 54m), segments);
+            AssertEntityHasPair(lines, "INSERT", "ELECTRICAL", "10", "110");
+
+            var actionAudit = Assert.Single(audit!.Operations);
+            Assert.Equal(action.ActionId, actionAudit.OperationId);
+            Assert.Equal("CadStretch", actionAudit.Kind);
+            Assert.Equal(2m, actionAudit.ExpectedDeltaSourceUnits);
+            Assert.Equal(2m, actionAudit.MeasuredMinDeltaSourceUnits);
+            Assert.Equal(2m, actionAudit.MeasuredMaxDeltaSourceUnits);
+            Assert.Equal("Applied", actionAudit.Status);
+            Assert.Contains("registered geometry", actionAudit.Reason, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_v2_rejects_unselected_crossing_before_creating_output()
+    {
+        var sourcePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-source.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-projected.dxf");
+        await WriteCadStretchElectricalFixtureAsync(sourcePath, includeCrossingArc: true);
+
+        try
+        {
+            var exporter = new ProjectedPlanSheetDxfExporter();
+            var registration = new SheetRegistrationTransform(1m, 0m, 100m, 50m);
+            var recipe = new AdjustmentRecipeSummaryDto(
+                "v2",
+                FloorToSiteScale: 1m,
+                SiteOffsetX: 0m,
+                SiteOffsetY: 0m,
+                Operations: [])
+            {
+                StretchActions = [CreateElectricalCadStretchAction()]
+            };
+
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                exporter.ExportAsync(
+                    sourcePath,
+                    outputPath,
+                    new SheetAdjustmentProjectionTransform(1m, 0m, 100m, 50m),
+                    CreateProvenExportRecipe(registration, recipe),
+                    CancellationToken.None));
+
+            Assert.Contains("crosses", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("ARC", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(outputPath));
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+            File.Delete(outputPath);
+        }
+    }
+
+    private static Task WriteCadStretchElectricalFixtureAsync(string path, bool includeCrossingArc)
+    {
+        var pairs = new List<string>
+        {
+            "0", "SECTION",
+            "2", "ENTITIES",
+            "0", "LINE", "8", "ELECTRICAL WALLS", "10", "0", "20", "0", "11", "10", "21", "0",
+            "0", "LINE", "8", "ELECTRICAL WALLS", "10", "0", "20", "4", "11", "10", "21", "4",
+            "0", "LINE", "8", "ELECTRICAL WALLS", "10", "12", "20", "0", "11", "12", "21", "4",
+            "0", "LINE", "8", "ELECTRICAL WALLS", "10", "-4", "20", "0", "11", "-4", "21", "4",
+            "0", "INSERT", "8", "ELECTRICAL", "2", "SOCKET", "10", "12", "20", "2"
+        };
+        if (includeCrossingArc)
+        {
+            pairs.AddRange([
+                "0", "ARC", "8", "ELECTRICAL WIRING",
+                "10", "5", "20", "2", "40", "2", "50", "0", "51", "180"
+            ]);
+        }
+
+        pairs.AddRange(["0", "ENDSEC", "0", "EOF"]);
+        return File.WriteAllTextAsync(path, string.Join(Environment.NewLine, pairs), CancellationToken.None);
+    }
+
+    private static AdjustmentRecipeStretchActionDto CreateElectricalCadStretchAction()
+        => new(
+            ActionId: "paired-wall-width-right",
+            AxisTag: "Width",
+            Edge: "Right",
+            CutCoordinate: 105m,
+            DeltaSourceUnits: 2m,
+            MaxDeltaSourceUnits: 4m,
+            CoordinateTolerance: 0.05m,
+            CanonicalSourceBounds: new AdjustmentRecipeBoundsDto(90m, 40m, 120m, 60m),
+            TargetSpans:
+            [
+                new AdjustmentRecipeTargetSpanDto("FLOOR-LINE:900", Guid.NewGuid(), 0, 100m, 50m, 110m, 50m, 1),
+                new AdjustmentRecipeTargetSpanDto("FLOOR-LINE:901", Guid.NewGuid(), 0, 100m, 54m, 110m, 54m, 1)
+            ],
+            CanonicalEntityRoles: []);
+
     private static Task WriteStructuralLinesDxfAsync(
         string path,
         params (decimal X1, decimal Y1, decimal X2, decimal Y2)[] lines)
@@ -1962,6 +2580,406 @@ public sealed class ProjectedPlanSheetDxfExporterTests
         return File.WriteAllTextAsync(path, string.Join(Environment.NewLine, pairs), CancellationToken.None);
     }
 
+    [Fact]
+    public async Task ExportAsync_moves_reconciled_wall_hosted_device_by_commissioned_host_delta()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "4", "20", "5"
+            ]);
+        try
+        {
+            await ExportComposedOverlayAsync(
+                fixture,
+                new ElectricalOverlayReconciliation(
+                    [WallBinding("130", "HostRigidMove", deltaX: -1m)],
+                    []));
+
+            var output = await File.ReadAllLinesAsync(fixture.OutputPath, CancellationToken.None);
+            var device = FindDxfRecord(output, "INSERT", ("8", "ELECTRICAL"));
+            Assert.Equal("3", ReadPairValue(device, "10"));
+            Assert.Equal("5", ReadPairValue(device, "20"));
+            Assert.Equal("DEVICE", ReadPairValue(device, "2"));
+            Assert.Equal(1, CountRecords(output, "INSERT"));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_keeps_fixed_device_unmoved_when_recipe_cut_crosses_it()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "10", "20", "5"
+            ]);
+        try
+        {
+            await ExportComposedOverlayAsync(
+                fixture,
+                new ElectricalOverlayReconciliation(
+                    [WallBinding("130", "Fixed")],
+                    []));
+
+            var output = await File.ReadAllLinesAsync(fixture.OutputPath, CancellationToken.None);
+            var device = FindDxfRecord(output, "INSERT", ("8", "ELECTRICAL"));
+            Assert.Equal("10", ReadPairValue(device, "10"));
+            Assert.Equal("5", ReadPairValue(device, "20"));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_fails_closed_when_deforming_composition_lacks_overlay_reconciliation()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "4", "20", "5"
+            ]);
+        try
+        {
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                ExportComposedOverlayAsync(fixture, reconciliation: null));
+
+            Assert.Contains("reconciliation", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(fixture.OutputPath));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_rejects_stale_device_binding_block_before_output()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "4", "20", "5"
+            ]);
+        try
+        {
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                ExportComposedOverlayAsync(
+                    fixture,
+                    new ElectricalOverlayReconciliation(
+                        [WallBinding("130", "Fixed", blockName: "SOCKET")],
+                        [])));
+
+            Assert.Contains("130", error.Message, StringComparison.Ordinal);
+            Assert.Contains("SOCKET", error.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(fixture.OutputPath));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_rejects_unbound_overlay_device_before_output()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "4", "20", "5",
+                "0", "INSERT", "5", "140", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "5", "20", "5"
+            ]);
+        try
+        {
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                ExportComposedOverlayAsync(
+                    fixture,
+                    new ElectricalOverlayReconciliation(
+                        [WallBinding("130", "Fixed")],
+                        [])));
+
+            Assert.Contains("140", error.Message, StringComparison.Ordinal);
+            Assert.Contains("host", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(fixture.OutputPath));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_rejects_duplicate_device_bindings_before_output()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "4", "20", "5"
+            ]);
+        try
+        {
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                ExportComposedOverlayAsync(
+                    fixture,
+                    new ElectricalOverlayReconciliation(
+                        [WallBinding("130", "Fixed"), WallBinding("130", "Fixed")],
+                        [])));
+
+            Assert.Contains("duplicate", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(File.Exists(fixture.OutputPath));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_regenerates_wire_routes_from_final_device_endpoints()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "2", "20", "2",
+                "0", "INSERT", "5", "140", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "10", "20", "2",
+                "0", "INSERT", "5", "170", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "2", "20", "3",
+                "0", "INSERT", "5", "180", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "10", "20", "3",
+                "0", "LINE", "5", "150", "330", "121", "8", "ELECTRICAL", "10", "2", "20", "2", "11", "10", "21", "2",
+                "0", "LINE", "5", "160", "330", "121", "8", "ELECTRICAL", "10", "2", "20", "3", "11", "10", "21", "3"
+            ]);
+        try
+        {
+            await ExportComposedOverlayAsync(
+                fixture,
+                new ElectricalOverlayReconciliation(
+                    [
+                        WallBinding("130", "Fixed"),
+                        WallBinding("140", "HostRigidMove", deltaX: -1m),
+                        WallBinding("170", "Fixed"),
+                        WallBinding("180", "Fixed")
+                    ],
+                    [
+                        new ElectricalWireRouteBinding("150", "130", "140"),
+                        new ElectricalWireRouteBinding("160", "170", "180")
+                    ]));
+
+            var output = await File.ReadAllLinesAsync(fixture.OutputPath, CancellationToken.None);
+            var movedRoute = FindDxfRecord(output, "LINE", ("8", "ELECTRICAL"), ("20", "2"));
+            Assert.Equal("2", ReadPairValue(movedRoute, "10"));
+            Assert.Equal("9", ReadPairValue(movedRoute, "11"));
+            Assert.Equal("2", ReadPairValue(movedRoute, "21"));
+            var fixedRoute = FindDxfRecord(output, "LINE", ("8", "ELECTRICAL"), ("20", "3"));
+            Assert.Equal("2", ReadPairValue(fixedRoute, "10"));
+            Assert.Equal("10", ReadPairValue(fixedRoute, "11"));
+            Assert.Equal("3", ReadPairValue(fixedRoute, "21"));
+            var movedDevice = FindDxfRecord(output, "INSERT", ("10", "9"));
+            Assert.Equal("2", ReadPairValue(movedDevice, "20"));
+            Assert.Equal(4, CountRecords(output, "INSERT"));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_rejects_uncommissioned_carrier_as_unsupported_wire_route()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "2", "20", "2",
+                "0", "LINE", "5", "150", "330", "121", "8", "ELECTRICAL", "10", "2", "20", "2", "11", "10", "21", "2"
+            ]);
+        try
+        {
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                ExportComposedOverlayAsync(
+                    fixture,
+                    new ElectricalOverlayReconciliation(
+                        [WallBinding("130", "Fixed")],
+                        [])));
+
+            Assert.Contains("UnsupportedWireRoute", error.Message, StringComparison.Ordinal);
+            Assert.Contains("150", error.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(fixture.OutputPath));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_rejects_non_line_route_carrier_as_unsupported_wire_route()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "2", "20", "2",
+                "0", "INSERT", "5", "140", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "4", "20", "3",
+                "0", "ARC", "5", "150", "330", "121", "8", "ELECTRICAL", "10", "4", "20", "2", "40", "1", "50", "0", "51", "90"
+            ]);
+        try
+        {
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                ExportComposedOverlayAsync(
+                    fixture,
+                    new ElectricalOverlayReconciliation(
+                        [WallBinding("130", "Fixed"), WallBinding("140", "Fixed")],
+                        [new ElectricalWireRouteBinding("150", "130", "140")])));
+
+            Assert.Contains("UnsupportedWireRoute", error.Message, StringComparison.Ordinal);
+            Assert.Contains("ARC", error.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(fixture.OutputPath));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_keeps_declared_static_carrier_projected_without_route()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "LINE", "5", "150", "330", "121", "8", "ELECTRICAL", "10", "2", "20", "2", "11", "10", "21", "2"
+            ]);
+        try
+        {
+            await ExportComposedOverlayAsync(
+                fixture,
+                new ElectricalOverlayReconciliation([], [])
+                {
+                    StaticCarrierHandles = ["150"]
+                });
+
+            var output = await File.ReadAllLinesAsync(fixture.OutputPath, CancellationToken.None);
+            var staticCarrier = FindDxfRecord(output, "LINE", ("8", "ELECTRICAL"));
+            Assert.Equal("2", ReadPairValue(staticCarrier, "10"));
+            Assert.Equal("9", ReadPairValue(staticCarrier, "11"));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_rejects_route_endpoint_without_device_binding()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "2", "20", "2",
+                "0", "LINE", "5", "150", "330", "121", "8", "ELECTRICAL", "10", "2", "20", "2", "11", "10", "21", "2"
+            ]);
+        try
+        {
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                ExportComposedOverlayAsync(
+                    fixture,
+                    new ElectricalOverlayReconciliation(
+                        [WallBinding("130", "Fixed")],
+                        [new ElectricalWireRouteBinding("150", "130", "999")])));
+
+            Assert.Contains("999", error.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(fixture.OutputPath));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_rejects_host_delta_without_matching_recipe_axis()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "4", "20", "5"
+            ]);
+        try
+        {
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                ExportComposedOverlayAsync(
+                    fixture,
+                    new ElectricalOverlayReconciliation(
+                        [WallBinding("130", "HostRigidMove", deltaY: -1m)],
+                        [])));
+
+            Assert.Contains("Height", error.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(fixture.OutputPath));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    private static async Task<(string CanonicalPath, string ElectricalPath, string OutputPath)> WriteComposedOverlayFixtureAsync(
+        IReadOnlyList<string> electricalEntityPairs)
+    {
+        var canonicalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-overlay-canonical.dxf");
+        var electricalPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-overlay-electrical.dxf");
+        var outputPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}-overlay-composed.dxf");
+        await File.WriteAllTextAsync(canonicalPath, CreateModernCanonicalCompositionDxf(), CancellationToken.None);
+        await File.WriteAllTextAsync(
+            electricalPath,
+            CreateModernElectricalCompositionDxf(electricalEntityPairs, includeDeviceBlock: true),
+            CancellationToken.None);
+        return (canonicalPath, electricalPath, outputPath);
+    }
+
+    private static Task ExportComposedOverlayAsync(
+        (string CanonicalPath, string ElectricalPath, string OutputPath) fixture,
+        ElectricalOverlayReconciliation? reconciliation)
+        => new ProjectedPlanSheetDxfExporter().ExportAsync(
+            fixture.ElectricalPath,
+            fixture.OutputPath,
+            new SheetAdjustmentProjectionTransform(1m, 0m, 0m, 0m),
+            CreateProvenExportRecipe(
+                new SheetRegistrationTransform(1m, 0m, 0m, 0m),
+                CreateRightCutDeformingRecipe(),
+                CanonicalFloorPlanExportPath: fixture.CanonicalPath,
+                OverlayReconciliation: reconciliation),
+            CancellationToken.None);
+
+    private static AdjustmentRecipeSummaryDto CreateRightCutDeformingRecipe()
+        => new(
+            "v1",
+            1m,
+            0m,
+            0m,
+            [new AdjustmentRecipeOperationDto("HorizontalCompression", "Width", "Right", 6m, 1m)]);
+
+    private static ElectricalDeviceHostBinding WallBinding(
+        string handle,
+        string role,
+        decimal deltaX = 0m,
+        decimal deltaY = 0m,
+        string blockName = "DEVICE")
+        => new(handle, blockName, "Wall", "LINE:7", role, deltaX, deltaY);
+
+    private static void DeleteComposedOverlayFixture(
+        (string CanonicalPath, string ElectricalPath, string OutputPath) fixture)
+    {
+        File.Delete(fixture.CanonicalPath);
+        File.Delete(fixture.ElectricalPath);
+        File.Delete(fixture.OutputPath);
+    }
+
+    private static int CountRecords(IReadOnlyList<string> lines, string recordType)
+    {
+        var count = 0;
+        for (var index = 0; index + 1 < lines.Count; index += 2)
+        {
+            if (lines[index] == "0" &&
+                string.Equals(lines[index + 1], recordType, StringComparison.OrdinalIgnoreCase))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     private static WholePlanRegistrationProof CreatePassedWholePlanProof()
         => new(
             WholePlanRegistrationProof.CurrentVersion,
@@ -1975,12 +2993,175 @@ public sealed class ProjectedPlanSheetDxfExporterTests
             RootMeanSquareResidual: 0.01m,
             MaximumResidual: 0.02m);
 
+    private static string CreateModernCanonicalCompositionDxf(
+        IReadOnlyList<string>? layerZeroExtraPairs = null,
+        bool includeStandardStyleTable = false)
+    {
+        var pairs = new List<string>
+        {
+            "0", "SECTION", "2", "HEADER", "9", "$HANDSEED", "5", "100", "0", "ENDSEC",
+            "0", "SECTION", "2", "TABLES",
+            "0", "TABLE", "5", "10", "2", "LAYER", "70", "2",
+            "0", "LAYER", "5", "11", "330", "10", "2", "0", "70", "0", "62", "7", "6", "CONTINUOUS"
+        };
+        if (layerZeroExtraPairs is not null)
+        {
+            pairs.AddRange(layerZeroExtraPairs);
+        }
+
+        pairs.AddRange(
+        [
+            "0", "LAYER", "5", "12", "330", "10", "2", "ARCHITECTURAL", "70", "0", "62", "7", "6", "CONTINUOUS",
+            "0", "ENDTAB"
+        ]);
+        if (includeStandardStyleTable)
+        {
+            pairs.AddRange(
+            [
+                "0", "TABLE", "5", "30", "2", "STYLE", "70", "1",
+                "0", "STYLE", "5", "31", "330", "30", "2", "STANDARD", "70", "0", "40", "0", "41", "1", "50", "0", "71", "0", "42", "1", "3", "txt", "4", "",
+                "0", "ENDTAB"
+            ]);
+        }
+
+        pairs.AddRange(
+        [
+            "0", "TABLE", "5", "20", "2", "BLOCK_RECORD", "70", "1",
+            "0", "BLOCK_RECORD", "5", "21", "330", "20", "2", "*Model_Space", "70", "0",
+            "0", "ENDTAB", "0", "ENDSEC",
+            "0", "SECTION", "2", "BLOCKS",
+            "0", "BLOCK", "5", "22", "330", "21", "8", "0", "2", "*Model_Space", "70", "0", "10", "0", "20", "0", "3", "*Model_Space",
+            "0", "ENDBLK", "5", "23", "330", "21", "8", "0",
+            "0", "ENDSEC",
+            "0", "SECTION", "2", "ENTITIES",
+            "0", "LINE", "5", "24", "330", "21", "8", "ARCHITECTURAL", "10", "0", "20", "0", "11", "20", "21", "0",
+            "0", "ENDSEC", "0", "EOF"
+        ]);
+        return string.Join(Environment.NewLine, pairs);
+    }
+
+    private static string CreateModernElectricalCompositionDxf(
+        IReadOnlyList<string> entityPairs,
+        IReadOnlyList<string>? electricalLayerExtraPairs = null,
+        bool includeDeviceBlock = false,
+        IReadOnlyList<string>? objectPairs = null,
+        bool includeRomansStyle = false)
+    {
+        var pairs = new List<string>
+        {
+            "0", "SECTION", "2", "HEADER", "9", "$HANDSEED", "5", "200", "0", "ENDSEC",
+            "0", "SECTION", "2", "TABLES",
+            "0", "TABLE", "5", "110", "2", "LAYER", "70", "2",
+            "0", "LAYER", "5", "111", "330", "110", "2", "0", "70", "0", "62", "7", "6", "CONTINUOUS",
+            "0", "LAYER", "5", "112", "330", "110", "2", "ELECTRICAL", "70", "0", "62", "2", "6", "CONTINUOUS"
+        };
+        if (electricalLayerExtraPairs is not null)
+        {
+            pairs.AddRange(electricalLayerExtraPairs);
+        }
+
+        pairs.AddRange(["0", "ENDTAB"]);
+        if (includeRomansStyle)
+        {
+            pairs.AddRange(
+            [
+                "0", "TABLE", "5", "150", "2", "STYLE", "70", "1",
+                "0", "STYLE", "5", "151", "330", "150", "2", "ROMANS", "70", "0", "40", "0", "41", "1", "50", "0", "71", "0", "42", "1", "3", "romans", "4", "",
+                "0", "ENDTAB"
+            ]);
+        }
+
+        pairs.AddRange(
+        [
+            "0", "TABLE", "5", "120", "2", "BLOCK_RECORD", "70", includeDeviceBlock ? "2" : "1",
+            "0", "BLOCK_RECORD", "5", "121", "330", "120", "2", "*Model_Space", "70", "0"
+        ]);
+        if (includeDeviceBlock)
+        {
+            pairs.AddRange(["0", "BLOCK_RECORD", "5", "122", "330", "120", "2", "DEVICE", "70", "0"]);
+        }
+
+        pairs.AddRange(
+        [
+            "0", "ENDTAB", "0", "ENDSEC",
+            "0", "SECTION", "2", "BLOCKS",
+            "0", "BLOCK", "5", "123", "330", "121", "8", "0", "2", "*Model_Space", "70", "0", "10", "0", "20", "0", "3", "*Model_Space",
+            "0", "ENDBLK", "5", "124", "330", "121", "8", "0"
+        ]);
+        if (includeDeviceBlock)
+        {
+            pairs.AddRange(
+            [
+                "0", "BLOCK", "5", "125", "330", "122", "8", "0", "2", "DEVICE", "70", "0", "10", "0", "20", "0", "3", "DEVICE",
+                "0", "CIRCLE", "5", "126", "330", "122", "8", "0", "10", "0", "20", "0", "40", "0.25",
+                "0", "ENDBLK", "5", "127", "330", "122", "8", "0"
+            ]);
+        }
+
+        pairs.AddRange(["0", "ENDSEC", "0", "SECTION", "2", "ENTITIES"]);
+        pairs.AddRange(entityPairs);
+        pairs.AddRange(["0", "ENDSEC"]);
+        if (objectPairs is not null)
+        {
+            pairs.AddRange(["0", "SECTION", "2", "OBJECTS"]);
+            pairs.AddRange(objectPairs);
+            pairs.AddRange(["0", "ENDSEC"]);
+        }
+
+        pairs.AddRange(["0", "EOF"]);
+        return string.Join(Environment.NewLine, pairs);
+    }
+
+    private static IReadOnlyList<string> FindDxfRecord(
+        IReadOnlyList<string> lines,
+        string recordType,
+        params (string Code, string Value)[] requiredPairs)
+    {
+        for (var index = 0; index + 1 < lines.Count; index += 2)
+        {
+            if (lines[index] != "0" ||
+                !string.Equals(lines[index + 1], recordType, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var end = index + 2;
+            while (end + 1 < lines.Count && lines[end] != "0")
+            {
+                end += 2;
+            }
+
+            if (requiredPairs.All(required => EntityHasPair(lines, index + 2, end, required.Code, required.Value)))
+            {
+                return lines.Skip(index).Take(end - index).ToArray();
+            }
+        }
+
+        Assert.Fail($"Expected {recordType} record with {string.Join(", ", requiredPairs.Select(pair => $"{pair.Code}/{pair.Value}"))}.");
+        return [];
+    }
+
+    private static string? ReadPairValue(IReadOnlyList<string> record, string code)
+    {
+        for (var index = 2; index + 1 < record.Count; index += 2)
+        {
+            if (record[index] == code)
+            {
+                return record[index + 1];
+            }
+        }
+
+        return null;
+    }
+
     private static ProjectedPlanSheetExportRecipe CreateProvenExportRecipe(
         SheetRegistrationTransform registrationTransform,
         AdjustmentRecipeSummaryDto canonicalRecipe,
         decimal? CanonicalSourceWidthInches = null,
         decimal? CanonicalSourceHeightInches = null,
-        ProjectedPlanSheetOutlineNormalization? OutlineNormalization = null)
+        ProjectedPlanSheetOutlineNormalization? OutlineNormalization = null,
+        string? CanonicalFloorPlanExportPath = null,
+        ElectricalOverlayReconciliation? OverlayReconciliation = null)
         => new(
             registrationTransform,
             canonicalRecipe,
@@ -1988,7 +3169,9 @@ public sealed class ProjectedPlanSheetDxfExporterTests
             CanonicalSourceHeightInches,
             OutlineNormalization,
             SheetRegistrationStatus.Confirmed,
-            CreatePassedWholePlanProof());
+            CreatePassedWholePlanProof(),
+            CanonicalFloorPlanExportPath,
+            OverlayReconciliation);
 
     private static IReadOnlyList<(decimal X1, decimal Y1, decimal X2, decimal Y2)> ReadLineSegments(
         IReadOnlyList<string> pairs)
@@ -2125,6 +3308,35 @@ public sealed class ProjectedPlanSheetDxfExporterTests
         }
 
         Assert.Fail($"Expected {entityType} entity on layer {layerName} to have pair {code}/{value}.");
+    }
+
+    private static void AssertRecordHasPair(
+        IReadOnlyList<string> lines,
+        string recordType,
+        string code,
+        string value)
+    {
+        for (var index = 0; index + 1 < lines.Count; index += 2)
+        {
+            if (lines[index] != "0" ||
+                !string.Equals(lines[index + 1], recordType, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var end = index + 2;
+            while (end + 1 < lines.Count && lines[end] != "0")
+            {
+                end += 2;
+            }
+
+            if (EntityHasPair(lines, index + 2, end, code, value))
+            {
+                return;
+            }
+        }
+
+        Assert.Fail($"Expected {recordType} record to have pair {code}/{value}.");
     }
 
     private static bool HasEntity(

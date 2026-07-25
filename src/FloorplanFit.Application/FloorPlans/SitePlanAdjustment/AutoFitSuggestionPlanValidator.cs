@@ -57,6 +57,12 @@ public static class AutoFitSuggestionPlanValidator
         foreach (var group in resolvedSteps.GroupBy(item => item.Candidate.PinchGroupId))
         {
             var first = group.First();
+            if (group.Skip(1).Any())
+            {
+                errors.Add(
+                    $"Suggested pinch group '{first.Candidate.Name}' must be one logical action with one total reduction.");
+            }
+
             var total = group.Sum(item => item.Step.ReductionInches);
             if (total > first.Candidate.CapacityInches + ExactFitToleranceInches)
             {

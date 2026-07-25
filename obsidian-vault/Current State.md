@@ -1,5 +1,145 @@
 # Current State
 
+## 2026-07-21 - Goal phases 3-8 statically closed; one honest runtime boundary remains
+
+- **All repository-executable phases of [[2026-07-20 - Finite goal for automatic site fitting UX]] are now statically green** except 6.4 (partial), 8.7, and 8.8, which require the external runtime handoff.
+- **Phase 3:** 7 real-fixture contracts (`SeminoleCommissionedHouseFitContractTests`, Infrastructure.Tests) build the commissioned profile from real SEMINOLE2000.dxf extractor identities (env-overridable path, clean skip) and prove Width-only 2", Depth-only 1.5", combined deterministic allocation, exact rigid fit, insufficient capacity, protected-target rejection, and real readiness. Zero production changes; the only production SEMINOLE string is pre-existing vendor extraction-profile metadata, audited and accepted.
+- **Phases 4-5:** discipline reconciliation exists as `ProjectedPlanSheetExportRecipe.OverlayReconciliation` (device host bindings + wire route bindings). Devices move only by confirmed host evidence, never by cut-line comparison; LINE wires regenerate from final device endpoints; everything else fails closed as `UnsupportedWireRoute`/binding rejection before output. 12 contracts on the final composed DXF. Bug closed statically: [[2026-07-21 - Electrical overlay lacks host and wire reconciliation]].
+- **Phase 6:** affine-only recipes keep the proven rigid legacy composition; locally-deforming recipes require reconciliation evidence. Combined with the `RequireReadyElectricalPlan` guard, commissioned export is all-or-nothing.
+- **Phase 7:** three-decision UX contracted (5 new XAML/source contracts + Library reason visibility). No dead commissioned pinch entry point existed; runtime symbol sweep of the commissioned chain is clean.
+- **The one honest runtime boundary:** commissioning does not yet author device-host/wire-route evidence (`OverlayReconciliation = null` in `BuildExportRecipeAsync`), so a deforming commissioned Electrical export today fails closed atomically with the exact reason — no package, no corrupt CAD. Rigid-fit and affine-only exports produce the full five-artifact package. Authoring that evidence in one-time commissioning is the next slice.
+- **External proof:** `scripts/run-commissioned-autofit-proof.ps1` (PowerShell-parser green) runs the focused suites, validates each exported package (five artifacts, stem coherence, no `.staging-`, green manifest), and chains `verify-latest-plan-set-recipe-manifest.ps1 -RequireAutomatic`. `.NET` execution remains external by repository policy; runtime green is not claimed.
+- Known vault hygiene issue: this file contains a stray null byte (~offset 90k) that makes some search tools treat it as binary.
+
+## 2026-07-21 - Commissioned automatic package now requires ready Electrical
+
+- **Loop 2 / Contracts + Application + Desktop:** the reopened Floor-only-package gap is closed statically. `ExportMultiSheetPlanSetPackageRequest.RequireReadyElectricalPlan` is a new explicit invariant; the commissioned daily route sets it from `isCommissionedAutoFit` on both ViewModel package call sites.
+- A universal automatic-discovery fail-closed rule was rejected with evidence: the legacy manual confirm-then-re-export Desktop flow also uses empty `DependentProjectionIds` and needs the intermediate manual-audit package. The flag keeps that flow intact while making commissioned export all-or-nothing.
+- `ResolveExportableProjectionsAsync` became `ResolveRequestedProjectionsAsync`: automatic discovery keeps non-ready latest projections visible; the export loop still skips them as audit-only id entries, which the automatic audit ignores because it rediscovers all sheets.
+- `EnsureRequiredElectricalProjectionIsReadyAsync` runs inside the staging callback at `DependentSheetGeneration`: non-ready latest Electrical throws with sheet name, status, and stored warning; absent/unclassifiable Electrical throws the absence reason. Staging is cleaned atomically, no final package appears, the loose Floor source survives, and the failure is persisted.
+- Focused contracts cover fail-closed non-ready, fail-closed absent, no-over-block ready, legacy flag-off audit retention, and a commissioned Desktop rigid-fit export that surfaces the Electrical reason with no package, no staging sibling, and no dependent export attempt.
+- Scoped `git diff --check` passed; no `.NET` command ran, so executable proof stays in the Phase 8 external handoff. Goal microsteps `6.6-6.7` are statically green.
+- Bug record: [[2026-07-21 - Automatic package could publish without required Electrical]].
+
+## 2026-07-21 - User plan-set package stages five truthful artifact classes
+
+- **Loop 2 / Application + Infrastructure:** the bounded package slice now stages `X-floorplan.dxf`, `X-electrical.dxf`, `X-comparison.json`, `manifest.json`, and `X-audit.txt` in the same sibling staging directory before the one atomic rename.
+- `X-comparison.json` reuses the existing final-output FloorPlan/ElectricalPlan congruence evidence: metrics are still computed from the staged verification bytes, while its reported output paths are the final `StoragePath` values. It is deliberately non-DXF; the forbidden AC1009 whole-file merger remains removed.
+- The user-package manifest serializes its own final Manifest artifact path plus the real final package artifact roles and paths. Neither user JSON document leaks the transient `.staging-` directory. The text audit is generated from the existing human summary rather than a second audit model.
+- Package-document staging failure remains `UserPackagePublication`: the final folder is absent, sibling staging is removed, workspace publication is compensated, and the canonical scratch is preserved. No loose `X-comparison.dxf` or duplicate package file is created.
+- Focused source contracts cover exact package contents, final-path manifest/comparison entries with no `.staging-` text, metrics read successfully while the final directory does not yet exist, readable audit text, pre-publication staging order, and rollback. Static inspection plus `git diff --check` passed; no .NET/build/test/restore/watch/Desktop command ran.
+- Decision: [[2026-07-21 - Publish JSON comparison evidence in the atomic plan-set package]].
+
+## 2026-07-20 - Electrical export is not yet canonical base plus overlay
+
+- **Loop 2 / Application + Infrastructure:** current Electrical export starts from the complete dependent Electrical source DXF and transforms that document. It does not start from the adjusted canonical FloorPlan output.
+- `WALL`/`EXTERIOR`/`STRUCT` layer matching currently supplies registration evidence only; it does not remove duplicated Electrical architectural walls or dependent title content from output.
+- The smallest accepted seam is post-projection composition: adjusted canonical Floor export as base, supported projected Electrical entities as overlay, with explicit layer/block dependency closure and fail-closed unsupported routing/resource collisions.
+- The canonical Floor exporter should remain unchanged. First RED contract and exact collision risk: [[2026-07-20 - Electrical export still uses dependent source as full document]].
+- The recipe/path seam and zero-compression handling now exist, but Infrastructure intentionally rejects composition before filesystem writes. The first composition contract remains RED until the existing owner/handle/resource-closure machinery is extracted from `IxMiliaAdjustedSitePlanExporter` into a shared tested primitive; a raw entity splice is explicitly rejected as unsafe.
+
+## 2026-07-20 - Commissioned automatic-fit planner exists statically
+
+- **Loop 1 / Application:** the first replacement slice is implemented as `CommissionedHouseFitPlanner`; runtime planning consumes precompiled commissioned actions and does not inspect raw topology or user-authored Pinches.
+- Commissioned profiles keep one schema-v3 row per `FloorPlanVersionId`, while each JSON document also binds a non-empty `PublishedCurationId`. Application handlers validate `Auto-fit ready` before upsert/commit and exact reads require the currently expected published curation.
+- Readiness requires safe positive Width and Depth capacity. SQLite preserves both identities in the JSON roundtrip, rejects missing/mismatched row identity, returns no profile for a valid-but-stale published curation, and supports replacement/removal without additional speculative tables.
+- Product axes are Width and Depth; the low-level canonical action keeps the existing Width/Height convention, with Depth mapped to Height.
+- Rigid placement is returned with zero actions when the house already fits. Otherwise the exact inch deficit is converted using the source measurement factor and allocated Width first, then Depth, by variable priority/name/id and template order.
+- Unsafe, incomplete, missing-axis, or insufficient-capacity profiles fail closed and return no partial action list.
+- Precompiled target spans, roles, bounds, cuts, and tolerances are replayed unchanged; only each action delta is materialized.
+- Immutable-size hosted entities may move rigidly but cannot be stretched. Protected entities cannot be stretched.
+- Focused source contracts cover rigid fit, exact combined allocation across priorities/capacities, insufficient capacity, missing variables, and forbidden stretching. No `.NET` command ran, so executable GREEN proof remains external.
+- Desktop DI registers the repository plus save/readiness/exact-profile handlers. The active Library route now passes the exact non-empty `ActivePublishedCurationId`, refuses missing/stale/not-ready profiles, and enters a distinct commissioned builder rather than resolving the legacy AI suggester.
+- SOURCE actions must remain unchanged for export and be projected exactly once only for the Desktop preview. The current Pinches path does the reverse (compile in preview coordinates, then convert back), so it cannot be reused by the commissioned daily runtime.
+- The commissioned Desktop builder now requires a positive `MeasurementContext`, a positive Site Plan unit factor, exact profile/curation/unit identity, and nonempty accepted structural geometry with live path references. It runs the deterministic planner, projects all SOURCE actions once for preview, recenters the adjusted footprint, and keeps the original SOURCE actions in `AdjustedSitePlanPlacementDto`.
+- Preview rejection restores the untouched projected Floor geometry, clears all commissioned actions, exposes an actionable reason, and disables export. The legacy `Build` path remains available only for legacy tests/callers; the real Library daily route does not silently fall back to it.
+- Readiness now binds active published-curation identity: a query for a newer curation cannot replay a stored recipe compiled against an older curation in the same FloorPlan version.
+- Opening labels currently have no explicit host-opening binding. Commissioning must persist their Fixed/RigidMove ownership or fail closed; daily proximity inference is forbidden.
+- Geometry-only Floor preview application is now wired statically; annotation/opening-label role projection is still an explicit safety gap because the current preview result API returns geometry paths only. Next gates are one-time commissioning, complete opening/annotation ownership, executable external proof, and Electrical canonical-base composition. Implementation tracker: [[2026-07-20 - Finite goal for automatic site fitting UX]].
+
+## 2026-07-20 - Pinches V1 and V2 are runtime-rejected; adaptation profiles are the recommended replacement
+
+- The user reports that neither the coordinate-global V1 nor the connected CAD-style V2 produces acceptable live house-resizing behavior. The prior V2 adoption decision is superseded; further patching of pinch mechanics is paused.
+- Official El Paso research confirms that the first problem is parcel feasibility: zoning/use-specific setbacks plus surveyed property constraints, access, drainage, circulation, parking, and overlays define the buildable envelope. There is no safe universal El Paso setback rectangle.
+- Official Autodesk behavior confirms that professional targeted editing is region- and constraint-driven: crossing windows/polygons identify endpoints to stretch and complete objects to move, while geometric/dimensional constraints preserve design intent.
+- Recommended domain direction: `BuildableEnvelope + RigidPlacement + ParametricAdaptationProfile + CanonicalBuildingChangeSet + DisciplineReconciliation`, not `PinchMarker[]` as the primary engine.
+- Each canonical house should be curated once with named adjustable design variables, exact reduction limits, fixed/moving boundaries, explicit affected regions, hosted objects, and protected constraints. Raw DXF layers may suggest candidates but cannot author architectural intent reliably by themselves.
+- FloorPlan remains architectural authority. Electrical, Roof, and Facade receive the semantic building change through discipline-specific adapters; they do not all replay the same raw vertex transform.
+- Product automation boundary: commission a small adaptation profile once per canonical house, then perform one-click site fitting for every lot. Runtime users do not author CAD stretches; known layers may auto-suggest the one-time profile, while a curator confirms architectural intent.
+- Recommended minimum Electrical model is `adjusted canonical ArchitecturalBase + projected ElectricalOverlay`. The duplicate architectural walls in the imported Electrical DXF are registration/host evidence, not a second authoritative footprint to keep deforming independently.
+- Doors and windows become immutable-size wall-hosted objects; outlets/switches are wall-hosted, room devices use room anchors, and wire graphics are regenerated from persisted connectivity or marked manual when unsupported.
+- UX is split into advanced one-time `House commissioning` and simple daily `Site fitting`. A published library card carries `Auto-fit ready`; the operator selects house + site, reviews named architectural changes and a Floor/Electrical overlay, then confirms and exports without seeing CAD stretch mechanics.
+- The accepted UX constraint is now explicit: from Library to export, the daily operator makes at most three primary decisions—select an `Auto-fit ready` house, select a Site Plan, and confirm/export the recommended safe proposal. Robust validation stays behind that short path.
+- A finite implementation goal is active: [[2026-07-20 - Finite goal for automatic site fitting UX]]. It starts with SEMINOLE, one Width and one Depth variable, then Floor + Electrical end to end; Roof/Facade and arbitrary-DXF automation are excluded to prevent overlooping.
+- The research phase made no production change; implementation has since started with the finite commissioned planner described above.
+- Decision and sources: [[2026-07-20 - Replace pinches with parametric adaptation profiles]].
+
+## 2026-07-20 - V2 live behavior remains runtime-unaccepted
+
+- The user reports that the live Width/Height Pinches V2 interaction still does not behave correctly after the viewport freeze and transient capacity clamp; those static fixes do not constitute end-to-end acceptance.
+- Verified comparison against committed `HEAD 4b27d1d`: V1 treated each marker as a global coordinate threshold and moved every endpoint beyond it; V2 pairs wall faces and moves only resolved target spans plus connected closing-side structure.
+- **Required invariant:** for a valid group below capacity, both engines must reduce the exterior envelope by the same requested total. V2 may preserve more unrelated geometry, but it must not visibly reduce less, reverse, or return to original while the pointer remains pressed.
+- Both V1 and V2 clear the temporary preview on mouse release, so release reset is not a new V2 regression.
+- The active Desktop path uses V2. The old coordinate overload remains present only as legacy code/tests and should not be restored as fallback because it silently deforms unrelated geometry.
+- Next proof must inspect one real drag end to end: requested trim, effective capacity, compiler result/rejection, emitted actions/roles, and resulting envelope delta. Comparison: [[2026-07-20 - Pinches V1 versus V2 behavior]].
+
+## 2026-07-20 - Live pinch drag viewport is frozen statically
+
+- **Current Loop 1 truth:** real multi-station groups compile and move, and an active Width/Height handle drag now reuses the viewport captured at press time instead of auto-fitting the already-deformed geometry on every pointer event.
+- Rendering and pixel-to-source-unit conversion therefore use one stable camera for the whole gesture, removing the feedback that looked like resistance, jitter, or an opposite edge pushing outward.
+- A second spring-back path is also fixed statically: if the mouse asks for more than the active group can safely remove, the Desktop preview now clamps at the paired-wall group capacity instead of letting the strict compiler reject and restoring the original geometry.
+- The clamp is preview-only. The Application compiler remains fail-closed for genuinely invalid canonical recipes.
+- The guard applies to both Width and Height and rejects inactive or mismatched-axis cached state; normal viewport calculation resumes outside the gesture.
+- Marker inches are maximum ceilings, not automatic movement. Paired wall faces use the smaller ceiling: current SEMINOLE patio is `4"`/`1"` and therefore effectively `1"`; porch is `1"`; Width has two stations with effective capacities `4"` and `1"`.
+- The old global preview could look larger because marker effects accumulated independently; restoring that behavior would restore the deformation bug.
+- Focused source-level contracts cover Width, Height, inactive state, and stale-axis state; static diff validation passes. No .NET/build/test/watch/Desktop command ran, so live proof is pending.
+- Remaining UX observability: show effective paired/group capacity so asymmetric marker ceilings are explicit. Bug record: [[2026-07-20 - Pinch drag refits the viewport while moving]].
+- Capacity spring-back record: [[2026-07-20 - Pinch preview springs back above group capacity]].
+
+## 2026-07-20 - Real Width/Height handle groups are supported statically
+
+- **Loop 1 / Desktop + Application:** a valid handle press now turns the captured handle and only the active pinch group/axis green; release restores idle styling.
+- Interactive drag now calls `CadStretchRecipeCompiler.CompileGroup(...)` and renders all resulting CAD-style actions. It no longer assumes every valid group contains exactly two markers with one identical cut.
+- Real even groups are paired by adjacent marker order. One requested trim is water-filled across station capacities, and station actions execute fixed-side to closing-side.
+- Each station shortens only its two target faces and moves its connected closing-side component. Earlier actions explicitly carry later station targets/components, preserving the total reduction even when real extracted station islands are disconnected. Unrelated geometry remains fixed.
+- Source-level regression cases cover unequal cuts, disconnected multi-station groups, deterministic `Right`/`Top` and `Left`/`Bottom` ordering, local rigid movement, unrelated crossings, active-green feedback, and sequential preview bounds.
+- Static inspection and `git diff --check` pass. No .NET/build/test/watch/Desktop command ran under repository policy; the user still needs to restart the source watcher and perform one live drag proof.
+- Export parity is not re-claimed: this current slice repairs the live editor preview. Canonical Floor/Electrical adapters need their own follow-up proof against the same group scope.
+- Bug record: [[2026-07-20 - Real pinch groups are rejected by the CAD stretch compiler]].
+
+## 2026-07-20 - DXF exporter out-parameter compile failure fixed statically
+
+- Desktop rebuild exposed `CS0177` in `IxMiliaAdjustedSitePlanExporter.TryReadPolylineSegmentIndex(...)`: short-circuit branches could return before `segmentIndex` was assigned.
+- The method now initializes `segmentIndex` to `default` before evaluating the three parse conditions; successful parsing still overwrites it through `int.TryParse`.
+- No DXF behavior or recipe logic changed. Focused `git diff --check` passed; dotnet watch must perform the executable rebuild externally.
+- Bug record: [[2026-07-20 - DXF exporter left segmentIndex unassigned]].
+
+## 2026-07-20 - Interactive pinch handle preview now uses CAD recipe v2 statically
+
+- `FloorPlanPreviewControl.BuildPreviewGeometry(...)` now routes active Width/Height handle drags through `BuildInteractiveCompressionPreviewGeometry(...)`.
+- The interactive route compiles one transient action with `CadStretchRecipeCompiler` and renders it through the same recipe-v2 `FloorPlanPreviewGeometry.CreatePreviewGeometry(geometry, actions)` path used by AutoFit application.
+- Missing inputs, nonpositive deltas, invalid unit factors, compilation rejection, overflow, or v2 renderer rejection fail closed by returning the original geometry; the interactive route never falls back to coordinate-global deformation.
+- Focused static regression coverage proves two target wall faces shorten, a declared closing-side structural span moves rigidly, and an unrelated path remains coordinate-identical.
+- `git diff --check` passed for the two touched code/test files. No .NET/build/test/Desktop command ran, so executable handle-drag and real-plan runtime proof remain pending.
+- Bug record: [[2026-07-20 - Handle drag preview still uses legacy global compression]].
+
+## 2026-07-16 - External system manuals are complete
+
+- Point.ai and FloorplanFit external documentation is now delivered as English system architecture and operations manuals rather than work reports.
+- Their covers show only the verified invested workdays (`31` for Point.ai and `61` for FloorplanFit) plus a compact comma-separated `STACK:` line; hours, dates, chronology, source-control history, note-taking tools, and evidence-gathering methodology remain excluded.
+- The authoritative scope is system purpose, architecture, data structures, persistence, workflows, technology stack, capabilities, safeguards, limitations, and extension strategy.
+- Point.ai retains an explicit structured-CAD authority blocker and a strategic explanation of how FloorplanFit reduces that risk by starting from authoritative DXF geometry.
+- Point.ai is documented as paused and resumable, not abandoned: raster-to-vector work entered a research-heavy structured-CAD phase whose credible demo required stronger data, topology, solver, rendering, and CAD-validation foundations. The user confirmed the tradeoff was discussed with Carlos before continuing with FloorplanFit.
+- The Point.ai manual now ends with an exclusive 22nd page explaining the identified failures, the raster-to-vector research boundary, the credible-demo threshold, the Carlos/FloorplanFit decision, and the conditions for future resumption.
+- Point.ai documentation must reflect that Lucas performed the work individually: no team attribution and no defensive "technical surrender" framing. The research boundary is stated directly.
+- Final deliverables are `output/pdf/Point.ai-system-manual.pdf` and `output/pdf/FloorplanFit-system-manual.pdf`; previous system-report PDFs are removed, while unrelated PDFs remain untouched.
+- Verified copies of both final manuals are stored in `D:\PointAIData\important`.
+- Decision: [[2026-07-16 - Manual covers show invested days and compact stacks]].
+- Implementation: [[2026-07-16 - Point.ai and FloorplanFit system manuals generated]].
+- Copy record: [[2026-07-16 - Final system manuals copied to PointAIData important]].
+- Point.ai status decision: [[2026-07-16 - Point.ai is paused as documented research, not abandoned]].
+- Point.ai manual update: [[2026-07-16 - Point.ai manual includes the documented research pause]].
+
 ## 2026-07-14 - Connected-frame runtime is safely ambiguous because proof remains local
 
 - Runtime evaluated exactly `365 * 1,033 = 377,045` connected-frame pairs; `4,292` quarter-turn hypotheses passed only the uniform-scale dimension gate.
@@ -1010,3 +1150,312 @@ The structural extractor now accepts a finite 3D LINE as XY footprint evidence e
 - The audit selected local bounds of only `136" × 6"` for Floor and `186" × 4"` for Electrical, proving it did not select the complete house footprint. `SegmentCongruenceMismatch` and `FinalOutputCongruenceMismatch` are therefore false negatives for this export.
 - Current blocker is the observability selector, not the exported transformation. Do not relax the gate; fix the audit to compare the registered whole-plan structural footprint.
 - Experiment: [[Experiments/2026-07-15 - Export 2 Floor Electrical footprint comparison]].
+
+## 2026-07-16 - AutoCAD architectural lengths and editable pinch capacity
+
+- **Loop 1 / Desktop:** site dimensions now accept both legacy decimal feet and explicit architectural notation such as `39'-0"`; pinch create/edit accepts legacy decimal inches and notation such as `6 1/2"` or `1'-2"`.
+- Architectural fractions are parsed and formatted through `1/256"`; exact persisted capacity is not rounded to display precision. DXF source units and `$INSUNITS` are unchanged.
+- A selected pinch in a Draft now exposes `Editar capacidad`. Save preserves marker identity, validates Draft plus curation ownership in Application, requires one SQLite row updated, refreshes the derived articulation band, and keeps the marker selected.
+- Published curations remain immutable through the existing clone-to-Draft edit workflow. Loop 2's existing additive per-marker/group capacity semantics were deliberately not redesigned in this change.
+- Focused tests exist and bounded static review found no remaining concrete blocker. XML parsing and scoped `git diff --check` pass; compile/tests/Desktop runtime proof remain external under repository rules.
+- Implementation: [[Implementation/2026-07-16 - AutoCAD architectural lengths and editable pinch capacity]].
+
+## 2026-07-17 - AutoCAD-style half-inch stepping is implemented statically
+
+- **Loop 1 / Desktop:** simulated site width/height and existing pinch-capacity editing now expose fixed `- 1/2"` / `+ 1/2"` controls.
+- Each click changes exact total inches and then renders architectural notation. Example: `39'-0"` -> `38'-11 1/2"` -> `38'-11"` -> `38'-10 1/2"`.
+- Site bare decimals remain feet; pinch bare decimals remain inches. Free-text decimal and architectural entry remains available.
+- Pinch stepping is transient until `Guardar`, preserves marker identity, fails safely on invalid/non-positive results, and clears stale validation after a successful correction.
+- Focused tests, XML parsing, scoped diff checks, spec review, and code-quality review pass statically. `.NET` build/tests/Desktop runtime remain external and pending.
+- Decision: [[Decisions/2026-07-17 - Dimension controls step by half an inch in architectural notation]].
+
+### Runtime artifact is currently stale
+
+- The source XAML contains the new pinch `- 1/2"` / `+ 1/2"` controls, but the inspected `FloorplanFit.Desktop.dll` predates that source change and does not contain either handler/content string.
+- A screenshot without the controls is therefore explained by the stale Desktop assembly, not by the current XAML layout.
+- Stop/restart the source watch launcher and wait for a successful rebuild; visual confirmation remains pending.
+- Bug record: [[Bugs/2026-07-17 - Half-inch controls absent because Desktop assembly is stale]].
+
+## 2026-07-17 - Exact pinch selection is implemented statically
+
+- **Loop 1 / Desktop:** persistence changes exactly one `PinchMarkerId`; the observed multi-pinch behavior is primarily selection/highlight desynchronization, not a multi-row database update.
+- The preview now receives the exact selected marker ID, highlights only that marker, renders every other pinch neutrally, and selects a marker hit before the underlying geometry.
+- Marker-only navigation no longer rebuilds/re-notifies the ListBox item source; changing marker cancels the previous transient edit and refreshes the exact selected capacity.
+- Save now enforces the marker ID captured when edit mode began and refuses to write after an identity change; refresh restores that exact ID.
+- Group/axis identity remains separate and is still used for compression semantics rather than visual marker selection.
+- The focused P2 cross-axis follow-up is now corrected statically: selection presentation applies the target pinch group before the target axis, preventing the axis callback from temporarily choosing Height H1 and clearing an exact marker owned by Height H2.
+- Focused regressions cover navigation, edit cancellation, guarded save, exact refresh, exact highlight, marker-before-geometry hit testing, XAML wiring, and Width -> Height H1/H2 identity. XAML parsing, scoped `git diff --check`, and final static review pass; .NET execution and Desktop runtime verification remain external by request.
+- Bug record: [[Bugs/2026-07-17 - Pinch selection mixed marker identity with group highlight]].
+
+## 2026-07-18 - Preview compression drag now snaps the real trim to half inches
+
+- **Loop 1 / Desktop:** compression-handle dragging now quantizes the real trim before preview geometry is deformed; `0.625"` becomes `0.5"` and `0.76"` becomes `1"`.
+- The half-inch step is converted through `MeasurementContext.ToMillimetersFactor`, so Inch and millimeter source units share the same physical increment.
+- `DimensionDisplayTextFormatter` remains precise and unchanged: the label reports snapped geometry rather than hiding unsnapped geometry with display-only rounding.
+- Missing/invalid context and numeric overflow fail safe without crashing pointer interaction.
+- Focused tests, scoped `git diff --check`, and final static review pass. Build/tests/Desktop runtime verification remain external under repository rules.
+- Bug record: [[Bugs/2026-07-18 - Preview compression drag bypasses half-inch snapping]].
+
+## 2026-07-18 - Pinch deformation is still coordinate-global
+
+- **Current truth / Loop 1:** half-inch snapping is precise, but the deformation scope is not yet structurally safe.
+- Preview and export shift supported points according to whether their X/Y lies beyond each marker. They do not use wall assembly identity, connectivity, layer role, or a local influence corridor.
+- The two faces of a double-line wall are currently additive markers. That can alter wall thickness, and any entity crossing a marker can be distorted because its endpoints receive different deltas.
+- **Resolved 2026-07-19:** use closed-plan semantics. Only the exact selected span changes length; the connected downstream component may translate rigidly to close the removed span. Unrelated shapes and every translated component's lengths, angles, radii, wall thickness, and layer assignments must remain unchanged.
+- Two wall faces are one synchronized intent, not additive reductions. Literal path-only gaps are rejected.
+- This is diagnosed only. No deformation redesign has been implemented or runtime-tested.
+- Bug record: [[Bugs/2026-07-18 - Pinch compression is coordinate-global instead of topology-local]].
+
+### Replacement decision
+
+- The coordinate-global deformation engine is now explicitly retired as product intent and must not be extended.
+- Its replacement will bind deformation to exact geometry paths and synchronize paired wall faces.
+- Closure semantics are confirmed: rigid connected-component translation is allowed; arbitrary coordinate-global deformation is not.
+- Decision: [[Decisions/2026-07-18 - Retire coordinate-global pinch deformation]].
+
+### Verified data-model constraint
+
+- Current typed geometry has ordered paths/segments but no authoritative cross-path connectivity, paired-wall identity, or downstream-component membership. The current `v1` recipe cannot encode CERRADO scope.
+- A persisted whole-building topology graph is not justified. Official AutoCAD behavior supports the smaller model: a linear parameter/action owns an explicit crossing/selection set; selected vertices stretch and fully selected objects translate rigidly.
+- User clarification reduces the required scope: the two pinches already placed on both faces of one wall are the explicit target pair. They must compile to one logical action and one total delta, not two additive marker operations. No separate wall-pair inference UI or whole-plan topology graph is needed.
+- The minimal engine shortens only those two marked spans, translates complete closing-side entities rigidly, leaves fixed entities identical, and rejects any unmarked/unsupported entity that crosses the cut instead of deforming it. One shared engine must replay the action in Preview, canonical FloorPlan export, and dependent Electrical projection.
+- Verified compatibility: canonical adjustment JSON, confirmed Electrical registration transform/source-bound proof, projection state, HousePlanSet package orchestration, manifest, and audits remain useful. The minimum change replaces recipe `v1` point-threshold semantics with a versioned `v2` action and shared entity-aware engine; it does not require a new SQLite table.
+- Ambiguous or unsupported crossings fail closed. The researched scope model is now approved; see [[Decisions/2026-07-19 - Adopt CAD-style pinch stretch actions]].
+- `replaces`: [[Inbox/2026-07-19 - Closed pinch scope needs explicit confirmation]].
+
+## 2026-07-19 - CAD-style pinch stretch actions are approved
+
+- The user accepted the entity/vertex-aware stretch-action replacement for coordinate-global pinch deformation.
+- The two existing markers on paired wall faces form one logical reduction and one total delta; only those spans shorten, closing-side geometry translates rigidly once, and unrelated geometry remains identical.
+- The current canonical adjustment, confirmed/source-bound Electrical registration, projection, HousePlanSet package, manifest, and audit pipeline stays. Recipe `v2` and one shared deformation engine replace only the point-threshold semantics; historical `v1` remains readable.
+- The finite implementation ends at static verification plus one external `.NET`/Desktop/AutoCAD proof sequence and must not loop waiting for that external run.
+- Decision: [[Decisions/2026-07-19 - Adopt CAD-style pinch stretch actions]]. Goal: [[Implementation/2026-07-19 - Finite goal for CAD-style pinch deformation]].
+
+## 2026-07-19 - CAD-style pinch v2 is implemented statically
+
+- **Current truth / Loop 1 + Loop 2:** new paired-wall adjustments compile two markers into one recipe `v2` action with one total delta. Preview, canonical Floor DXF, and registered Electrical DXF execute the same pure `CadStretchDeformationEngine` edit plan.
+- The engine changes only the two selected closing vertices, rigidly translates complete closing-side entities once, keeps unedited entities coordinate-identical, verifies equal shortening and unchanged wall-face spacing, and returns no edits on failure.
+- Electrical keeps the existing confirmed/source-bound whole-plan registration and resolves its own structural entity IDs in canonical coordinates; Floor IDs are never copied into Electrical.
+- Canonical recipe/placement JSON, projection states, HousePlanSet packaging, manifest, and audits remain in place. Historical recipe `v1` still deserializes and uses its legacy path. No topology graph or SQLite table was added.
+- AI plans that repeat one pinch group and recipes with duplicate/empty action IDs now fail closed, preserving one logical operation per paired pinch group.
+- Current v2 target support is deliberately narrow: one `LINE` or straight two-vertex `LWPOLYLINE` per wall face. Unselected/unsupported cut crossings reject before a new output is written.
+- Static inspection and scoped diff checks pass. Runtime compile/tests, a fresh HousePlanSet verifier run, and AutoCAD Floor/Electrical overlay remain one external sequence; real-file block/dimension/wire behavior is not claimed before that proof.
+- Implementation and external procedure: [[Implementation/2026-07-19 - Finite goal for CAD-style pinch deformation]]. Bug status: [[Bugs/2026-07-18 - Pinch compression is coordinate-global instead of topology-local]].
+
+## 2026-07-20 - Runtime handle proof exposed invalid compiler assumptions
+
+- **Current truth / Loop 1:** routing handle drag through recipe `v2` is not sufficient yet. The real curated groups are rejected, and the UI intentionally falls back to unchanged geometry, so dragging appears to do nothing.
+- Runtime data contains valid even groups with `2` or `4` markers. Adjacent markers are physical pairs, and paired markers do not always share one exact cut coordinate.
+- The current compiler still assumes exactly two markers, one global cut coordinate, and globally classifies every accepted wall candidate. Those assumptions are incompatible with the real curation and supersede the earlier static-success claim for runtime readiness.
+- The finite correction is operation-local group compilation: pair adjacent markers, distribute one total trim across pair capacities, resolve each target at its own station, and rigidly move the connected accepted-wall component wholly downstream of both cuts. Multi-station groups additionally use their explicit station order: actions execute from fixed side toward closing side, and an earlier action carries every later station target/component even when the extracted wall graph has disconnected islands. This preserves the requested total Width/Height reduction without returning to global coordinate mutation. Unrelated disconnected and cut-crossing geometry stays fixed.
+- Visual truth must match interaction truth: idle markers/handles are gray; the captured handle and selected group's markers are green only while the drag is active.
+- Export parity is **not** re-claimed by this finding. Canonical Floor and Electrical adapters still require a separate proof that they consume the same local role scope.
+- Bug record: [[Bugs/2026-07-20 - Real pinch groups are rejected by the CAD stretch compiler]].
+
+## 2026-07-21 - Commissioned profile role partition is explicit
+
+- **Current truth / shared foundation:** geometric `Stretch` roles require complete path, segment and vertex identity and continue to fail closed when malformed.
+- `Fixed` and `RigidMove` annotations may be source-only: they keep their source entity reference and intentionally omit geometry path/segment/vertices.
+- The commissioned preview projector removes only valid source-only annotations before invoking the geometric engine, without mutating the persisted/source action records used by export.
+- Contradictory source-only metadata and malformed stretches remain invalid. This prevents labels from blocking readiness without weakening geometry safety.
+- Decision: [[Decisions/2026-07-20 - Replace pinches with parametric adaptation profiles]].
+
+## 2026-07-21 - Commissioned daily adjustment UI has one primary action
+
+- **Loop 2 / Desktop:** commissioned Auto-fit hides the legacy AI suggestion button, legacy scenario cards, legacy export button, and manual-confirm button.
+- The commissioned panel retains the automatic safety status/summary and exposes one accessible `Confirmar y exportar` action, enabled only by the existing `CanExportAdjustedSitePlan` safety gate.
+- Legacy behavior remains available only when `IsCommissionedAutoFit` is false. No new state, converter, fallback, or CAD control was added.
+- The separate manual Electrical confirmation is deliberately not disguised as the same action; combining that path later requires one transactional ViewModel command.
+- Goal: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX]].
+
+## 2026-07-21 - Automatic Electrical package export is atomic
+
+> Superseded by [[Current State#2026-07-21 - Automatic discovery can still omit a non-ready Electrical sheet]].
+
+- **Loop 2 / Application:** auto-discovered Electrical export now follows an all-or-nothing package rule. If required Electrical composition requests manual review, the exception reaches the atomic directory publisher and no Floor-only package is published.
+- The original actionable Electrical reason is still recorded at `DependentSheetGeneration`; staging is cleaned and the canonical source FloorPlan remains untouched.
+- Explicit projection-ID requests retain their legacy manual-audit behavior. The existing signal is `DependentProjectionIds.Count == 0` for automatic discovery; no new mode flag or abstraction was added.
+- Bug record: [[Bugs/2026-07-21 - Automatic package could publish without required Electrical]].
+
+## 2026-07-21 - Finite Auto-fit goal paused, not blocked
+
+- The goal is currently **paused by the user**, not complete and not externally blocked.
+- Work produced concrete forward evidence: commissioned role partition, simplified commissioned UI, atomic HousePlanSet publication, and bounded FloorPlan-canonical/Electrical-overlay DXF composition work.
+- This was not a zero-output infinite loop, but the Electrical DXF closure became an overly long micro-loop. The next run must stop expanding that slice after one bounded resource-closure proof and move to the remaining P0 product gaps.
+- Remaining critical path: productive one-time commissioning, strict readiness for openings/protected entities, end-to-end opening/annotation handling, exact Library readiness, three-decision routing, visual comparison, and final package/audit contract.
+- Goal: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX]].
+
+## 2026-07-21 - SEMINOLE Electrical resource closure is bounded
+
+- Static inspection of the real raw SEMINOLE pair found 907 selected Electrical overlay records and block closure `*D38`, `_Dot`, `A$C558A7ABC`, `CFANLT`, `ESAWQS`, `LT`, `SW`.
+- The adjusted canonical FloorPlan already provides every required LTYPE, DIMSTYLE, APPID and LAYER. Only referenced text style `ROMANS` is absent.
+- The composer now imports only that missing STYLE record through the canonical STYLE table with remapped handle/owner; non-owner object references remain fail-closed.
+- This closes the bounded static resource question. Do not continue expanding the DXF composer without new runtime evidence; the next critical path is productive commissioning and strict readiness.
+- Implementation: [[Implementation/2026-07-20 - Electrical export still uses dependent source as full document]].
+
+## 2026-07-21 - Productive Site Plan route no longer asks Import versus Simulate
+
+- **Loop 1 / Desktop:** clicking `Adjust to Site Plan` now opens the existing DXF picker directly.
+- Cancelling the picker remains a no-op; selecting a file continues through the same commissioned adjustment route.
+- The legacy setup dialog remains in the repository but has no productive call site. No replacement wizard, service, state, or dependency was added.
+- This removes one unnecessary decision from the daily three-decision flow.
+
+## 2026-07-21 - Auto-fit execution paused with unfinished critical path
+
+> Superseded by [[Bugs/2026-07-21 - Commissioned readiness allowed empty auxiliary coverage]] after the user resumed the goal and the strict-readiness slice was completed statically.
+
+- The user paused execution. The three still-running workstreams for productive commissioning, strict readiness, and exact Library readiness were stopped; none is claimed complete from that interrupted work.
+- This was **not an infinite goal loop**: bounded deliverables landed in commissioned role partitioning, the one-action daily UI, atomic FloorPlan + Electrical package publication, canonical Floor/Electrical DXF composition, and the direct Site Plan picker route.
+- There was one overly long **micro-loop** around Electrical DXF resource closure. That question is now bounded and closed; it must not be reopened without new runtime evidence.
+- The goal itself remains incomplete. Its critical path still includes productive one-time commissioning, strict readiness, openings/annotations, commissioned SEMINOLE end-to-end contracts, exact Library readiness, visual before/after comparison, and the final package/audit contract.
+- The goal tracker may continue to report `active` because the assistant-facing goal API has no pause transition; operationally no more implementation should run until the user resumes it.
+- **Superseded by:** [[Current State#2026-07-21 - Auto-fit resumed with exact Library readiness]].
+
+## 2026-07-21 - Auto-fit resumed with exact Library readiness
+
+- **Replaces:** [[Current State#2026-07-21 - Auto-fit execution paused with unfinished critical path]]. The user resumed the finite Auto-fit goal.
+- **Loop 1 / Contracts + Desktop:** a published curation alone no longer enables `Adjust to Site Plan`. Library refresh queries the existing commissioned-readiness handler sequentially with the exact `FloorPlanVersionId + ActivePublishedCurationId` pair.
+- Missing, stale, invalid, unregistered, or failed readiness probes remain `Setup required`; cancellation propagates. Only exact ready profiles expose `Auto-fit ready` and enable adjustment.
+- The version row shows this state without another click. Selection and curation-history behavior are preserved because refresh only enriches each immutable version DTO.
+- Focused source contracts cover published-only disabled, exact-ready enabled, per-version failure fail-closed, exact identities, and cancellation. Static contract inspection, XAML XML parsing, and `git diff --check` pass; executable `.NET` verification remains external by repository policy.
+- Goal: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX]].
+
+## 2026-07-21 - Commissioned readiness now requires explicit auxiliary coverage
+
+- **Shared Application foundation:** a commissioned profile persists the compiler's explicit auxiliary inventory; an empty inventory can no longer be `Auto-fit ready`.
+- Openings must be immutable-size and carry a complete geometry path/segment binding. Protected entities must retain protected semantics.
+- Readiness cross-checks every expected auxiliary against every commissioned action. Missing or duplicate roles, stale path/segment identity, contradictory immutable/protected sets, incomplete evidence, and undeclared source-only auxiliary roles fail closed with an actionable entity/action reason.
+- Width/depth capacities and deterministic allocation were not changed. There is no SEMINOLE-specific production rule and no runtime topology rediscovery.
+- Focused Application contracts were added first. Static acceptance and whitespace checks pass; `.NET` execution remains external under repository policy.
+- Bug record: [[Bugs/2026-07-21 - Commissioned readiness allowed empty auxiliary coverage]]. Goal: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX]].
+
+## 2026-07-21 - Productive curation publish now commissions the exact Auto-fit profile
+
+- **Loop 1 / Desktop:** the existing Review `Publish Curation` path now commissions immediately after the draft publish has committed; no parallel setup wizard was added.
+- The compiler receives the exact selected `FloorPlanVersionId` and the exact draft identity that just became the published curation, then the existing save handler persists the ready profile.
+- Review-time Width/Height pinch metadata is consumed only during this one-time setup step. The daily commissioned route still reads only the persisted Width/Depth profile and never falls back to Pinches V1/V2.
+- Missing or ambiguous closing-edge evidence, incomplete Width/Depth coverage, invalid unit context, or incomplete auxiliary bindings fail closed with one visible `Publicado, pero no quedó Auto-fit ready: ...` reason. Library therefore remains `Setup required` for that exact published identity.
+- Fixed/protected curated geometry retains an exact geometry-path binding. Multi-path protected objects fail closed rather than being falsely treated as source-only annotations.
+- No Review XAML/code-behind or new DI edit was required; existing status presentation and existing commissioned registrations are reused.
+- Focused exact-identity and fail-closed Desktop contracts plus static order/forbidden-symbol/whitespace checks pass. `.NET` execution remains external under repository policy.
+- Implementation: [[Implementation/2026-07-21 - Productive publish commissions exact Auto-fit profile]]. Goal: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX]].
+
+## 2026-07-21 - Commissioned daily UI has a source-bound Floor/Electrical before-after comparison
+
+- **Loop 1 / Desktop:** the commissioned adjustment screen shows side-by-side evidence before confirmation: the real recentered FloorPlan baseline + affine-only registered Electrical WALL before, and the actual CAD-stretch FloorPlan result after.
+- After Electrical architecture is the exact same adjusted canonical FloorPlan geometry because the exported Electrical document uses it as `ArchitecturalBase`; the original Electrical WALL layer is not presented as projected output architecture.
+- The earlier coordinate-global comparison conversion was removed. Commissioned comparison no longer references `ElectricalRecipeProjection`, `AdjustmentRecipeOperationDto`, or synthesized legacy operations.
+- Devices and wiring remain explicitly not shown.
+- A confirmed authoritative whole-plan proof and matching canonical/dependent DXF hashes are required. Missing or stale evidence is shown as unavailable and keeps the sole `Confirmar y exportar` action disabled.
+- Legacy noncommissioned behavior is unchanged. Static contracts, XAML parsing, and whitespace inspection pass; no `.NET` command was run.
+- Bug fix: [[Bugs/2026-07-21 - Commissioned comparison used global compression]]. Supersedes [[Implementation/2026-07-21 - Commissioned Floor Electrical before-after comparison]]. Goal: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX]].
+
+## 2026-07-21 - Canonical Floor replay now enforces commissioned auxiliary roles
+
+- **Loop 1 / Infrastructure:** CadStretch v2 canonical Floor replay now resolves separate structural and auxiliary source identities for supported opening/annotation entities, including commissioned INSERTs, TEXT/MTEXT, DIMENSION, ARC, LINE, and straight LWPOLYLINE.
+- INSERT identity and complete transformed bounds reuse the existing fixed-component extractor. No shared DTO/engine change or new abstraction was required.
+- Persisted `Fixed` leaves the complete source entity record unchanged. Persisted `RigidMove` translates all of the entity's coordinate pairs once and preserves block scale/name/rotation, text properties, radii, and unrelated payload; zero-delta axes are not rewritten.
+- Missing, duplicate, ambiguous, unsupported, aliased, crossing, auxiliary-Stretch, and raw/persisted role mismatch cases reject before output creation with an actionable source/action reason.
+- Electrical composition, Roof/Facade, Pinches fallback, and SEMINOLE-specific behavior are unchanged. Static contracts and `git diff --check` pass; `.NET` execution remains external.
+- Bug record: [[Bugs/2026-07-21 - Canonical Floor replay could not resolve auxiliary DXF roles]]. Goal: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX]].
+
+## 2026-07-21 - Finite Auto-fit goal paused during integration
+
+- **Current operational state:** the user paused the goal. The assistant-facing goal remains `active` only because that API has no pause transition; no implementation should continue until the user explicitly resumes it.
+- This was **not an infinite zero-output loop**: exact Library readiness, strict auxiliary readiness, productive commissioning, truthful visual comparison, and atomic package artifacts produced distinct implementation evidence.
+- It was nevertheless an oversized goal and had entered integration risk. Canonical auxiliary source-identity compatibility and annotation-preview parity were still being closed, followed by real SEMINOLE Width/Depth/combined contracts and one finite external runtime handoff.
+- Therefore the honest status is **meaningful progress, not closure**: the path was converging, but it was not one final step from complete and must resume from the remaining gates rather than reopening completed slices.
+- Replaces the resumed execution status in [[Current State#2026-07-21 - Auto-fit resumed with exact Library readiness]] while preserving every completed slice above.
+
+## 2026-07-21 - Electrical base composition is complete but overlay reconciliation is not
+
+- **Loop 2 / Infrastructure:** adjusted canonical Floor architecture is already used as the Electrical output base.
+- The current overlay selector still copies supported records from `ELECTRICAL*` layers (excluding `ELECTRICAL WALLS`) and closes their CAD resources; this does not prove device-host movement or wire regeneration from connectivity.
+- Therefore final Electrical acceptance remains open until supported devices preserve size/count while following explicit hosts, supported routes regenerate, and unsupported routes block with a concrete reason.
+- Bug: [[Bugs/2026-07-21 - Electrical overlay lacks host and wire reconciliation]]. Goal: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX]].
+
+## 2026-07-21 - Automatic discovery can still omit a non-ready Electrical sheet
+
+- **Replaces:** the unconditional closure claim in [[Current State#2026-07-21 - Automatic Electrical package export is atomic]].
+- The handled Electrical export-exception path is atomic, but `ResolveExportableProjectionsAsync` filters the latest projection to `ReadyForExport` before staging.
+- A latest `RequiresManualConfirmation` Electrical projection therefore never reaches the atomic exception guard; the existing source contract permits a Floor-only package.
+- P0 closure requires automatic discovery to demand its required Electrical sheet in `ReadyForExport` and abort otherwise. Explicit legacy projection-ID requests may retain their manual-audit behavior.
+- Reopened bug: [[Bugs/2026-07-21 - Automatic package could publish without required Electrical]].
+
+## 2026-07-21 - Auto-fit goal now uses numbered micro-gates
+
+- **Replaces:** [[Current State#2026-07-21 - Finite Auto-fit goal paused during integration]]. The user requires continued execution until the full bounded outcome is achieved.
+- The active goal now has numbered micro-steps `1.1` through `8.8`, covering preview parity, auxiliary/host safety, three real SEMINOLE Floor cases, Electrical device hosts, supported/unsupported wire routes, final composition/package atomicity, the three-decision UX, and one external proof sequence.
+- Completed deterministic planning, exact readiness/commissioning, commissioned no-Pinches routing, canonical Electrical base composition, and successful five-artifact packaging are explicitly frozen against reopening without contradictory evidence.
+- One micro-step remains active at a time. The same hypothesis may be tried twice; after that the implementation must pivot with recorded evidence.
+- Execution pauses only after the same true external/irreducible blocker recurs for three goal turns, no independent work remains, and one exact unblock action is documented. Completion is allowed only at gate `8.8`.
+- Authoritative tracker: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX#Authoritative micro-gated completion plan — 2026-07-21]].
+
+## 2026-07-21 - Micro-gated goal is edited but platform activation remains paused
+
+- The authoritative goal document and active plan are updated, but `get_goal` still reports thread `019f1a8b-bea0-7513-ac35-849b1cd734d3` as `paused`.
+- A requested `create_goal` activation was rejected because the paused goal is unfinished; creating a duplicate is forbidden.
+- The available goal API exposes completion/blocking only and explicitly reserves pause/resume for the user or system. Operational execution therefore starts at `1.1` as soon as the existing goal is resumed through that control.
+- This corrects only the platform-status claim in [[Current State#2026-07-21 - Auto-fit goal now uses numbered micro-gates]]; the numbered plan remains authoritative.
+
+## 2026-07-21 - Micro-gated Auto-fit goal activated
+
+- **Replaces:** [[Current State#2026-07-21 - Micro-gated goal is edited but platform activation remains paused]]. The goal continuation is active again.
+- Execution resumes at Phase 1, beginning with `1.1`: one coherent commissioned preview result for geometry, room labels, opening labels, and dimensions.
+- The active contract remains [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX#Authoritative micro-gated completion plan — 2026-07-21]].
+
+## 2026-07-21 - Commissioned Floor preview parity closes Phase 1
+
+- **Loop 1 / Desktop:** the commissioned preview now carries geometry, room labels, opening labels, and dimensions through one coherent result; the successful ViewModel path consumes and recenters all four inventories together.
+- Source-only `Fixed` annotations remain value-equivalent. `RigidMove` annotations receive the exact accumulated signed Width/Depth translation once at preview scale, without changing text, angle, measurement, dimensions, or render payload.
+- Missing, duplicate, unsupported, contradictory, uncommissioned, or incomplete annotation evidence fails closed and returns the untouched preview with the exact entity/action reason.
+- **Loop 1 / productive commissioning:** supported `DIMENSION` inventory is accepted only with an exact source identity and complete representable bounds; unsupported or incomplete dimensions leave the house `Setup required`.
+- Phase `1.1–1.9` is statically green. Scoped source/test signature inspection and `git diff --check` passed; runtime GREEN is deliberately not claimed because `.NET` execution is external.
+- The next authoritative micro-step is `2.1`: separate structural and auxiliary DXF source-reference matching so textual aliases cannot collide.
+- Tracker: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX#Phase 1 — restore one coherent commissioned Floor preview]].
+
+## 2026-07-21 - Phase 2 reopened two overstated safety claims
+
+- **Loop 1 / Infrastructure:** structural target matching is namespace-specific, but persisted auxiliary matching still accepts structural **or** auxiliary refs. `LINE:n` can therefore cross namespaces; [[Bugs/2026-07-21 - Canonical Floor replay could not resolve auxiliary DXF roles]] is reopened only for this collision and the unambiguous DIMENSION movement proof.
+- **Loop 1 / Desktop + Application:** opening commissioning currently stores the opening artifact's own geometry path as though it were its wall host, while compiler validation rejects accepted wall paths. This is not wall-host evidence and is tracked by [[Bugs/2026-07-21 - Opening commissioning confuses geometry with wall host]].
+- Microsteps `2.1–2.8` must separate raw identity, own preview geometry, and accepted wall-host identity before Phase 2 can close.
+
+## 2026-07-21 - Structural and auxiliary DXF namespaces close Phase 2.1-2.4
+
+- **Loop 1 / Infrastructure:** structural target spans now match only `StructuralSourceEntityRef`; persisted auxiliary roles match only `AuxiliarySourceEntityRef`. A textual `LINE:n` equality can no longer cross namespaces silently.
+- Existing wall-layer/global ordinal conventions, handle-backed `DIMENSION` identity, and extractor-backed `INSERT` identity remain the source of truth; no DTO namespace or alternate indexing model was introduced.
+- Focused contracts reject a structural/global `LINE:3` alias before output and prove an unambiguous handle-backed `DIMENSION` moves all coordinate pairs exactly once while preserving all non-coordinate pairs.
+- Microsteps `2.1-2.4` are statically green after targeted source/test review and scoped `git diff --check`. The active step is `2.5`: represent an opening's accepted structural wall host separately from its own preview geometry.
+- This resolves the bounded namespace contradiction in [[Bugs/2026-07-21 - Canonical Floor replay could not resolve auxiliary DXF roles]]; [[Bugs/2026-07-21 - Opening commissioning confuses geometry with wall host]] remains open.
+
+## 2026-07-21 - Commissioned openings now carry a distinct accepted wall host
+
+- **Loop 1 / Contracts + Desktop:** an opening's own preview/replay path remains separate from its new optional `HostGeometryPathId + HostSegmentSortOrder`. Productive commissioning resolves exactly one translated, collinear supporting segment from accepted structural walls; zero, multiple, crossing, missing, or nonrepresentable evidence leaves the house `Setup required`.
+- **Loop 1 / Application:** compiler and readiness reject missing, conflated, non-wall, duplicate/ambiguous, stale, or action-mismatched hosts. The commissioned planner repeats that validation before returning rigid or adjusted output, so old JSON with no host cannot reach export.
+- **Infrastructure persistence:** the existing profile JSON round-trips the two identities without a schema table change. Legacy documents deserialize safely with null host fields and remain not ready.
+- Goal microsteps `2.5-2.6` are statically green with focused success/failure contracts and scoped `git diff --check`; executable `.NET` proof remains external. Phase 2 continues at `2.7` for complete raw opening payload and invariant preservation.
+- Bug resolved statically: [[Bugs/2026-07-21 - Opening commissioning confuses geometry with wall host]]. Tracker: [[Implementation/2026-07-20 - Finite goal for automatic site fitting UX#Phase 2 â€” close canonical Floor auxiliary identity and hosted-opening safety]].
+
+## 2026-07-21 - Hosted-opening invariants close Auto-fit Phase 2
+
+- **Loop 1 / Infrastructure:** focused raw-DXF contracts prove a `Fixed` block-backed opening is record-equivalent and a `RigidMove` opening changes only insertion coordinates, preserving block name, scale, rotation, and all other payload.
+- A final cumulative Width+Depth contract moves the same opening exactly once per axis (`10/20` only); fixed text and unrelated raw payload remain equivalent.
+- Paired structural faces shorten equally while retaining their separation, so wall thickness is unchanged; the fixed wall, protected/source-only text, and unrelated geometry remain unchanged.
+- Together with separate auxiliary identity and accepted wall-host validation, Phase `2.1-2.8` is statically green. The next authoritative microstep is `3.1`: real SEMINOLE fixture evidence through the same generic production path.
+- Static evidence only: scoped `git diff --check` and source-contract inspection pass; no `.NET` command was run.
+
+## 2026-07-21 - Phase 2.6 reopened for mixed valid-host plus crossing evidence
+
+- **Replaces the full Phase 2 closure claim above.** Separate own-geometry/host identities (`2.5`) and raw replay invariants (`2.7-2.8`) remain green.
+- Adversarial source review found that `TryResolveOpeningWallHost` accepts one collinear host even when another accepted structural wall crosses the same opening, because the success branch checks `matches.Count == 1` but ignores `crossingCount`.
+- Existing tests cover crossing with zero host, not the mixed `one valid host + one crossing wall` case. Therefore `2.6` is honestly red until that exact fixture rejects before profile persistence.
+- The correction is bounded: success must require one match **and zero crossings**, with one focused Desktop contract and no DTO/service/schema change.
+- Bug status is reopened partially in [[Bugs/2026-07-21 - Opening commissioning confuses geometry with wall host]].
+
+## 2026-07-21 - Mixed crossing guard closes Auto-fit Phase 2
+
+- **Replaces:** [[Current State#2026-07-21 - Phase 2.6 reopened for mixed valid-host plus crossing evidence]].
+- Opening host resolution now succeeds only for exactly one collinear accepted wall segment and zero additional crossing accepted segments.
+- The new `SupportedAndCrossing` productive commissioning contract proves that one valid host plus one perpendicular crossing wall persists no profile and leaves the house `Setup required` with an explicit opening/crossing reason.
+- Together with separate structural/auxiliary identities, separate own/host opening identities, readiness/planner revalidation, and raw payload/invariant contracts, Phase `2.1-2.8` is statically green.
+- The next authoritative microstep is `3.1`: prove Width-only, Depth-only, and combined behavior against the real SEMINOLE Floor fixture through the same generic production path.

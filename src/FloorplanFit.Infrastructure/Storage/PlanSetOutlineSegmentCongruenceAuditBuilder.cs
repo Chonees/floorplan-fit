@@ -49,7 +49,9 @@ internal static class PlanSetOutlineSegmentCongruenceAuditBuilder
             .ToArray();
     }
 
-    public static object BuildFinalOutput(MultiSheetExportAuditDto audit)
+    public static object BuildFinalOutput(
+        MultiSheetExportAuditDto audit,
+        bool reportStoragePaths = false)
     {
         var floor = audit.Sheets.FirstOrDefault(sheet => sheet.SheetKind == "CanonicalFloorPlan");
         return new
@@ -60,7 +62,7 @@ internal static class PlanSetOutlineSegmentCongruenceAuditBuilder
             toleranceInches = FinalOutputTolerance,
             sheets = audit.Sheets
                 .Where(IsElectricalSheet)
-                .Select(sheet => BuildFinalOutputSheet(floor, sheet).Artifact)
+                .Select(sheet => BuildFinalOutputSheet(floor, sheet, reportStoragePaths).Artifact)
                 .ToArray()
         };
     }
@@ -232,10 +234,13 @@ internal static class PlanSetOutlineSegmentCongruenceAuditBuilder
 
     private static CongruenceAuditBuildResult BuildFinalOutputSheet(
         ExportedPlanSheetDto? floor,
-        ExportedPlanSheetDto electrical)
+        ExportedPlanSheetDto electrical,
+        bool reportStoragePaths = false)
     {
         var floorVerificationPath = floor?.VerificationPath ?? floor?.StoragePath;
         var electricalVerificationPath = electrical.VerificationPath ?? electrical.StoragePath;
+        var floorOutputPath = reportStoragePaths ? floor?.StoragePath : floorVerificationPath;
+        var electricalOutputPath = reportStoragePaths ? electrical.StoragePath : electricalVerificationPath;
 
         try
         {
@@ -244,8 +249,8 @@ internal static class PlanSetOutlineSegmentCongruenceAuditBuilder
                 return InsufficientFinalOutput(
                     electrical,
                     "Canonical FloorPlan output DXF was not available for final output comparison.",
-                    floorVerificationPath,
-                    electricalVerificationPath);
+                    floorOutputPath,
+                    electricalOutputPath);
             }
 
             if (string.IsNullOrWhiteSpace(electricalVerificationPath) || !File.Exists(electricalVerificationPath))
@@ -253,8 +258,8 @@ internal static class PlanSetOutlineSegmentCongruenceAuditBuilder
                 return InsufficientFinalOutput(
                     electrical,
                     "ElectricalPlan output DXF was not available for final output comparison.",
-                    floorVerificationPath,
-                    electricalVerificationPath);
+                    floorOutputPath,
+                    electricalOutputPath);
             }
 
             var floorSegments = ExtractSegments(floorVerificationPath, includeElectricalWalls: false);
@@ -264,8 +269,8 @@ internal static class PlanSetOutlineSegmentCongruenceAuditBuilder
                 return InsufficientFinalOutput(
                     electrical,
                     "Comparable structural segments were not detected in both final output DXFs.",
-                    floorVerificationPath,
-                    electricalVerificationPath);
+                    floorOutputPath,
+                    electricalOutputPath);
             }
 
             var floorRawBounds = RawSegmentBounds.From(floorSegments);
@@ -276,8 +281,8 @@ internal static class PlanSetOutlineSegmentCongruenceAuditBuilder
                 return InsufficientFinalOutput(
                     electrical,
                     $"Canonical FloorPlan final native dominant structural outline selection failed: {floorSelection.Reason}",
-                    floorVerificationPath,
-                    electricalVerificationPath);
+                    floorOutputPath,
+                    electricalOutputPath);
             }
 
             var electricalSelection = SelectDominantOutline(electricalSegments);
@@ -286,8 +291,8 @@ internal static class PlanSetOutlineSegmentCongruenceAuditBuilder
                 return InsufficientFinalOutput(
                     electrical,
                     $"ElectricalPlan final native dominant structural outline selection failed: {electricalSelection.Reason}",
-                    floorVerificationPath,
-                    electricalVerificationPath);
+                    floorOutputPath,
+                    electricalOutputPath);
             }
 
             var floorBounds = ToBounds(floorSelection.Outline!);
@@ -325,8 +330,8 @@ internal static class PlanSetOutlineSegmentCongruenceAuditBuilder
                     Reason = reason,
                     ToleranceInches = FinalOutputTolerance,
                     ComparisonMode = "FinalNativeDominantStructuralOutlineEdgesAndSize",
-                    FloorOutputPath = floorVerificationPath,
-                    ElectricalOutputPath = electricalVerificationPath,
+                    FloorOutputPath = floorOutputPath,
+                    ElectricalOutputPath = electricalOutputPath,
                     FloorStructuralSegmentCount = floorSegments.Count,
                     ElectricalStructuralSegmentCount = electricalSegments.Count,
                     FloorStructuralBounds = floorBounds.ToAuditDto(),
@@ -373,8 +378,8 @@ internal static class PlanSetOutlineSegmentCongruenceAuditBuilder
             return InsufficientFinalOutput(
                 electrical,
                 $"Final output congruence audit failed: {exception.Message}",
-                floorVerificationPath,
-                electricalVerificationPath);
+                floorOutputPath,
+                electricalOutputPath);
         }
     }
 

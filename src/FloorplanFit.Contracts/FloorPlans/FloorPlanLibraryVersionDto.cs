@@ -11,13 +11,17 @@ public sealed record FloorPlanLibraryVersionDto(
     int? ActivePublishedCurationVersion = null,
     int PublishedCurationCount = 0,
     int? LatestPublishedCurationVersion = null,
-    int? LatestDraftCurationVersion = null)
+    int? LatestDraftCurationVersion = null,
+    bool IsAutoFitReady = false)
 {
     public string DisplayName => $"v{VersionNumber}";
 
     public string CurrentLabel => IsCurrent ? "Current" : string.Empty;
 
-    public bool CanAdjustToSitePlan => ActivePublishedCurationId.HasValue;
+    public bool CanAdjustToSitePlan =>
+        IsAutoFitReady && ActivePublishedCurationId is { } curationId && curationId != Guid.Empty;
+
+    public string AutoFitReadinessLabel => IsAutoFitReady ? "Auto-fit ready" : "Setup required";
 
     public bool HasCurationHistory =>
         ActivePublishedCurationId.HasValue ||
