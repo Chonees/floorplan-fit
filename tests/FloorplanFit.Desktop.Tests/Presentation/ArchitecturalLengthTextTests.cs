@@ -205,14 +205,24 @@ public sealed class ArchitecturalLengthTextTests
         Assert.Equal(expected, ArchitecturalLengthText.FormatInches((decimal)inches));
     }
 
-    [Fact]
-    public void Site_simulation_decimal_feet_and_architectural_text_produce_the_same_decimal_feet()
+    [Theory]
+    [InlineData("5.75", "5'-9\"", 5.75)]
+    [InlineData("10", "10'-0\"", 10)]
+    public void Decimal_feet_and_architectural_text_produce_the_same_decimal_feet(
+        string decimalFeetText,
+        string architecturalText,
+        double expectedFeet)
     {
-        Assert.True(AdjustSitePlanSetupResult.TryCreateSimulation("5.75", "10", out var legacy));
-        Assert.True(AdjustSitePlanSetupResult.TryCreateSimulation("5'-9\"", "10'-0\"", out var architectural));
+        Assert.True(ArchitecturalLengthText.TryParsePositiveInches(
+            decimalFeetText,
+            ArchitecturalLengthDefaultUnit.Feet,
+            out var decimalFeetInches));
+        Assert.True(ArchitecturalLengthText.TryParsePositiveInches(
+            architecturalText,
+            ArchitecturalLengthDefaultUnit.Feet,
+            out var architecturalInches));
 
-        Assert.Equal(legacy, architectural);
-        Assert.Equal(5.75m, architectural.BuildableWidthFeet);
-        Assert.Equal(10m, architectural.BuildableHeightFeet);
+        Assert.Equal(decimalFeetInches, architecturalInches);
+        Assert.Equal((decimal)expectedFeet, architecturalInches / 12m);
     }
 }

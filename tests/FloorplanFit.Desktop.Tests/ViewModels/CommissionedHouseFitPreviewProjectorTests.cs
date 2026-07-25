@@ -12,7 +12,15 @@ public sealed class CommissionedHouseFitPreviewProjectorTests
         var secondWall = LinePath(0m, 1m, 10m, 1m);
         var opening = LinePath(10m, 2m, 11m, 2m);
         var unrelated = LinePath(0m, 5m, 5m, 5m);
-        var action = Action(firstWall, secondWall, opening, unrelated);
+        var roomLabel = RoomLabel("LABEL:PROJECTED", 124m, 206m);
+        var openingLabel = OpeningLabel("OPENING-LABEL:PROJECTED", 50m, 60m);
+        var dimension = Dimension("DIMENSION:PROJECTED");
+        var action = WithSourceOnlyRoles(
+            Action(firstWall, secondWall, opening, unrelated),
+            "RigidMove",
+            roomLabel.SourceEntityRef,
+            openingLabel.SourceEntityRef,
+            dimension.SourceEntityRef);
 
         var projectedGeometry = new[] { firstWall, secondWall, opening, unrelated }
             .Select(path => Project(path, scale: 2m, offsetX: 100m, offsetY: 200m))
@@ -20,6 +28,9 @@ public sealed class CommissionedHouseFitPreviewProjectorTests
 
         var result = CommissionedHouseFitPreviewProjector.Apply(
             projectedGeometry,
+            [roomLabel],
+            [openingLabel],
+            [dimension],
             [action],
             projectionScale: 2m,
             projectionOffsetX: 100m,
@@ -39,6 +50,20 @@ public sealed class CommissionedHouseFitPreviewProjectorTests
         Assert.Equal(expectedUnrelated.IsClosed, actualUnrelated.IsClosed);
         Assert.Equal(expectedUnrelated.Segments.ToArray(), actualUnrelated.Segments.ToArray());
 
+        var translatedRoomLabel = Assert.Single(result.RoomLabels);
+        Assert.Equal(120m, translatedRoomLabel.X);
+        Assert.Equal(206m, translatedRoomLabel.Y);
+        Assert.Equal(120m, translatedRoomLabel.DetectedX);
+        Assert.Equal(206m, translatedRoomLabel.DetectedY);
+
+        var translatedOpeningLabel = Assert.Single(result.OpeningLabels);
+        Assert.Equal(46m, translatedOpeningLabel.X);
+        Assert.Equal(60m, translatedOpeningLabel.Y);
+
+        var translatedDimension = Assert.Single(result.Dimensions);
+        Assert.Equal(dimension.DefPointX - 4m, translatedDimension.DefPointX);
+        Assert.Equal(dimension.DefPointY, translatedDimension.DefPointY);
+
         Assert.Equal(10m, action.CutCoordinate);
         Assert.Equal(2m, action.DeltaSourceUnits);
         Assert.Equal(5m, action.MaxDeltaSourceUnits);
@@ -53,7 +78,15 @@ public sealed class CommissionedHouseFitPreviewProjectorTests
     {
         var wall = LinePath(0m, 0m, 10m, 0m);
         var projected = Project(wall, 1m, 0m, 0m);
-        var invalid = Action(wall, LinePath(0m, 1m, 10m, 1m), null, null) with
+        var roomLabel = RoomLabel("LABEL:UNTOUCHED", 20m, 30m);
+        var openingLabel = OpeningLabel("OPENING-LABEL:UNTOUCHED", 40m, 50m);
+        var dimension = Dimension("DIMENSION:UNTOUCHED");
+        var invalid = WithSourceOnlyRoles(
+            Action(wall, LinePath(0m, 1m, 10m, 1m), null, null),
+            "RigidMove",
+            roomLabel.SourceEntityRef,
+            openingLabel.SourceEntityRef,
+            dimension.SourceEntityRef) with
         {
             DeltaSourceUnits = 10m,
             MaxDeltaSourceUnits = 1m
@@ -61,6 +94,9 @@ public sealed class CommissionedHouseFitPreviewProjectorTests
 
         var result = CommissionedHouseFitPreviewProjector.Apply(
             [projected],
+            [roomLabel],
+            [openingLabel],
+            [dimension],
             [invalid],
             1m,
             0m,
@@ -68,6 +104,9 @@ public sealed class CommissionedHouseFitPreviewProjectorTests
 
         Assert.False(result.Succeeded);
         Assert.Equal(projected, Assert.Single(result.GeometryPaths));
+        Assert.Same(roomLabel, Assert.Single(result.RoomLabels));
+        Assert.Same(openingLabel, Assert.Single(result.OpeningLabels));
+        Assert.Same(dimension, Assert.Single(result.Dimensions));
         Assert.False(string.IsNullOrWhiteSpace(result.RejectionReason));
     }
 
@@ -434,6 +473,14 @@ public sealed class CommissionedHouseFitPreviewProjectorTests
                 .ToArray()
         };
 
+    private static AdjustmentRecipeStretchActionDto WithSourceOnlyRoles(
+        AdjustmentRecipeStretchActionDto action,
+        string role,
+        params string[] sourceEntityRefs)
+        => sourceEntityRefs.Aggregate(
+            action,
+            (current, sourceEntityRef) => WithSourceOnlyRole(current, sourceEntityRef, role));
+
     private static AdjustmentRecipeEntityRoleDto SourceOnlyRole(string sourceEntityRef, string role)
         => new(sourceEntityRef, null, null, role, []);
 
@@ -491,6 +538,11 @@ public sealed class CommissionedHouseFitPreviewProjectorTests
             Guid.NewGuid(), sourceEntityRef, "ROOMS", "ROOM", x, y, 0.99m, "kept", 1,
             "MTEXT", 2.125m, 23m, "ARCH", "Center", "Middle", "MiddleCenter", "#FF010203", true,
             x, y, true, 2.125m);
+
+    private static OpeningLabelDto OpeningLabel(string sourceEntityRef, decimal x, decimal y)
+        => new(
+            Guid.NewGuid(), sourceEntityRef, "OPENINGS", "Door", "D1",
+            x, y, 1m, null, 1, "TEXT", 2.25m, 17m);
 
     private static DimensionDto Dimension(string sourceEntityRef)
         => new(

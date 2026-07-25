@@ -381,24 +381,30 @@ public sealed class ReviewFloorPlanWindowLayoutTests
     }
 
     [Fact]
-    public void Adjust_to_site_plan_setup_dialog_sizes_to_fit_its_content()
+    public void Adjust_to_site_plan_setup_dialog_is_retired_from_the_desktop_source_tree()
     {
         var solutionRoot = FindSolutionRoot();
-        var dialogXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "AdjustSitePlanSetupDialog.axaml");
-        var dialogXaml = File.ReadAllText(dialogXamlPath);
+        var desktopRoot = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop");
 
-        Assert.Contains("SizeToContent=\"Height\"", dialogXaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("Height=\"360\"", dialogXaml, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(desktopRoot, "AdjustSitePlanSetupDialog.axaml")));
+        Assert.False(File.Exists(Path.Combine(desktopRoot, "AdjustSitePlanSetupDialog.axaml.cs")));
+        Assert.Empty(EnumerateAuthoredDesktopSources(desktopRoot)
+            .Where(path => File.ReadAllText(path).Contains("AdjustSitePlanSetup", StringComparison.Ordinal)));
     }
 
-    [Fact]
-    public void Adjust_to_site_plan_setup_dialog_uses_solid_gray_background()
+    private static IEnumerable<string> EnumerateAuthoredDesktopSources(string desktopRoot)
     {
-        var solutionRoot = FindSolutionRoot();
-        var dialogXamlPath = Path.Combine(solutionRoot, "src", "FloorplanFit.Desktop", "AdjustSitePlanSetupDialog.axaml");
-        var dialogXaml = File.ReadAllText(dialogXamlPath);
+        var binDirectory = Path.Combine(desktopRoot, "bin") + Path.DirectorySeparatorChar;
+        var objDirectory = Path.Combine(desktopRoot, "obj") + Path.DirectorySeparatorChar;
 
-        Assert.Contains("Background=\"#FF2F333A\"", dialogXaml, StringComparison.Ordinal);
+        return Directory
+            .EnumerateFiles(desktopRoot, "*.*", SearchOption.AllDirectories)
+            .Where(path =>
+                (path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ||
+                 path.EndsWith(".axaml", StringComparison.OrdinalIgnoreCase) ||
+                 path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)) &&
+                !path.StartsWith(binDirectory, StringComparison.OrdinalIgnoreCase) &&
+                !path.StartsWith(objDirectory, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

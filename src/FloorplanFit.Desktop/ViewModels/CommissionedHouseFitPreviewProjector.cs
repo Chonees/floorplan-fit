@@ -15,22 +15,6 @@ internal static class CommissionedHouseFitPreviewProjector
 {
     public static CommissionedHouseFitPreviewResult Apply(
         IReadOnlyList<GeometryPathDto> projectedGeometryPaths,
-        IReadOnlyList<AdjustmentRecipeStretchActionDto> sourceActions,
-        decimal projectionScale,
-        decimal projectionOffsetX,
-        decimal projectionOffsetY)
-        => Apply(
-            projectedGeometryPaths,
-            [],
-            [],
-            [],
-            sourceActions,
-            projectionScale,
-            projectionOffsetX,
-            projectionOffsetY);
-
-    public static CommissionedHouseFitPreviewResult Apply(
-        IReadOnlyList<GeometryPathDto> projectedGeometryPaths,
         IReadOnlyList<RoomLabelDto> roomLabels,
         IReadOnlyList<OpeningLabelDto> openingLabels,
         IReadOnlyList<DimensionDto> dimensions,
