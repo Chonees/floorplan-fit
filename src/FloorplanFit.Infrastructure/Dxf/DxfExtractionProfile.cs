@@ -15,7 +15,6 @@ public sealed partial class DxfExtractionProfile
 
     private DxfExtractionProfile(
         string name,
-        IReadOnlyList<string> seedFloorPlans,
         IReadOnlyDictionary<string, string> openingGeometryLayerKinds,
         IReadOnlyDictionary<string, string> openingLabelLayerKinds,
         IReadOnlyDictionary<string, string> fixedComponentLayerKinds,
@@ -26,7 +25,6 @@ public sealed partial class DxfExtractionProfile
         IReadOnlyList<string> excludedRoomLabelTokens)
     {
         Name = name;
-        SeedFloorPlans = seedFloorPlans;
         this.openingGeometryLayerKinds = openingGeometryLayerKinds;
         this.openingLabelLayerKinds = openingLabelLayerKinds;
         this.fixedComponentLayerKinds = fixedComponentLayerKinds;
@@ -40,8 +38,6 @@ public sealed partial class DxfExtractionProfile
     public static DxfExtractionProfile PointeHomes { get; } = CreatePointeHomesProfile();
 
     public string Name { get; }
-
-    public IReadOnlyList<string> SeedFloorPlans { get; }
 
     public bool IsWallCandidateLayer(string? layerName)
     {
@@ -114,7 +110,6 @@ public sealed partial class DxfExtractionProfile
     {
         return new DxfExtractionProfile(
             "Pointe Homes CAD",
-            ["SEMINOLE2000", "SANTA-BARBARA"],
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["DOORS"] = "Door",
