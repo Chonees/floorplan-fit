@@ -35,10 +35,23 @@ public sealed class SeminoleCommissionedHouseFitContractTests
         AssertReplays(scenario.WidthTemplate, action, expectedDeltaSourceUnits: 2m);
         Assert.DoesNotContain(result.Actions, emitted =>
             string.Equals(emitted.AxisTag, "Height", StringComparison.OrdinalIgnoreCase));
+        // Final width stated against the SITE, never restated from the house: the planner
+        // must land the house exactly on the buildable width the request factory computed
+        // from the trimmed buildable area, so a planner that under- or over-allocates the
+        // reported deficit fails here.
+        // TODO(3.3): anchor the final width to an absolute literal once the SEMINOLE
+        // structural footprint width in inches has been measured externally (run this
+        // contract on a machine holding the fixture DXF and record footprint.Width). Until
+        // that measurement exists the absolute original width is not independently known
+        // and must not be invented here.
         Assert.Equal(
-            scenario.OriginalWidthInches - 2m,
+            request.BuildableWidthInches,
             request.OriginalWidthInches - result.WidthReductionInches);
-        Assert.Equal(scenario.OriginalDepthInches, request.OriginalDepthInches);
+        // Depth is genuinely untouched: the depth variable's action was never emitted, so
+        // no depth-owned segment identity can have moved.
+        Assert.DoesNotContain(
+            result.Actions,
+            emitted => emitted.ActionId == scenario.DepthTemplate.ActionId);
         AssertPreservationInvariants(scenario, result);
     }
 
@@ -58,10 +71,22 @@ public sealed class SeminoleCommissionedHouseFitContractTests
         AssertReplays(scenario.DepthTemplate, action, expectedDeltaSourceUnits: 1.5m);
         Assert.DoesNotContain(result.Actions, emitted =>
             string.Equals(emitted.AxisTag, "Width", StringComparison.OrdinalIgnoreCase));
+        // Final depth stated against the SITE, never restated from the house: the planner
+        // must land the house exactly on the buildable depth the request factory computed
+        // from the trimmed buildable area.
+        // TODO(3.4): anchor the final depth to an absolute literal once the SEMINOLE
+        // structural footprint depth in inches has been measured externally (run this
+        // contract on a machine holding the fixture DXF and record footprint.Height). Until
+        // that measurement exists the absolute original depth is not independently known
+        // and must not be invented here.
         Assert.Equal(
-            scenario.OriginalDepthInches - 1.5m,
+            request.BuildableDepthInches,
             request.OriginalDepthInches - result.DepthReductionInches);
-        Assert.Equal(scenario.OriginalWidthInches, request.OriginalWidthInches);
+        // Width is genuinely untouched: the width variable's action was never emitted, so
+        // no width-owned segment identity can have moved.
+        Assert.DoesNotContain(
+            result.Actions,
+            emitted => emitted.ActionId == scenario.WidthTemplate.ActionId);
         AssertPreservationInvariants(scenario, result);
     }
 
@@ -81,11 +106,19 @@ public sealed class SeminoleCommissionedHouseFitContractTests
             result.Actions,
             action => AssertReplays(scenario.WidthTemplate, action, expectedDeltaSourceUnits: 2m),
             action => AssertReplays(scenario.DepthTemplate, action, expectedDeltaSourceUnits: 1.5m));
+        // Both final dimensions stated against the SITE, never restated from the house: the
+        // combined case must land the house exactly on the buildable rectangle the request
+        // factory computed on both axes at once.
+        // TODO(3.5): anchor both final dimensions to absolute literals once the SEMINOLE
+        // structural footprint width/depth in inches have been measured externally (run this
+        // contract on a machine holding the fixture DXF and record footprint.Width and
+        // footprint.Height). Until that measurement exists the absolute original dimensions
+        // are not independently known and must not be invented here.
         Assert.Equal(
-            scenario.OriginalWidthInches - 2m,
+            request.BuildableWidthInches,
             request.OriginalWidthInches - result.WidthReductionInches);
         Assert.Equal(
-            scenario.OriginalDepthInches - 1.5m,
+            request.BuildableDepthInches,
             request.OriginalDepthInches - result.DepthReductionInches);
         AssertPreservationInvariants(scenario, result);
     }
@@ -119,6 +152,10 @@ public sealed class SeminoleCommissionedHouseFitContractTests
         Assert.False(result.Succeeded);
         Assert.False(result.IsRigidPlacement);
         Assert.Empty(result.Actions);
+        // The failed plan reports the full requested deficit, never a partial allocation
+        // clamped to the commissioned capacity: 7" requested against 6" of Width capacity.
+        Assert.Equal(WidthCapacitySourceUnits + 1m, result.WidthReductionInches);
+        Assert.Equal(0m, result.DepthReductionInches);
         Assert.Contains("Width", result.RejectionReason, StringComparison.Ordinal);
         Assert.Contains("capacity", result.RejectionReason, StringComparison.OrdinalIgnoreCase);
     }
@@ -139,6 +176,10 @@ public sealed class SeminoleCommissionedHouseFitContractTests
         Assert.False(result.Succeeded);
         Assert.False(result.IsRigidPlacement);
         Assert.Empty(result.Actions);
+        // Zero partial output, and the reported deficit is still the exact 2" the site asked
+        // for: the invariant violation blocks the plan without rewriting the request.
+        Assert.Equal(2m, result.WidthReductionInches);
+        Assert.Equal(0m, result.DepthReductionInches);
         Assert.Contains(protectedStretchRef, result.RejectionReason, StringComparison.Ordinal);
         Assert.Contains("stretch", result.RejectionReason, StringComparison.OrdinalIgnoreCase);
     }
@@ -209,6 +250,19 @@ public sealed class SeminoleCommissionedHouseFitContractTests
         Assert.True(built.Succeeded, built.RejectionReason);
         Assert.Equal(scenario.OriginalWidthInches, built.Request!.OriginalWidthInches);
         Assert.Equal(scenario.OriginalDepthInches, built.Request.OriginalDepthInches);
+
+        // The REQUESTED deficit is a known constant of the scenario, not a restatement of
+        // the factory output: the site keeps MinX/MinY and source units are inches, so
+        // trimming the buildable area by N source units must surface as exactly N inches of
+        // shortfall on that axis. A negative trim is a surplus and must stay negative, which
+        // is what makes the "other axis untouched" cases real surplus cases rather than
+        // accidental zero-deficit cases.
+        Assert.Equal(
+            widthTrimInches,
+            built.Request.OriginalWidthInches - built.Request.BuildableWidthInches);
+        Assert.Equal(
+            depthTrimInches,
+            built.Request.OriginalDepthInches - built.Request.BuildableDepthInches);
         return built.Request;
     }
 
@@ -334,6 +388,13 @@ public sealed class SeminoleCommissionedHouseFitContractTests
                 protectedLabelRole
             ]);
 
+        // Pin the exact commissioned affected-role list of both axis templates before the
+        // planner ever runs. The per-case replay assertions compare production output to
+        // these templates, so pinning the shape here is what turns those comparisons into an
+        // exact affected-role contract instead of "whatever the harness happened to build".
+        AssertCommissionedRoleShape(widthTemplate, protectedLabel.SourceEntityRef);
+        AssertCommissionedRoleShape(depthTemplate, protectedLabel.SourceEntityRef);
+
         var profile = new CommissionedHouseAdaptationProfile(
             Guid.NewGuid(),
             Guid.NewGuid(),
@@ -382,6 +443,49 @@ public sealed class SeminoleCommissionedHouseFitContractTests
             depthTemplate,
             protectedLabel.SourceEntityRef,
             segmentOwners.Select(owner => owner.EntityRef).Distinct(StringComparer.Ordinal).ToArray());
+    }
+
+    /// <summary>
+    /// Pins the exact affected-role list of one commissioned axis template: five distinct
+    /// real entities, of which exactly two deforming exterior faces, one rigidly moving
+    /// closing wall, one fixed opposite wall, and the protected label as a source-only
+    /// Fixed role, with every target span backed by its own Stretch role and closing vertex.
+    /// </summary>
+    private static void AssertCommissionedRoleShape(
+        AdjustmentRecipeStretchActionDto template,
+        string protectedLabelRef)
+    {
+        Assert.Equal(5, template.CanonicalEntityRoles.Count);
+        Assert.Equal(
+            5,
+            template.CanonicalEntityRoles
+                .Select(role => role.EntityRef)
+                .Distinct(StringComparer.Ordinal)
+                .Count());
+        Assert.Equal(2, template.CanonicalEntityRoles.Count(role => role.Role == "Stretch"));
+        Assert.Equal(1, template.CanonicalEntityRoles.Count(role => role.Role == "RigidMove"));
+        Assert.Equal(2, template.CanonicalEntityRoles.Count(role => role.Role == "Fixed"));
+        Assert.Equal(2, template.TargetSpans.Count);
+
+        foreach (var target in template.TargetSpans)
+        {
+            var stretchRole = Assert.Single(
+                template.CanonicalEntityRoles,
+                role => role.Role == "Stretch" &&
+                        role.EntityRef == target.SourceEntityRef &&
+                        role.GeometryPathId == target.GeometryPathId &&
+                        role.SegmentSortOrder == target.SegmentSortOrder);
+            var vertexIndex = Assert.Single(stretchRole.VertexIndices);
+            Assert.Equal(target.ClosingVertexIndex, vertexIndex);
+        }
+
+        var labelRole = Assert.Single(
+            template.CanonicalEntityRoles,
+            role => role.EntityRef == protectedLabelRef);
+        Assert.Equal("Fixed", labelRole.Role);
+        Assert.Empty(labelRole.VertexIndices);
+        Assert.Null(labelRole.GeometryPathId);
+        Assert.Null(labelRole.SegmentSortOrder);
     }
 
     private static WallSegmentOwner PickFace(
