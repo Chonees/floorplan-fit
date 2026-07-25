@@ -913,8 +913,19 @@ public sealed class ProjectedPlanSheetDxfExporter : IProjectedPlanSheetExporter
                     $"UnsupportedWireRoute: route carrier '{handle}' is {entityType}; only LINE carriers between commissioned devices are supported.");
             }
 
-            var startPoint = deviceFinalPoints[route.StartDeviceHandle.Trim()];
-            var endPoint = deviceFinalPoints[route.EndDeviceHandle.Trim()];
+            var routeStartHandle = route.StartDeviceHandle?.Trim() ?? string.Empty;
+            var routeEndHandle = route.EndDeviceHandle?.Trim() ?? string.Empty;
+            if (!deviceFinalPoints.TryGetValue(routeStartHandle, out var startPoint) ||
+                !deviceFinalPoints.TryGetValue(routeEndHandle, out var endPoint))
+            {
+                // A bound-but-absent endpoint device has no reconciled point, so the route has no
+                // complete connectivity to regenerate from; reject explicitly instead of indexing.
+                throw new ProjectedPlanSheetManualReviewRequiredException(
+                    $"UnsupportedWireRoute: route carrier '{handle}' references endpoint devices " +
+                    $"'{route.StartDeviceHandle}'/'{route.EndDeviceHandle}' that are absent from the reconciled " +
+                    "overlay devices, so the route has no complete connectivity to regenerate.");
+            }
+
             var regenerated = OverrideRecordCoordinatePair(record, "10", "20", startPoint, handle);
             reconciled.Add(OverrideRecordCoordinatePair(regenerated, "11", "21", endPoint, handle));
         }

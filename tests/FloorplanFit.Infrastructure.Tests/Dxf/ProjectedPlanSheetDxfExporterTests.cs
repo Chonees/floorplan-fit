@@ -2889,6 +2889,34 @@ public sealed class ProjectedPlanSheetDxfExporterTests
     }
 
     [Fact]
+    public async Task ExportAsync_rejects_route_endpoint_bound_but_absent_from_overlay_as_unsupported_wire_route()
+    {
+        var fixture = await WriteComposedOverlayFixtureAsync(
+            [
+                "0", "INSERT", "5", "130", "330", "121", "8", "ELECTRICAL", "2", "DEVICE", "10", "2", "20", "2",
+                "0", "LINE", "5", "150", "330", "121", "8", "ELECTRICAL", "10", "2", "20", "2", "11", "10", "21", "2"
+            ]);
+        try
+        {
+            var error = await Assert.ThrowsAsync<ProjectedPlanSheetManualReviewRequiredException>(() =>
+                ExportComposedOverlayAsync(
+                    fixture,
+                    new ElectricalOverlayReconciliation(
+                        [WallBinding("130", "Fixed"), WallBinding("999", "Fixed")],
+                        [new ElectricalWireRouteBinding("150", "130", "999")])));
+
+            Assert.Contains("UnsupportedWireRoute", error.Message, StringComparison.Ordinal);
+            Assert.Contains("150", error.Message, StringComparison.Ordinal);
+            Assert.Contains("999", error.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(fixture.OutputPath));
+        }
+        finally
+        {
+            DeleteComposedOverlayFixture(fixture);
+        }
+    }
+
+    [Fact]
     public async Task ExportAsync_rejects_host_delta_without_matching_recipe_axis()
     {
         var fixture = await WriteComposedOverlayFixtureAsync(
