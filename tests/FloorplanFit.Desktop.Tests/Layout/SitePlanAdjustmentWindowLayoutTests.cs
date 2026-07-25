@@ -114,6 +114,55 @@ public sealed class SitePlanAdjustmentWindowLayoutTests
         Assert.DoesNotContain("ToFloorSourceStretchAction", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Commissioned_preview_control_leaves_every_pinch_driving_property_unbound()
+    {
+        var document = XDocument.Parse(ReadAdjustmentXaml());
+        var controlsNamespace = document.Root!.GetNamespaceOfPrefix("controls")!;
+        var previewControl = Assert.Single(
+            document.Descendants(controlsNamespace + "FloorPlanPreviewControl"));
+
+        // Pinch markers and compression handles are composed in C# from these
+        // StyledProperties instead of being declared in XAML, so leaving them
+        // unbound is the only thing keeping the retired pinch surface out of the
+        // commissioned daily flow. Assert that invariant explicitly rather than
+        // relying on the broad "no Pinch token" scan, which a later edit could
+        // relax without anyone noticing the fallback had come back.
+        foreach (var pinchDrivingProperty in new[]
+                 {
+                     "PinchMarkers",
+                     "IsPinchPlacementArmed",
+                     "PreviewPinchGroupId"
+                 })
+        {
+            Assert.Null(previewControl.Attribute(pinchDrivingProperty));
+        }
+    }
+
+    [Fact]
+    public void Commissioned_adjustment_code_behind_never_drives_pinch_or_compression_visuals()
+    {
+        // The XAML scans cannot see a property assigned from code-behind, which
+        // is the remaining way the retired pinch surface could be reattached to
+        // the commissioned preview.
+        var source = File.ReadAllText(Path.Combine(
+            FindSolutionRoot(),
+            "src",
+            "FloorplanFit.Desktop",
+            "SitePlanAdjustmentWindow.axaml.cs"));
+
+        foreach (var retiredSurface in new[]
+                 {
+                     "PinchMarkers",
+                     "IsPinchPlacementArmed",
+                     "PreviewPinchGroupId",
+                     "CompressionHandle"
+                 })
+        {
+            Assert.DoesNotContain(retiredSurface, source, StringComparison.Ordinal);
+        }
+    }
+
     private static string ReadAdjustmentXaml()
         => File.ReadAllText(Path.Combine(
             FindSolutionRoot(),
