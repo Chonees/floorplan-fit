@@ -1434,6 +1434,15 @@ public sealed class FloorPlanReviewViewModelTests
 
         await fixture.ViewModel.PublishAsync(CancellationToken.None);
 
+        // CommissionPublishedCurationAsync computes the exact guard it refused on and reports
+        // it through StatusMessage. Assert that before asserting persistence, otherwise a
+        // refusal only ever surfaces as "the collection was empty" and the reason production
+        // already knows is thrown away.
+        Assert.False(
+            // Matched without the accented character on purpose: the needle must not depend on
+            // how this file is encoded, or a mangled literal would make the assertion vacuous.
+            fixture.ViewModel.StatusMessage.Contains("Publicado, pero no qued", StringComparison.Ordinal),
+            $"Commissioning refused to persist a profile: {fixture.ViewModel.StatusMessage}");
         var profile = Assert.Single(fixture.ProfileRepository.Items);
         Assert.Equal(fixture.FloorPlanVersionId, profile.FloorPlanVersionId);
         Assert.Equal(publishedCurationId, profile.PublishedCurationId);
