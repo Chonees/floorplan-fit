@@ -895,7 +895,10 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return new(false, null, $"falta al menos un grupo {missing} publicado para comisionar ancho y profundidad.");
         }
 
-        var successes = new List<CommissionExistingCurationProfileCompilationResult>(1);
+        // Carry the edge pair alongside each success so an ambiguous outcome can name the
+        // combinations that survived. Without it the operator is told the geometry is
+        // ambiguous but not which axis failed to pin a direction.
+        var successes = new List<(string WidthEdge, string DepthEdge, CommissionExistingCurationProfileCompilationResult Result)>(1);
         var rejections = new List<string>();
         foreach (var widthEdge in new[] { "Right", "Left" })
         {
@@ -932,7 +935,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
                         auxiliaryBindings));
                 if (result.Succeeded)
                 {
-                    successes.Add(result);
+                    successes.Add((widthEdge, depthEdge, result));
                 }
                 else if (!string.IsNullOrWhiteSpace(result.RejectionReason))
                 {
@@ -943,11 +946,13 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         return successes.Count switch
         {
-            1 => successes[0],
+            1 => successes[0].Result,
             > 1 => new(
                 false,
                 null,
-                "la geometr\u00EDa admite m\u00E1s de un borde de cierre; dej\u00E1 una sola combinaci\u00F3n estructural completa en la curaci\u00F3n."),
+                "la geometr\u00EDa admite m\u00E1s de un borde de cierre (" +
+                string.Join(", ", successes.Select(pair => $"{pair.WidthEdge}/{pair.DepthEdge}")) +
+                "); dej\u00E1 una sola combinaci\u00F3n estructural completa en la curaci\u00F3n."),
             _ => new(
                 false,
                 null,
