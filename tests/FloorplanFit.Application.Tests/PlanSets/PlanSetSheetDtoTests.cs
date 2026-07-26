@@ -80,11 +80,13 @@ public sealed class PlanSetSheetDtoTests
             ProjectionConfidence: 0.5m,
             ProjectionWarning: "Compression review");
 
+        // The separator is the ASCII pipe that PlanSetSheetDto joins parts with, because
+        // these labels are written into audit artifacts that PowerShell verifiers read.
         Assert.Equal(
-            "WholeSheetSimilarity · confidence 0.25 · Needs manual review",
+            "WholeSheetSimilarity | confidence 0.25 | Needs manual review",
             sheet.RegistrationQualityLabel);
         Assert.Equal(
-            "ElectricalWholeSheetSimilarity · confidence 0.5 · Compression review",
+            "ElectricalWholeSheetSimilarity | confidence 0.5 | Compression review",
             sheet.ProjectionQualityLabel);
     }
 }

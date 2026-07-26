@@ -115,7 +115,11 @@ public sealed class ElectricalRecipeProjectionTests
         var projectedMin = ElectricalRecipeProjection.ProjectPoint(0m, 0m, registration, recipe, normalization);
         var projectedMax = ElectricalRecipeProjection.ProjectPoint(470m, 0m, registration, recipe, normalization);
 
-        Assert.Equal(464.4m, projectedMax.X - projectedMin.X);
+        // Compare to ten decimal places. The projection divides and multiplies decimals, so
+        // the exact result carries representation noise around the twenty-sixth decimal;
+        // ten places is still sixteen orders of magnitude tighter than any geometric error
+        // this contract exists to catch.
+        Assert.Equal(464.4m, projectedMax.X - projectedMin.X, 10);
     }
 
     [Fact]
