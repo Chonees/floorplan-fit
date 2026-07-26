@@ -26,7 +26,11 @@ public sealed record PlanSetSheetDto(
     private bool HasEditableRegistration =>
         RegistrationStatus is "Unregistered" or "Rejected";
 
-    public bool CanUnlink => !IsCanonical;
+    // A registration awaiting a decision is resolved by confirming or rejecting it, not by
+    // unlinking the sheet underneath it, so unlink is withheld for exactly that state. Once
+    // the registration is unregistered, rejected or confirmed, unlink is the escape hatch.
+    public bool CanUnlink =>
+        !IsCanonical && RegistrationStatus != "PendingConfirmation";
 
     public bool CanRegisterDependent =>
         !IsCanonical &&
