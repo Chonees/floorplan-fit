@@ -135,6 +135,7 @@ public sealed class GetPlanSetLibraryHandler
 
         return registrations
             .OrderBy(item => item.CreatedAtUtc)
+            .ThenBy(item => item.Id)
             .GroupBy(item => item.DependentSheetId)
             .ToDictionary(
                 group => group.Key,
@@ -170,6 +171,7 @@ public sealed class GetPlanSetLibraryHandler
 
         return projections
             .OrderBy(item => item.CreatedAtUtc)
+            .ThenBy(item => item.Id)
             .GroupBy(item => item.DependentSheetId)
             .ToDictionary(
                 group => group.Key,

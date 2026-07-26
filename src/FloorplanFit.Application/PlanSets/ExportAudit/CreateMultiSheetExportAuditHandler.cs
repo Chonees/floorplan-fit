@@ -426,7 +426,14 @@ public sealed class CreateMultiSheetExportAuditHandler
             .GroupBy(projection => projection.DependentSheetId)
             .ToDictionary(
                 group => group.Key,
-                group => group.OrderBy(projection => projection.CreatedAtUtc).Last());
+                // Tie-break by id exactly as ExportMultiSheetPlanSetPackageHandler does when
+                // it assigns export paths. Without it, equal timestamps make the two places
+                // choose different projections, so the projection audited here has no export
+                // path and PlanSetExportedSheet rejects ProjectedAutomatically without one.
+                group => group
+                    .OrderBy(projection => projection.CreatedAtUtc)
+                    .ThenBy(projection => projection.Id)
+                    .Last());
 
         foreach (var sheet in dependentSheets.Where(sheet => !sheet.IsCanonical))
         {

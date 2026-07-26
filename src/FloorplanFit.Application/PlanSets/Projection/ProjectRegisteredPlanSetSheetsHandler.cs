@@ -45,8 +45,12 @@ public sealed class ProjectRegisteredPlanSetSheetsHandler
             cancellationToken);
         var latestRegistrations = registrations
             .GroupBy(registration => registration.DependentSheetId)
-            .Select(group => group.OrderBy(registration => registration.CreatedAtUtc).Last())
+            .Select(group => group
+                .OrderBy(registration => registration.CreatedAtUtc)
+                .ThenBy(registration => registration.Id)
+                .Last())
             .OrderBy(registration => registration.CreatedAtUtc)
+            .ThenBy(registration => registration.Id)
             .ToArray();
         var projections = new List<SheetAdjustmentProjectionDto>(latestRegistrations.Length);
 
