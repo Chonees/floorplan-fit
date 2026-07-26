@@ -55,6 +55,11 @@ public sealed class SqliteSchemaInitializerTests
             {
                 await connection.OpenAsync();
                 await using var command = connection.CreateCommand();
+                // A raw interpolated string with a single $ treats { as the start of an
+                // interpolation and offers no doubled-brace escape, so the transform JSON
+                // braces are supplied through a plain, uninterpolated raw string.
+                const string transformJson =
+                    """{"Scale":1,"RotationDegrees":0,"TranslateX":0,"TranslateY":0}""";
                 command.CommandText =
                     $"""
                     CREATE TABLE sheet_registrations (
@@ -88,7 +93,7 @@ public sealed class SqliteSchemaInitializerTests
                         '{dependentSheetId}',
                         '{canonicalFloorPlanVersionId}',
                         'WholeSheetSimilarity',
-                        '{{"Scale":1,"RotationDegrees":0,"TranslateX":0,"TranslateY":0}}',
+                        '{transformJson}',
                         '0.9',
                         'Confirmed',
                         '2026-07-15T12:00:00.0000000Z',
