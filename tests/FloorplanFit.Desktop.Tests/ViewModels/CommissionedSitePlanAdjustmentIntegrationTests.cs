@@ -3,6 +3,7 @@ using FloorplanFit.Application.FloorPlans.SitePlanAdjustment;
 using FloorplanFit.Contracts.FloorPlans;
 using FloorplanFit.Desktop.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
+using Xunit;
 
 namespace FloorplanFit.Desktop.Tests.ViewModels;
 

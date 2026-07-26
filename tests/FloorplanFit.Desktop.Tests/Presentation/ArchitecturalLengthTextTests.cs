@@ -1,5 +1,6 @@
 using System.Globalization;
 using FloorplanFit.Desktop.Presentation;
+using Xunit;
 
 namespace FloorplanFit.Desktop.Tests.Presentation;
 

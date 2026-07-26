@@ -1,6 +1,7 @@
 using FloorplanFit.Application.Abstractions;
 using FloorplanFit.Contracts.PlanSets;
 using FloorplanFit.Desktop.ViewModels;
+using Xunit;
 
 namespace FloorplanFit.Desktop.Tests.ViewModels;
 
