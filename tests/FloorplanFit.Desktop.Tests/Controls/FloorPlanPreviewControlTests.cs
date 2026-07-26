@@ -1564,13 +1564,18 @@ public sealed class FloorPlanPreviewControlTests
         Assert.InRange(Math.Abs(anchorScreenPoint.Y - projectedAfter.Y), 0d, 0.001d);
     }
 
+    // The edge arrives as a name because FloorPlanPreviewGeometry is internal and a public
+    // test method may not expose a less accessible type in its signature. Naming the type
+    // inside the body is legal, so the value is parsed here rather than widening production
+    // accessibility for a test. nameof keeps the compile-time link to the enum member.
     [Theory]
-    [InlineData(FloorPlanPreviewGeometry.PreviewCompressionEdge.Right, Domain.FloorPlans.PinchAxisTag.Width)]
-    [InlineData(FloorPlanPreviewGeometry.PreviewCompressionEdge.Top, Domain.FloorPlans.PinchAxisTag.Height)]
+    [InlineData(nameof(FloorPlanPreviewGeometry.PreviewCompressionEdge.Right), Domain.FloorPlans.PinchAxisTag.Width)]
+    [InlineData(nameof(FloorPlanPreviewGeometry.PreviewCompressionEdge.Top), Domain.FloorPlans.PinchAxisTag.Height)]
     public void ResolveCapturedViewportForActiveEdgeDrag_keeps_the_press_viewport_stable(
-        FloorPlanPreviewGeometry.PreviewCompressionEdge edge,
+        string edgeName,
         Domain.FloorPlans.PinchAxisTag axisTag)
     {
+        var edge = Enum.Parse<FloorPlanPreviewGeometry.PreviewCompressionEdge>(edgeName);
         var capturedBaseViewport = new FloorPlanPreviewGeometry.PreviewViewport(
             new Rect(0, 0, 1200, 700),
             MinX: 12d,

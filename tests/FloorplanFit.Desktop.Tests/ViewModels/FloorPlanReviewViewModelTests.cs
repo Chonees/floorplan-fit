@@ -2515,7 +2515,9 @@ public sealed class FloorPlanReviewViewModelTests
         public void Dispose() => provider.Dispose();
     }
 
-    private enum CommissioningOpeningHostScenario
+    // Public because a public [Theory] method takes it as a parameter, and a method may not
+    // expose a less accessible type in its signature.
+    public enum CommissioningOpeningHostScenario
     {
         Valid,
         Missing,
