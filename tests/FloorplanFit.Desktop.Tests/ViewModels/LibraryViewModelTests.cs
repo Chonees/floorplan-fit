@@ -487,7 +487,8 @@ public sealed class LibraryViewModelTests
             0.95m,
             SheetRegistrationStatus.Confirmed,
             new DateTime(2026, 7, 1, 12, 15, 0, DateTimeKind.Utc),
-            new DateTime(2026, 7, 1, 12, 16, 0, DateTimeKind.Utc));
+            new DateTime(2026, 7, 1, 12, 16, 0, DateTimeKind.Utc),
+            warning: null);
         var projection = new SheetAdjustmentProjection(
             Guid.NewGuid(),
             planSetVersionId,
