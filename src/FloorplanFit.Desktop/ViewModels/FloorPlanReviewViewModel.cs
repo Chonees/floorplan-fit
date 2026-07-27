@@ -895,75 +895,95 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             return new(false, null, $"falta al menos un grupo {missing} publicado para comisionar ancho y profundidad.");
         }
 
-        // Carry the edge pair alongside each success so an ambiguous outcome can name the
-        // combinations that survived. Without it the operator is told the geometry is
-        // ambiguous but not which axis failed to pin a direction.
-        var successes = new List<(string WidthEdge, string DepthEdge, CommissionExistingCurationProfileCompilationResult Result)>(1);
-        var rejections = new List<string>();
-        foreach (var widthEdge in new[] { "Right", "Left" })
+        // The closing edge says which side of the house absorbs the reduction. It is an operator
+        // decision and it cannot be derived: auxiliary classification is edge-independent by
+        // construction, so the only thing that ever vetoed an edge was whether a door happened to
+        // sit against the closing wall. Read the commissioned choice instead of searching for one.
+        if (!TryResolveCommissionedClosingEdge(widthGroups, "ancho", out var widthEdge, out var widthEdgeReason))
         {
-            foreach (var depthEdge in new[] { "Top", "Bottom" })
-            {
-                CommissionExistingCurationVariableSelection[] variables =
-                [
-                    new(
-                        "width",
-                        "Commissioned width",
-                        HouseAdaptationAxis.Width,
-                        Priority: 1,
-                        widthGroups.Select(group =>
-                            new CommissionExistingCurationPinchGroupSelection(group.PinchGroupId, widthEdge)).ToArray()),
-                    new(
-                        "depth",
-                        "Commissioned depth",
-                        HouseAdaptationAxis.Depth,
-                        Priority: 1,
-                        depthGroups.Select(group =>
-                            new CommissionExistingCurationPinchGroupSelection(group.PinchGroupId, depthEdge)).ToArray())
-                ];
-                var result = CommissionExistingCurationProfileCompiler.Compile(
-                    new CommissionExistingCurationProfileCompilationRequest(
-                        publishedFloorPlanVersionId,
-                        publishedCurationId,
-                        sourceToMillimetersFactor,
-                        coordinateTolerance,
-                        variables,
-                        PinchGroups.ToArray(),
-                        PinchMarkers.ToArray(),
-                        WallCandidates.ToArray(),
-                        GeometryPaths.ToArray(),
-                        auxiliaryBindings));
-                if (result.Succeeded)
-                {
-                    successes.Add((widthEdge, depthEdge, result));
-                }
-                else if (!string.IsNullOrWhiteSpace(result.RejectionReason))
-                {
-                    rejections.Add(result.RejectionReason);
-                }
-            }
+            return new(false, null, widthEdgeReason);
         }
 
-        return successes.Count switch
+        if (!TryResolveCommissionedClosingEdge(depthGroups, "profundidad", out var depthEdge, out var depthEdgeReason))
         {
-            1 => successes[0].Result,
-            > 1 => new(
+            return new(false, null, depthEdgeReason);
+        }
+
+        CommissionExistingCurationVariableSelection[] variables =
+        [
+            new(
+                "width",
+                "Commissioned width",
+                HouseAdaptationAxis.Width,
+                Priority: 1,
+                widthGroups.Select(group =>
+                    new CommissionExistingCurationPinchGroupSelection(group.PinchGroupId, widthEdge)).ToArray()),
+            new(
+                "depth",
+                "Commissioned depth",
+                HouseAdaptationAxis.Depth,
+                Priority: 1,
+                depthGroups.Select(group =>
+                    new CommissionExistingCurationPinchGroupSelection(group.PinchGroupId, depthEdge)).ToArray())
+        ];
+        var compilation = CommissionExistingCurationProfileCompiler.Compile(
+            new CommissionExistingCurationProfileCompilationRequest(
+                publishedFloorPlanVersionId,
+                publishedCurationId,
+                sourceToMillimetersFactor,
+                coordinateTolerance,
+                variables,
+                PinchGroups.ToArray(),
+                PinchMarkers.ToArray(),
+                WallCandidates.ToArray(),
+                GeometryPaths.ToArray(),
+                auxiliaryBindings));
+        return compilation.Succeeded
+            ? compilation
+            : new(
                 false,
                 null,
-                "la geometr\u00EDa admite m\u00E1s de un borde de cierre (" +
-                string.Join(", ", successes.Select(pair => $"{pair.WidthEdge}/{pair.DepthEdge}")) +
-                "); las combinaciones descartadas fallaron por: " +
-                (rejections.Count == 0
-                    ? "ninguna"
-                    : string.Join(" | ", rejections.Distinct(StringComparer.Ordinal))) +
-                "; dej\u00E1 una sola combinaci\u00F3n estructural completa en la curaci\u00F3n."),
-            _ => new(
-                false,
-                null,
-                "ninguna combinaci\u00F3n Left/Right y Top/Bottom cerr\u00F3 de forma segura. " +
-                (rejections.FirstOrDefault() ?? "Revis\u00E1 los grupos, pares de paredes y capacidades."))
-        };
+                $"la receta comisionada no compila con los bordes elegidos ({widthEdge}/{depthEdge}): " +
+                (compilation.RejectionReason ?? "revisa los grupos, pares de paredes y capacidades."));
     }
+
+    // A single axis closes on one side. Nothing previously enforced that, so two width groups could
+    // have declared opposite directions for the same house without anything objecting.
+    private static bool TryResolveCommissionedClosingEdge(
+        IReadOnlyList<PinchGroupDto> axisGroups,
+        string axisLabel,
+        out string edge,
+        out string reason)
+    {
+        edge = string.Empty;
+        reason = string.Empty;
+        var uncommissioned = axisGroups
+            .Where(group => string.IsNullOrWhiteSpace(group.ClosingEdge))
+            .ToArray();
+        if (uncommissioned.Length > 0)
+        {
+            reason = $"falta elegir el borde de cierre de {axisLabel} en " +
+                string.Join(", ", uncommissioned.Select(group => $"'{group.Name}'")) +
+                "; el plano no puede decidirlo.";
+            return false;
+        }
+
+        var declared = axisGroups
+            .Select(group => group.ClosingEdge!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (declared.Length > 1)
+        {
+            reason = $"los grupos de {axisLabel} declaran bordes de cierre distintos (" +
+                string.Join(", ", declared) +
+                "); un eje se cierra de un solo lado.";
+            return false;
+        }
+
+        edge = declared[0];
+        return true;
+    }
+
 
     private bool TryBuildCommissioningAuxiliaryBindings(
         decimal coordinateTolerance,

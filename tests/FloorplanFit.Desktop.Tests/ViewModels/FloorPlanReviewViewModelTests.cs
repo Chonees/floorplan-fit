@@ -2340,13 +2340,16 @@ public sealed class FloorPlanReviewViewModelTests
                 crossingOpeningHostPathId,
                 7));
         }
+        // The closing edge is the operator's commissioned decision about which side of the house
+        // absorbs the reduction, so the fixture states it rather than leaving commissioning to
+        // infer it from where a door happens to sit.
         PinchGroupDto[] groups = includeDepth
             ?
             [
-                new(widthGroupId, "Width room", nameof(PinchAxisTag.Width), 1),
-                new(depthGroupId, "Depth room", nameof(PinchAxisTag.Height), 2)
+                new(widthGroupId, "Width room", nameof(PinchAxisTag.Width), 1, "Right"),
+                new(depthGroupId, "Depth room", nameof(PinchAxisTag.Height), 2, "Top")
             ]
-            : [new(widthGroupId, "Width room", nameof(PinchAxisTag.Width), 1)];
+            : [new(widthGroupId, "Width room", nameof(PinchAxisTag.Width), 1, "Right")];
         var markers = new List<PinchMarkerDto>
         {
             new(Guid.NewGuid(), widthGroupId, "Width room", widthACandidateId, widthAPathId, nameof(PinchAxisTag.Width), 0.5m, 101.6m, 1),
