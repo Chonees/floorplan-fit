@@ -952,7 +952,11 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
                 null,
                 "la geometr\u00EDa admite m\u00E1s de un borde de cierre (" +
                 string.Join(", ", successes.Select(pair => $"{pair.WidthEdge}/{pair.DepthEdge}")) +
-                "); dej\u00E1 una sola combinaci\u00F3n estructural completa en la curaci\u00F3n."),
+                "); las combinaciones descartadas fallaron por: " +
+                (rejections.Count == 0
+                    ? "ninguna"
+                    : string.Join(" | ", rejections.Distinct(StringComparer.Ordinal))) +
+                "; dej\u00E1 una sola combinaci\u00F3n estructural completa en la curaci\u00F3n."),
             _ => new(
                 false,
                 null,
