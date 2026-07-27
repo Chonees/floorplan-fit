@@ -23,12 +23,14 @@ public static class SqliteSchemaInitializer
         {
             EnsureCommissionedHouseAdaptationProfilesSchema(connection);
             EnsureSheetRegistrationsSchema(connection);
+            EnsurePinchGroupsSchema(connection);
             return Task.CompletedTask;
         }
 
         if (schemaVersion == 2)
         {
             EnsureSheetRegistrationsSchema(connection);
+            EnsurePinchGroupsSchema(connection);
             MigrateSchemaVersion2To3(connection);
             return Task.CompletedTask;
         }
@@ -37,6 +39,7 @@ public static class SqliteSchemaInitializer
         {
             EnsureSheetRegistrationsSchema(connection);
             EnsureCommissionedHouseAdaptationProfilesSchema(connection);
+            EnsurePinchGroupsSchema(connection);
             RepairSheetRegistrationCanonicalIds(connection);
             return Task.CompletedTask;
         }
@@ -426,7 +429,8 @@ public static class SqliteSchemaInitializer
                 floorplan_curation_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 axis_tag INTEGER NOT NULL,
-                sort_order INTEGER NOT NULL
+                sort_order INTEGER NOT NULL,
+                closing_edge TEXT NULL
             );
 
             CREATE TABLE IF NOT EXISTS pinch_markers (
@@ -604,6 +608,7 @@ public static class SqliteSchemaInitializer
         EnsureLabelOverrideSchema(connection);
         EnsureDimensionOverrideSchema(connection);
         EnsureMeasurementIntervalBindingSchema(connection);
+        EnsurePinchGroupsSchema(connection);
         EnsurePinchMarkersSchema(connection);
         EnsureFloorPlanVersionsSoftDeleteSchema(connection);
         EnsureDeletionPipelineIndexes(connection);
@@ -1356,6 +1361,16 @@ public static class SqliteSchemaInitializer
         using var alterCommand = connection.CreateCommand();
         alterCommand.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition}";
         alterCommand.ExecuteNonQuery();
+    }
+
+    private static void EnsurePinchGroupsSchema(SqliteConnection connection)
+    {
+        if (!TableExists(connection, "pinch_groups"))
+        {
+            return;
+        }
+
+        EnsureColumnExists(connection, "pinch_groups", "closing_edge", "TEXT NULL");
     }
 
     private static void EnsurePinchMarkersSchema(SqliteConnection connection)

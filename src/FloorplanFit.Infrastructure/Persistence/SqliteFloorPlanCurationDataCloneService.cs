@@ -83,7 +83,7 @@ public sealed class SqliteFloorPlanCurationDataCloneService : IFloorPlanCuration
     {
         var rows = QueryRows(
             """
-            SELECT id, name, axis_tag, sort_order
+            SELECT id, name, axis_tag, sort_order, COALESCE(closing_edge, '') AS closing_edge
             FROM pinch_groups
             WHERE floorplan_curation_id = $source_curation_id
             ORDER BY sort_order ASC, id ASC
@@ -96,6 +96,8 @@ public sealed class SqliteFloorPlanCurationDataCloneService : IFloorPlanCuration
             var clonedId = Guid.NewGuid().ToString();
             idMap[row["id"]] = clonedId;
 
+            var closingEdge = row["closing_edge"].Length == 0 ? null : row["closing_edge"];
+
             using var command = CreateCommand(
                 """
                 INSERT INTO pinch_groups (
@@ -103,19 +105,22 @@ public sealed class SqliteFloorPlanCurationDataCloneService : IFloorPlanCuration
                     floorplan_curation_id,
                     name,
                     axis_tag,
-                    sort_order)
+                    sort_order,
+                    closing_edge)
                 VALUES (
                     $id,
                     $floorplan_curation_id,
                     $name,
                     $axis_tag,
-                    $sort_order)
+                    $sort_order,
+                    $closing_edge)
                 """);
             command.Parameters.AddWithValue("$id", clonedId);
             command.Parameters.AddWithValue("$floorplan_curation_id", destinationCurationId.ToString());
             command.Parameters.AddWithValue("$name", row["name"]);
             command.Parameters.AddWithValue("$axis_tag", row["axis_tag"]);
             command.Parameters.AddWithValue("$sort_order", row["sort_order"]);
+            command.Parameters.AddWithValue("$closing_edge", (object?)closingEdge ?? DBNull.Value);
             command.ExecuteNonQuery();
         }
 

@@ -24,13 +24,15 @@ public sealed class SqlitePinchGroupRepository : IPinchGroupRepository
                 floorplan_curation_id,
                 name,
                 axis_tag,
-                sort_order)
+                sort_order,
+                closing_edge)
             VALUES (
                 $id,
                 $floorplan_curation_id,
                 $name,
                 $axis_tag,
-                $sort_order)
+                $sort_order,
+                $closing_edge)
             """);
 
         command.Parameters.AddWithValue("$id", group.Id.ToString());
@@ -38,6 +40,7 @@ public sealed class SqlitePinchGroupRepository : IPinchGroupRepository
         command.Parameters.AddWithValue("$name", group.Name);
         command.Parameters.AddWithValue("$axis_tag", (int)group.AxisTag);
         command.Parameters.AddWithValue("$sort_order", group.SortOrder);
+        command.Parameters.AddWithValue("$closing_edge", (object?)group.ClosingEdge ?? DBNull.Value);
         command.ExecuteNonQuery();
 
         return Task.CompletedTask;
@@ -54,7 +57,8 @@ public sealed class SqlitePinchGroupRepository : IPinchGroupRepository
                 floorplan_curation_id,
                 name,
                 axis_tag,
-                sort_order
+                sort_order,
+                closing_edge
             FROM pinch_groups
             WHERE id = $id
             LIMIT 1
@@ -81,7 +85,8 @@ public sealed class SqlitePinchGroupRepository : IPinchGroupRepository
                 floorplan_curation_id,
                 name,
                 axis_tag,
-                sort_order
+                sort_order,
+                closing_edge
             FROM pinch_groups
             WHERE floorplan_curation_id = $floorplan_curation_id
             ORDER BY sort_order ASC, id ASC
@@ -124,7 +129,8 @@ public sealed class SqlitePinchGroupRepository : IPinchGroupRepository
                 floorplan_curation_id = $floorplan_curation_id,
                 name = $name,
                 axis_tag = $axis_tag,
-                sort_order = $sort_order
+                sort_order = $sort_order,
+                closing_edge = $closing_edge
             WHERE id = $id
             """);
         command.Parameters.AddWithValue("$id", group.Id.ToString());
@@ -132,6 +138,7 @@ public sealed class SqlitePinchGroupRepository : IPinchGroupRepository
         command.Parameters.AddWithValue("$name", group.Name);
         command.Parameters.AddWithValue("$axis_tag", (int)group.AxisTag);
         command.Parameters.AddWithValue("$sort_order", group.SortOrder);
+        command.Parameters.AddWithValue("$closing_edge", (object?)group.ClosingEdge ?? DBNull.Value);
         command.ExecuteNonQuery();
 
         return Task.CompletedTask;
@@ -144,7 +151,8 @@ public sealed class SqlitePinchGroupRepository : IPinchGroupRepository
             Guid.Parse(reader.GetString(1)),
             reader.GetString(2),
             (PinchAxisTag)reader.GetInt32(3),
-            reader.GetInt32(4));
+            reader.GetInt32(4),
+            reader.IsDBNull(5) ? null : reader.GetString(5));
     }
 
     private SqliteCommand CreateCommand(string sql)

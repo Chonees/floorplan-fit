@@ -2769,7 +2769,12 @@ public sealed class FloorPlanReviewViewModelTests
                 [],
                 groupRepository.Items
                     .OrderBy(item => item.SortOrder)
-                    .Select(item => new PinchGroupDto(item.Id, item.Name, item.AxisTag.ToString(), item.SortOrder))
+                    .Select(item => new PinchGroupDto(
+                        item.Id,
+                        item.Name,
+                        item.AxisTag.ToString(),
+                        item.SortOrder,
+                        item.ClosingEdge))
                     .ToArray(),
                 []);
         }

@@ -39,12 +39,16 @@ public sealed class RenamePinchGroupHandler
             throw new InvalidOperationException("Pinch group does not belong to the active curation.");
         }
 
+        // Carry the commissioned closing edge across the rename. UpdateAsync now writes
+        // closing_edge, so rebuilding the aggregate without it would overwrite the operator's
+        // choice with null on every rename, silently and without failing to compile.
         var updatedGroup = new PinchGroup(
             group.Id,
             group.FloorPlanCurationId,
             name,
             group.AxisTag,
-            group.SortOrder);
+            group.SortOrder,
+            group.ClosingEdge);
 
         await pinchGroupRepository.UpdateAsync(updatedGroup, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);

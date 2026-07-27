@@ -2070,7 +2070,8 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
                 id,
                 name,
                 axis_tag,
-                sort_order
+                sort_order,
+                closing_edge
             FROM pinch_groups
             WHERE floorplan_curation_id = $floorplan_curation_id
             ORDER BY sort_order ASC, id ASC
@@ -2085,7 +2086,8 @@ public sealed class SqliteFloorPlanReviewSessionReader : IFloorPlanReviewSession
                 Guid.Parse(reader.GetString(0)),
                 reader.GetString(1),
                 ((PinchAxisTag)reader.GetInt32(2)).ToString(),
-                reader.GetInt32(3)));
+                reader.GetInt32(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4)));
         }
 
         return items;

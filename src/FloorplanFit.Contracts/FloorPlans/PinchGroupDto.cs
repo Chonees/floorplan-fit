@@ -4,4 +4,5 @@ public sealed record PinchGroupDto(
     Guid PinchGroupId,
     string Name,
     string AxisTag,
-    int SortOrder);
+    int SortOrder,
+    string? ClosingEdge = null);
