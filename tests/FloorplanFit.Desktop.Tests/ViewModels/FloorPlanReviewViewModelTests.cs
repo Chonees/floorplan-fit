@@ -2266,6 +2266,7 @@ public sealed class FloorPlanReviewViewModelTests
         var duplicateOpeningHostPathId = Guid.NewGuid();
         var crossingOpeningHostPathId = Guid.NewGuid();
         var protectedPathId = Guid.NewGuid();
+        var depthProtectedPathId = Guid.NewGuid();
         var widthACandidateId = Guid.NewGuid();
         var widthBCandidateId = Guid.NewGuid();
         var widthClosingCandidateId = Guid.NewGuid();
@@ -2304,7 +2305,13 @@ public sealed class FloorPlanReviewViewModelTests
                 openingGeometry.StartY,
                 openingGeometry.EndX,
                 openingGeometry.EndY),
-            Path(protectedPathId, 1m, 2m, 2m, 2m)
+            Path(protectedPathId, 1m, 2m, 2m, 2m),
+            // Mirror of the width-room protected component inside the depth room, on the low
+            // side of the depth cut just as the width one sits on the low side of the width
+            // cut. A commissioned house carries curated evidence on both axes; without an
+            // auxiliary on the depth axis nothing pins its closing direction, so Top and
+            // Bottom both compile and commissioning correctly refuses the pair as ambiguous.
+            Path(depthProtectedPathId, 21m, 1m, 22m, 1m)
         };
         if (openingHostScenario == CommissioningOpeningHostScenario.Multiple)
         {
@@ -2404,7 +2411,17 @@ public sealed class FloorPlanReviewViewModelTests
                     [protectedPathId],
                     1m,
                     null,
-                    1)
+                    1),
+                new ProtectedDetailAssemblyDto(
+                    Guid.NewGuid(),
+                    "PROTECTED:DEPTH",
+                    "PROTECTED",
+                    "Core",
+                    "LINE",
+                    [depthProtectedPathId],
+                    1m,
+                    null,
+                    2)
             ],
             candidates,
             groups,
