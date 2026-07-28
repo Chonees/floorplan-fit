@@ -24,6 +24,12 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private const string ExportRequiresDirtyNativeDimensionsMessage = "No hay cotas modificadas para exportar.";
     private const decimal MillimetersPerInch = 25.4m;
 
+    // The closing edge vocabulary is per axis and is already enforced by PinchGroup: a Width group
+    // closes Left or Right, a Height group closes Top or Bottom. Offering the wrong pair would let
+    // the operator pick something the domain constructor throws on, so the options follow the axis.
+    private static readonly string[] WidthClosingEdgeOptions = ["Left", "Right"];
+    private static readonly string[] DepthClosingEdgeOptions = ["Top", "Bottom"];
+
     private readonly FloorPlanReviewApplyCoordinator applyCoordinator;
     private readonly FloorPlanReviewMutationCoordinator mutationCoordinator;
     private readonly FloorPlanReviewSelectionCoordinator selectionCoordinator;
@@ -59,6 +65,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         this.scopeFactory = scopeFactory;
         this.templateId = templateId;
         this.floorPlanVersionId = floorPlanVersionId;
+        // The generated OnSelectedPinchAxisChanged hook never fires for the field initializer, so the
+        // edge options would stay empty until the operator touched the axis selector.
+        SyncPinchClosingEdgeOptions();
     }
 
     public ObservableCollection<WallCandidateDto> WallCandidates { get; } = [];
@@ -115,6 +124,10 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     public ObservableCollection<ArticulationBandDto> ArticulationBands { get; } = [];
 
     public IReadOnlyList<string> PinchAxisOptions { get; } = Enum.GetNames<PinchAxisTag>();
+
+    // Twin of PinchAxisOptions, but it cannot be a static list: the offered edges depend on the
+    // selected axis, so this is repopulated the way EditableCuratedArtifactCategoryOptions is.
+    public ObservableCollection<string> PinchClosingEdgeOptions { get; } = [];
 
     public IReadOnlyList<string> CuratedArtifactFamilyOptions { get; } = FloorPlanArtifactTaxonomy.Families;
 
@@ -207,6 +220,9 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
     private string selectedPinchAxis = nameof(PinchAxisTag.Width);
 
     [ObservableProperty]
+    private string selectedPinchClosingEdge = "Left";
+
+    [ObservableProperty]
     private string newPinchGroupName = string.Empty;
 
     [ObservableProperty]
@@ -295,6 +311,31 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         SelectedPinchGroup is not null;
 
     public bool CanRenameSelectedPinchGroup => CanRemoveSelectedPinchGroup;
+
+    // Validated against the SELECTED GROUP's axis, not the toolbar axis, so the button can never
+    // hand the domain an edge it will throw on.
+    public bool CanChangeSelectedPinchGroupClosingEdge =>
+        DraftCurationId != Guid.Empty &&
+        SelectedPinchGroup is not null &&
+        ResolveClosingEdgeOptions(SelectedPinchGroup.AxisTag)
+            .Contains(SelectedPinchClosingEdge, StringComparer.OrdinalIgnoreCase) &&
+        !string.Equals(SelectedPinchGroup.ClosingEdge, SelectedPinchClosingEdge, StringComparison.OrdinalIgnoreCase);
+
+    public string SelectedPinchGroupClosingEdgeSummary
+    {
+        get
+        {
+            var group = SelectedPinchGroup;
+            if (group is null)
+            {
+                return "Elegi un grupo para ver su borde de cierre.";
+            }
+
+            return string.IsNullOrWhiteSpace(group.ClosingEdge)
+                ? $"{group.Name} todavia no tiene borde de cierre; sin el no se puede comisionar."
+                : $"{group.Name} cierra por {group.ClosingEdge}.";
+        }
+    }
 
     public string SuggestedPinchGroupName => CreateNextPinchGroupName();
 
@@ -1632,11 +1673,16 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         StatusMessage = $"Creando grupo de pinches {normalizedGroupName}...";
+        // A new group is born uncommissioned. The closing edge decides which side of the house
+        // absorbs the reduction, it cannot be derived from the plan, and defaulting it here would
+        // choose on the operator's behalf and silence the refusal this whole mechanism exists to
+        // raise. The operator sets it explicitly on the selected group.
         var groupId = await mutationCoordinator.AddPinchGroupAsync(
             DraftCurationId,
             normalizedGroupName,
             Enum.Parse<PinchAxisTag>(SelectedPinchAxis),
-            cancellationToken);
+            cancellationToken,
+            null);
 
         NewPinchGroupName = string.Empty;
         await RefreshSessionAsync(SelectedCandidate?.CandidateId, null, groupId, GetSelectedCuratedArtifactSelection(), cancellationToken);
@@ -1668,6 +1714,29 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
         await RefreshSessionAsync(SelectedCandidate?.CandidateId, SelectedPinchMarker?.PinchMarkerId, groupId, GetSelectedCuratedArtifactSelection(), cancellationToken);
         StatusMessage = $"Grupo de pinches {previousName} renombrado a {normalizedGroupName}.";
+    }
+
+    // Groups created before the selector existed carry no closing edge, and the plan cannot infer
+    // one, so commissioning stays blocked until the operator names the side that absorbs the cut.
+    public async Task ChangeSelectedPinchGroupClosingEdgeAsync(CancellationToken cancellationToken)
+    {
+        if (!CanChangeSelectedPinchGroupClosingEdge || SelectedPinchGroup is null)
+        {
+            return;
+        }
+
+        var groupId = SelectedPinchGroup.PinchGroupId;
+        var groupName = SelectedPinchGroup.Name;
+        var closingEdge = SelectedPinchClosingEdge;
+        StatusMessage = $"Comisionando el borde de cierre {closingEdge} en {groupName}...";
+        await mutationCoordinator.SetPinchGroupClosingEdgeAsync(
+            DraftCurationId,
+            groupId,
+            closingEdge,
+            cancellationToken);
+
+        await RefreshSessionAsync(SelectedCandidate?.CandidateId, SelectedPinchMarker?.PinchMarkerId, groupId, GetSelectedCuratedArtifactSelection(), cancellationToken);
+        StatusMessage = $"{groupName} cierra por {closingEdge}.";
     }
 
     public async Task AddMeasurementCorridorAsync(CancellationToken cancellationToken)
@@ -2766,6 +2835,7 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(CanPublishCuration));
         OnPropertyChanged(nameof(CanDeleteSelectedItem));
         OnPropertyChanged(nameof(CanRemoveSelectedPinchGroup));
+        OnPropertyChanged(nameof(CanChangeSelectedPinchGroupClosingEdge));
         OnPropertyChanged(nameof(CanRemoveSelectedMeasurementCorridor));
         OnPropertyChanged(nameof(CanRemoveSelectedMeasurementNode));
         OnPropertyChanged(nameof(CanChangeSelectedMeasurementCorridorAxis));
@@ -2853,6 +2923,13 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
             SelectedPinchAxis = value.AxisTag;
         }
 
+        // Show what was actually commissioned. A group with no edge leaves the selector on the axis
+        // default so the operator reads "todavia no tiene borde" instead of a fake committed value.
+        if (value is not null && !string.IsNullOrWhiteSpace(value.ClosingEdge))
+        {
+            SelectedPinchClosingEdge = value.ClosingEdge;
+        }
+
         if (value is null || SelectedPinchMarker?.PinchGroupId != value.PinchGroupId)
         {
             SelectedPinchMarker = null;
@@ -2862,6 +2939,8 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedPinchGroupMarkers));
         OnPropertyChanged(nameof(CanRemoveSelectedPinchGroup));
         OnPropertyChanged(nameof(CanRenameSelectedPinchGroup));
+        OnPropertyChanged(nameof(CanChangeSelectedPinchGroupClosingEdge));
+        OnPropertyChanged(nameof(SelectedPinchGroupClosingEdgeSummary));
         OnPropertyChanged(nameof(CanDeleteSelectedItem));
         OnPropertyChanged(nameof(SelectedPinchGroupImpactSummary));
         RaiseUxNotifications();
@@ -2869,6 +2948,10 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
 
     partial void OnSelectedPinchAxisChanged(string value)
     {
+        // Resync before resolving the group: the resolved group pushes its own edge back into the
+        // selector, and that value has to land in an option list that already matches the new axis.
+        SyncPinchClosingEdgeOptions();
+
         if (SelectedPinchGroup is null ||
             !string.Equals(SelectedPinchGroup.AxisTag, value, StringComparison.OrdinalIgnoreCase))
         {
@@ -2876,6 +2959,29 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         }
 
         RaiseUxNotifications();
+    }
+
+    partial void OnSelectedPinchClosingEdgeChanged(string value)
+    {
+        OnPropertyChanged(nameof(CanChangeSelectedPinchGroupClosingEdge));
+    }
+
+    private static IReadOnlyList<string> ResolveClosingEdgeOptions(string axisTag)
+    {
+        return string.Equals(axisTag, nameof(PinchAxisTag.Height), StringComparison.OrdinalIgnoreCase)
+            ? DepthClosingEdgeOptions
+            : WidthClosingEdgeOptions;
+    }
+
+    private void SyncPinchClosingEdgeOptions()
+    {
+        var options = ResolveClosingEdgeOptions(SelectedPinchAxis);
+        ReplaceItems(PinchClosingEdgeOptions, options);
+        if (!options.Contains(SelectedPinchClosingEdge, StringComparer.OrdinalIgnoreCase))
+        {
+            // Both axes always offer exactly two edges, so index 0 is always a valid domain value.
+            SelectedPinchClosingEdge = options[0];
+        }
     }
 
     private PinchGroupDto? ResolvePreviewPinchGroupForAxis(string axisTag)
@@ -3195,6 +3301,8 @@ public sealed partial class FloorPlanReviewViewModel : ObservableObject
         OnPropertyChanged(nameof(CanPublishCuration));
         OnPropertyChanged(nameof(CanRemoveSelectedPinchGroup));
         OnPropertyChanged(nameof(CanRenameSelectedPinchGroup));
+        OnPropertyChanged(nameof(CanChangeSelectedPinchGroupClosingEdge));
+        OnPropertyChanged(nameof(SelectedPinchGroupClosingEdgeSummary));
         OnPropertyChanged(nameof(SuggestedPinchGroupName));
         OnPropertyChanged(nameof(CanRemoveSelectedMeasurementCorridor));
         OnPropertyChanged(nameof(SelectedDimensionIntervalBindingSummary));

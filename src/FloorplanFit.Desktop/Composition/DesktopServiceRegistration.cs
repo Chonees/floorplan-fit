@@ -148,6 +148,7 @@ public static class DesktopServiceRegistration
         services.AddScoped<RemoveMeasurementNodeHandler>();
         services.AddScoped<RemovePinchGroupHandler>();
         services.AddScoped<RenamePinchGroupHandler>();
+        services.AddScoped<SetPinchGroupClosingEdgeHandler>();
         services.AddScoped<RemovePinchMarkerHandler>();
         services.AddScoped<RemoveRoomLabelHandler>();
         services.AddScoped<RemoveOpeningCandidateHandler>();

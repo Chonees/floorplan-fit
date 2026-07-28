@@ -248,6 +248,28 @@
                               IsEnabled="{Binding CanRenameSelectedPinchGroup}"
                               Click="RenamePinchGroupButton_OnClick" />
 
+                      <StackPanel Spacing="6">
+                        <TextBlock Classes="caption"
+                                   Text="{Binding SelectedPinchGroupClosingEdgeSummary}"
+                                   TextWrapping="Wrap" />
+                        <Grid ColumnDefinitions="*,Auto"
+                              ColumnSpacing="8">
+                          <StackPanel Spacing="4">
+                            <TextBlock Classes="caption"
+                                       Text="Borde de cierre" />
+                            <ComboBox ItemsSource="{Binding PinchClosingEdgeOptions}"
+                                      SelectedItem="{Binding SelectedPinchClosingEdge}"
+                                      IsEnabled="{Binding CanRenameSelectedPinchGroup}" />
+                          </StackPanel>
+                          <Button Grid.Column="1"
+                                  Classes="subtle"
+                                  Content="Comisionar borde"
+                                  VerticalAlignment="Bottom"
+                                  IsEnabled="{Binding CanChangeSelectedPinchGroupClosingEdge}"
+                                  Click="ChangePinchGroupClosingEdgeButton_OnClick" />
+                        </Grid>
+                      </StackPanel>
+
                       <Button Classes="danger"
                               Content="Eliminar grupo de pinches"
                               IsEnabled="{Binding CanRemoveSelectedPinchGroup}"

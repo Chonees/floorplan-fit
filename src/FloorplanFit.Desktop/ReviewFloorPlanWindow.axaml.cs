@@ -118,6 +118,16 @@ public partial class ReviewFloorPlanWindow : UserControl
         await viewModel.RemoveSelectedPinchGroupAsync(CancellationToken.None);
     }
 
+    private async void ChangePinchGroupClosingEdgeButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FloorPlanReviewViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.ChangeSelectedPinchGroupClosingEdgeAsync(CancellationToken.None);
+    }
+
     private async Task<string?> PromptForPinchGroupNameAsync(string title, string description, string initialName)
     {
         if (TopLevel.GetTopLevel(this) is not Window owner)

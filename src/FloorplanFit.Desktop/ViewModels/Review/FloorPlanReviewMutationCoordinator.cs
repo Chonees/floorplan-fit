@@ -56,15 +56,18 @@ internal sealed class FloorPlanReviewMutationCoordinator
         await handler.HandleAsync(templateId, draftCurationId, cancellationToken);
     }
 
+    // closingEdge trails the cancellation token on purpose: it is additive, and every pre-existing
+    // positional call site keeps binding its 4th argument to the token.
     public async Task<Guid> AddPinchGroupAsync(
         Guid draftCurationId,
         string groupName,
         PinchAxisTag axisTag,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? closingEdge = null)
     {
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<AddPinchGroupHandler>();
-        return await handler.HandleAsync(draftCurationId, groupName, axisTag, cancellationToken);
+        return await handler.HandleAsync(draftCurationId, groupName, axisTag, cancellationToken, closingEdge);
     }
 
     public async Task<Guid> AddManualWallCandidateAsync(
@@ -107,6 +110,17 @@ internal sealed class FloorPlanReviewMutationCoordinator
         using var scope = scopeFactory.CreateScope();
         var handler = scope.ServiceProvider.GetRequiredService<RenamePinchGroupHandler>();
         await handler.HandleAsync(draftCurationId, pinchGroupId, groupName, cancellationToken);
+    }
+
+    public async Task SetPinchGroupClosingEdgeAsync(
+        Guid draftCurationId,
+        Guid pinchGroupId,
+        string closingEdge,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<SetPinchGroupClosingEdgeHandler>();
+        await handler.HandleAsync(draftCurationId, pinchGroupId, closingEdge, cancellationToken);
     }
 
     public async Task<Guid> AddMeasurementCorridorAsync(
